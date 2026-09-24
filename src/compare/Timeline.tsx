@@ -65,7 +65,8 @@ export function Timeline({
 
   useEffect(() => {
     if (!focus || !scrollRef.current) return
-    scrollRef.current.scrollTo({ left: Math.max(0, (focus.t / 1000) * pxPerSec - 120), behavior: 'smooth' })
+    // 內層立即捲動：同時對外層做平滑捲動時，瀏覽器會中斷內層的平滑捲動
+    scrollRef.current.scrollLeft = Math.max(0, (focus.t / 1000) * pxPerSec - 120)
     rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     // 只在 focus 改變時捲動；縮放時不重捲
     // oxlint-disable-next-line react-hooks/exhaustive-deps

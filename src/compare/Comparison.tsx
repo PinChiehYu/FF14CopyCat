@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { buildAlignment } from '../analysis/alignment'
-import { gcdStats, lostGcdWindows } from '../analysis/metrics'
+import { generateAdvice } from '../analysis/advice'
+import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { compareTracks, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityMap } from '../fflogs/report'
 import { getJob } from '../jobs'
 import { incompatibility, loadSide, type Selection, type SideData } from './load'
+import { AdviceList } from './AdviceList'
 import { Metrics } from './Metrics'
 import { Positions } from './Positions'
 import { Timeline } from './Timeline'
@@ -48,19 +50,42 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
   )
   const job = getJob(reference.selection.player.subType)
   const drifts = alignment.anchors.map((a) => (a.ref - a.mine) / 1000)
-  const lost = useMemo(() => {
-    if (!job) return []
+  const { gcd, lost } = useMemo(() => {
+    if (!job) return { gcd: null, lost: [] }
     const gcds = (side: SideData) => side.playerCasts.filter((c) => job.isGcd(c.abilityId)).map((c) => c.t)
     const mineGcds = gcds(mine)
-    const { gcdMs } = gcdStats(mineGcds)
-    return gcdMs === null ? [] : lostGcdWindows(mineGcds, gcds(reference), alignment.mineToRef, gcdMs)
+    const refGcds = gcds(reference)
+    const stats = { mine: gcdStats(mineGcds), ref: gcdStats(refGcds) }
+    const windows =
+      stats.mine.gcdMs === null ? [] : lostGcdWindows(mineGcds, refGcds, alignment.mineToRef, stats.mine.gcdMs)
+    return { gcd: stats, lost: windows }
   }, [mine, reference, alignment, job])
+  const usage = useMemo(
+    () => abilityUsage(mine.playerCasts, reference.playerCasts, alignment.mineToRef),
+    [mine, reference, alignment],
+  )
   const duration = Math.max(reference.duration, alignment.mineToRef(mine.duration))
   const positions = useMemo(() => {
     const mineSamples = mine.playerPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
     const track = compareTracks(mineSamples, reference.playerPositions, reference.bossPositions, duration)
     return { mineSamples, track, divergences: divergences(track, DIVERGENCE_YALM) }
   }, [mine, reference, alignment, duration])
+  const advice = useMemo(
+    () =>
+      generateAdvice({
+        durationMs: reference.duration,
+        gcd,
+        lost,
+        usage,
+        divergences: positions.divergences,
+        track: positions.track,
+        abilityName: (id) => abilities.get(id)?.name ?? `#${id}`,
+        isGcd: job?.isGcd,
+        mineToRef: alignment.mineToRef,
+        firstUse: (id) => mine.playerCasts.find((c) => c.abilityId === id)?.t,
+      }),
+    [reference, gcd, lost, usage, positions, abilities, job, alignment, mine],
+  )
 
   // 目前檢視的參考時間（站位圖、時間軸游標）
   const [cursor, setCursor] = useState(0)
@@ -89,15 +114,9 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
       </dl>
       {alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
-      <Metrics
-        mine={mine}
-        reference={reference}
-        alignment={alignment}
-        abilities={abilities}
-        job={job}
-        lost={lost}
-        onFocus={jumpTo}
-      />
+      <h3>建議</h3>
+      <AdviceList advice={advice} onJump={jumpTo} />
+      <Metrics gcd={gcd} usage={usage} abilities={abilities} job={job} lost={lost} onFocus={jumpTo} />
       <h3>站位比較</h3>
       <Positions
         track={positions.track}

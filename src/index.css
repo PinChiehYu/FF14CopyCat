@@ -363,6 +363,59 @@ h3 {
   cursor: pointer;
 }
 
+.advice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.advice {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.advice.high {
+  border-left-color: var(--error);
+}
+
+.advice.medium {
+  border-left-color: var(--mine);
+}
+
+.advice p {
+  margin: 4px 0 0;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.advice .severity {
+  font-size: 0.8em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.advice.high .severity {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.advice.medium .severity {
+  color: var(--mine);
+  border-color: var(--mine);
+}
+
 .timeline-cursor {
   position: absolute;
   top: 0;

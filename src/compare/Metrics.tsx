@@ -1,10 +1,8 @@
-import type { Alignment } from '../analysis/alignment'
-import { abilityUsage, gcdStats, type LostWindow } from '../analysis/metrics'
+import type { AbilityUsage, GcdStats, LostWindow } from '../analysis/metrics'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import type { JobModule } from '../jobs'
-import type { SideData } from './load'
 
 const seconds = (ms: number, digits = 1) => (ms / 1000).toFixed(digits)
 
@@ -19,8 +17,8 @@ function GcdSection({
   lost,
   onFocus,
 }: {
-  mine: ReturnType<typeof gcdStats>
-  reference: ReturnType<typeof gcdStats>
+  mine: GcdStats
+  reference: GcdStats
   lost: LostWindow[]
   onFocus: (refTime: number) => void
 }) {
@@ -90,34 +88,25 @@ function GcdSection({
 }
 
 export function Metrics({
-  mine,
-  reference,
-  alignment,
+  gcd,
+  usage,
   abilities,
   job,
   lost,
   onFocus,
 }: {
-  mine: SideData
-  reference: SideData
-  alignment: Alignment
+  /** 沒有職業模組時為 null */
+  gcd: { mine: GcdStats; ref: GcdStats } | null
+  usage: AbilityUsage[]
   abilities: Map<number, Ability>
   job: JobModule | undefined
   lost: LostWindow[]
   onFocus: (refTime: number) => void
 }) {
-  const usage = abilityUsage(mine.playerCasts, reference.playerCasts, alignment.mineToRef)
-  const gcdTimes = (side: SideData) => side.playerCasts.filter((c) => job?.isGcd(c.abilityId)).map((c) => c.t)
-
   return (
     <section className="metrics">
-      {job ? (
-        <GcdSection
-          mine={gcdStats(gcdTimes(mine))}
-          reference={gcdStats(gcdTimes(reference))}
-          lost={lost}
-          onFocus={onFocus}
-        />
+      {gcd ? (
+        <GcdSection mine={gcd.mine} reference={gcd.ref} lost={lost} onFocus={onFocus} />
       ) : (
         <p className="hint">此職業尚未有專屬規則，無法計算 GCD 指標。</p>
       )}
