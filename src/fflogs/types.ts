@@ -26,7 +26,10 @@ export interface Actor {
 
 export interface Ability {
   gameID: number
+  /** 顯示名稱：有繁中名稱時為繁中，否則為 FFLogs 的英文名稱 */
   name: string
+  /** 換成繁中名稱時保留原本的英文名稱 */
+  englishName?: string
   /** 圖示檔名，例如 '003000-003729.png'；網址見 abilityIconUrl() */
   icon: string
   type: string

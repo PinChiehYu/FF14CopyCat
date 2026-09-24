@@ -136,7 +136,7 @@ export function Metrics({
               <tr key={u.abilityId} className={u.mine < u.ref ? 'fewer' : undefined}>
                 <th>
                   {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
-                  {ability?.name ?? `#${u.abilityId}`}
+                  <span title={ability?.englishName}>{ability?.name ?? `#${u.abilityId}`}</span>
                   {AUTO_ATTACKS.has(u.abilityId) ? (
                     <span className="tag">普通攻擊</span>
                   ) : (

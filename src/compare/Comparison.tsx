@@ -5,6 +5,7 @@ import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { compareTracks, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
+import { fetchAbilityNames, type AbilityName } from '../fflogs/client'
 import { abilityMap } from '../fflogs/report'
 import { getJob } from '../jobs'
 import { clipSide, incompatibility, loadSide, type Selection, type SideData } from './load'
@@ -40,16 +41,38 @@ function useSides(mine: Selection, reference: Selection) {
   return result?.key === key ? result : null
 }
 
+/** 查詢兩邊出現過的技能的繁中名稱；查詢失敗時沿用 FFLogs 的英文名稱。 */
+function useAbilityNames(mine: SideData, reference: SideData): Map<number, AbilityName> {
+  const [names, setNames] = useState<Map<number, AbilityName>>(new Map())
+  useEffect(() => {
+    const ids = [mine, reference].flatMap((s) => [...s.playerCasts, ...s.autoAttacks, ...s.bossCasts].map((c) => c.abilityId))
+    const controller = new AbortController()
+    fetchAbilityNames(ids, controller.signal)
+      .then(setNames)
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) console.warn('技能名稱查詢失敗，沿用英文名稱', err)
+      })
+    return () => controller.abort()
+  }, [mine, reference])
+  return names
+}
+
 function killLabel(side: SideData): string {
   return side.selection.fight.kill ? '（擊殺）' : '（滅團）'
 }
 
 function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
   const alignment = useMemo(() => buildAlignment(mine.bossCasts, reference.bossCasts), [mine, reference])
-  const abilities = useMemo(
-    () => new Map([...abilityMap(mine.selection.report), ...abilityMap(reference.selection.report)]),
-    [mine, reference],
-  )
+  const zhNames = useAbilityNames(mine, reference)
+  // 顯示用：有繁中名稱時取代 FFLogs 的英文名稱，英文保留在 englishName
+  const abilities = useMemo(() => {
+    const merged = new Map([...abilityMap(mine.selection.report), ...abilityMap(reference.selection.report)])
+    for (const [id, ability] of merged) {
+      const zh = zhNames.get(id)
+      if (zh) merged.set(id, { ...ability, name: zh.name, englishName: ability.name })
+    }
+    return merged
+  }, [mine, reference, zhNames])
   const job = getJob(reference.selection.player.subType)
   const drifts = alignment.anchors.map((a) => (a.ref - a.mine) / 1000)
 
@@ -111,6 +134,10 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
         divergences: positions.divergences,
         track: positions.track,
         abilityName: (id) => abilities.get(id)?.name ?? `#${id}`,
+        englishName: (id) => {
+          const a = abilities.get(id)
+          return a?.englishName ?? a?.name ?? `#${id}`
+        },
         isGcd: job?.isGcd,
         isUtility: job?.utility ? (id) => job.utility!.has(id) : undefined,
         mineToRef: alignment.mineToRef,

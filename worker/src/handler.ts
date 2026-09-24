@@ -1,3 +1,4 @@
+import { abilityNames } from './abilityNames'
 import { EVENTS_QUERY, REPORT_QUERY } from './queries'
 
 export interface Env {
@@ -19,6 +20,11 @@ export interface Context {
 const TOKEN_URL = 'https://www.fflogs.com/oauth/token'
 const API_URL = 'https://www.fflogs.com/api/v2/client'
 const CACHE_SECONDS = 600
+// 技能名稱只隨遊戲版本改變，快取一天
+const NAME_CACHE_SECONDS = 86_400
+const MAX_ABILITY_IDS = 500
+// Action 表的 ID 範圍；FFLogs 以更大的 ID 表示道具（例如藥水 34600427），不在 Action 表
+const MAX_ACTION_ID = 1_000_000
 
 const REPORT_CODE = /^(?:a:)?[A-Za-z0-9]{1,32}$/
 const INTEGER = /^\d+$/
@@ -111,7 +117,32 @@ function optionalEnum(params: URLSearchParams, name: string, allowed: Set<string
   return value
 }
 
-async function route(url: URL, env: Env): Promise<unknown> {
+/** `ids=1,2,3`：遊戲技能 ID（Action 表），最多 MAX_ABILITY_IDS 個。 */
+function abilityIds(params: URLSearchParams): number[] {
+  const raw = params.get('ids')
+  if (!raw) throw new HttpError(400, 'Missing ids')
+  const parts = raw.split(',')
+  if (parts.length > MAX_ABILITY_IDS) throw new HttpError(400, 'Too many ids')
+  const ids = parts.map((p) => {
+    if (!INTEGER.test(p) || Number(p) > MAX_ACTION_ID) throw new HttpError(400, 'Invalid ids')
+    return Number(p)
+  })
+  return [...new Set(ids)]
+}
+
+async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds: number }> {
+  if (url.pathname.replace(/\/$/, '') === '/abilities') {
+    try {
+      return { data: await abilityNames(abilityIds(url.searchParams)), cacheSeconds: NAME_CACHE_SECONDS }
+    } catch (err) {
+      if (err instanceof HttpError) throw err
+      throw new HttpError(502, `Ability name lookup failed: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+  return { data: await reportRoute(url, env), cacheSeconds: CACHE_SECONDS }
+}
+
+async function reportRoute(url: URL, env: Env): Promise<unknown> {
   const match = /^\/reports\/([^/]+)(\/events)?\/?$/.exec(url.pathname)
   if (!match) throw new HttpError(404, 'Not found')
 
@@ -181,11 +212,11 @@ export async function handleRequest(
   }
 
   try {
-    const data = await route(url, env)
+    const { data, cacheSeconds } = await route(url, env)
     const body = JSON.stringify(data)
     if (cache) {
       const toCache = new Response(body, {
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${CACHE_SECONDS}` },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${cacheSeconds}` },
       })
       ctx.waitUntil(cache.put(cacheKey, toCache))
     }

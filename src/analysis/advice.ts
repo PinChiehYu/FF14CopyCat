@@ -21,7 +21,10 @@ export interface AdviceInput {
   usage: AbilityUsage[]
   divergences: Divergence[]
   track: TrackPoint[]
+  /** 顯示名稱（可能是繁中） */
   abilityName: (id: number) => string
+  /** 英文名稱，供依名稱判斷的規則（例如藥水）使用；未提供時用 abilityName */
+  englishName?: (id: number) => string
   isGcd?: (id: number) => boolean
   /** 職業的防禦／輔助技能（職業模組提供） */
   isUtility?: (id: number) => boolean
@@ -141,7 +144,7 @@ function gcdSpeedAdvice({ gcd, durationMs }: AdviceInput): Advice[] {
   ]
 }
 
-function usageAdvice({ usage, abilityName, isGcd, isUtility, firstUse, mineToRef }: AdviceInput): Advice[] {
+function usageAdvice({ usage, abilityName, englishName, isGcd, isUtility, firstUse, mineToRef }: AdviceInput): Advice[] {
   const items: Advice[] = []
   const slightlyFewer: string[] = []
   const roleFewer: string[] = []
@@ -153,7 +156,7 @@ function usageAdvice({ usage, abilityName, isGcd, isUtility, firstUse, mineToRef
     const gcd = isGcd?.(u.abilityId) ?? false
     const fewer = u.ref - u.mine
 
-    if (POTION_NAME.test(name)) {
+    if (POTION_NAME.test((englishName ?? abilityName)(u.abilityId))) {
       if (fewer > 0) {
         items.push({
           severity: 'high',

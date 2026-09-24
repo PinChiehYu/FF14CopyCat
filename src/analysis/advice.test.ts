@@ -95,6 +95,17 @@ describe('generateAdvice', () => {
     expect(advice[0].detail).toMatch('#7382（2／7）、#7535（7／9）')
   })
 
+  it('detects potions by English name when display names are translated', () => {
+    const [a] = generateAdvice(
+      input({
+        usage: [usage(4, 0, 3)],
+        abilityName: () => '3級剛力之幻藥',
+        englishName: (id) => names[id],
+      }),
+    )
+    expect(a.title).toBe('爆發藥少用 3 次（你 0 次、參考 3 次）')
+  })
+
   it('does not treat fewer GCDs as missed cooldowns', () => {
     // Gekko（GCD）少用是少打 GCD 的結果
     expect(generateAdvice(input({ usage: [usage(6, 17, 20)] }))).toEqual([])

@@ -117,6 +117,43 @@ describe('handleRequest', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('returns Traditional Chinese ability names, converting Simplified when missing', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      const rows =
+        url.searchParams.get('language') === 'tc'
+          ? [
+              { row_id: 7490, fields: { Name: '必殺劍·震天' } },
+              { row_id: 7487, fields: { Name: '_rsv_7487_-1_7_0_0_SE2DC5B04_EE2DC5B04' } },
+              { row_id: 42672, fields: { Name: '' } },
+            ]
+          : [
+              { row_id: 7487, fields: { Name: '纷乱雪月花' } },
+              { row_id: 42672, fields: { Name: '' } },
+            ]
+      return Response.json({ rows })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await handleRequest(get('/abilities?ids=7490,7487,42672'), env, ctx, null)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      7490: { name: '必殺劍·震天', source: 'tc' },
+      7487: { name: '紛亂雪月花', source: 'chs' },
+    })
+    // 簡中只查繁中缺少的
+    const chsUrl = new URL(String(fetchMock.mock.calls[1][0]))
+    expect(chsUrl.searchParams.get('rows')).toBe('7487,42672')
+  })
+
+  it('validates ability ids', async () => {
+    const fetchMock = mockFflogs({})
+    for (const path of ['/abilities', '/abilities?ids=1,x', '/abilities?ids=34600427']) {
+      expect((await handleRequest(get(path), env, ctx, null)).status, path).toBe(400)
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('enforces the rate limiter', async () => {
     const limited: Env = { ...env, RATE_LIMITER: { limit: async () => ({ success: false }) } }
     expect((await handleRequest(get('/reports/abc'), limited, ctx, null)).status).toBe(429)

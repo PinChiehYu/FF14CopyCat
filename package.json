@@ -15,6 +15,7 @@
     "worker:deploy": "wrangler deploy -c worker/wrangler.toml"
   },
   "dependencies": {
+    "opencc-js": "^1.4.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

@@ -168,7 +168,7 @@ export function Timeline({
                       className="cast"
                       src={abilityIconUrl(ability.icon)}
                       alt={ability.name}
-                      title={`${ability.name} ${time}`}
+                      title={`${ability.name}${ability.englishName ? `（${ability.englishName}）` : ''} ${time}`}
                       loading="lazy"
                       style={{ left: x(c.t) }}
                     />

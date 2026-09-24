@@ -10,6 +10,7 @@
 瀏覽器 ──► GitHub Pages（前端，靜態）
    │
    └──► Cloudflare Worker 代理 ──► FFLogs API v2（GraphQL，client credentials）
+                               └─► Boilmaster 鏡像 xivapi-v2.xivcdn.com（技能繁中／簡中名稱）
 ```
 
 - **前端**：Vite + React + TypeScript，部署於 https://pinchiehyu.github.io/FF14CopyCat/ ，由 GitHub Actions 在 push 到 `main` 時建置部署（Pages Source 必須為 GitHub Actions）。
@@ -25,6 +26,7 @@
 |---|---|
 | `GET /reports/:code` | 報告標題、fights、masterData.actors、masterData.abilities（技能名稱與圖示） |
 | `GET /reports/:code/events?fight&start&end[&source][&dataType][&hostility]` | 一頁事件（含位置資料 `includeResources`），前端依 `nextPageTimestamp` 翻頁 |
+| `GET /abilities?ids=1,2,3` | 技能的繁中名稱（官方繁中，沒有時簡中轉繁），來源為 Boilmaster 鏡像，快取一天 |
 
 保護措施：Origin 白名單（CORS）、每 IP 每分鐘 60 次限流、成功回應快取 10 分鐘。所有訪客共用一組 FFLogs API 配額。
 
@@ -154,7 +156,15 @@
 - 武士（席德 vs 安祖卡）：13 處，12 處為隨機變化（Windfang／Stonefang、Eminent／Revolutionary Reign、Wolves' Reign 方向、**第二階段 Hero's Blow 方向**）。第二階段兩人持續左右相反的站位，很可能是 Hero's Blow 方向不同造成，而非攻略不同。
 - 騎士（神曲莊園 vs Lavid）：20 處，11 處為隨機變化；其餘多為「只有我」（參考擊殺快 61 秒，跳過了部分機制）。
 
-#### 技能名稱翻譯（調查結果，尚未實作）
+#### 技能名稱翻譯（已實作）
+
+- **Worker `GET /abilities?ids=1,2,3`**（`worker/src/abilityNames.ts`）：向 Boilmaster 鏡像批次（每批 100 個）查詢 `language=tc`；繁中為 `_rsv_…` 佔位或空白者再查 `language=chs`，以 `opencc-js`（`cn` → `tw`，只轉字元與台灣異體字、不改用詞）轉為繁體。回傳 `{ id: { name, source: 'tc' | 'chs' } }`，兩者都沒有的技能不回傳。快取一天。最多 500 個 ID，ID 需 ≤ 1,000,000（FFLogs 以更大的 ID 表示道具，例如藥水，不在 Action 表）。
+- **前端**：比較資料載入後查詢兩邊出現過的所有技能（玩家、普通攻擊、Boss），以繁中名稱取代顯示名稱、英文保留在 `Ability.englishName`（滑鼠停留時顯示）。查詢失敗時沿用英文，不影響比較。依名稱判斷的規則（藥水）改用英文名稱。
+- Worker 打包後 2 MB（gzip 503 KB），大部分是簡轉繁的詞典。
+
+實測：玩家技能皆為官方繁中（必殺劍·震天、壹之牙【咬創】、絕對統治、調停、償贖劍…）；新版本 Boss 技能以簡中轉繁（Hero's Blow → 摧枯拉朽、Sand Surge → 土爆）；42672 等在所有語言都沒有名稱的技能沿用 FFLogs 名稱。
+
+以下為實作前的調查結果：
 
 目前技能名稱來自 FFLogs `masterData.abilities`，為英文。比較基準的伺服器（巴哈姆特、鳳凰、迦樓羅、泰坦）屬繁體中文版，目標是官方繁中名稱。
 
@@ -177,6 +187,10 @@
 待決定：站位差異（不同攻略）的處理方式、建議產生方式。
 
 ## 設計變更紀錄
+
+### 2026-09-25 技能繁中名稱
+- 變更：Worker 新增 `/abilities`，從 Boilmaster 鏡像取官方繁中名稱，沒有時以簡中轉繁（opencc-js）；前端以繁中顯示技能名稱，英文保留在滑鼠提示。新增外部依賴 `xivapi-v2.xivcdn.com`。
+- 原因：比較基準為繁中版伺服器，使用者需要遊戲內的繁中名稱；FFLogs 與官方 XIVAPI 都沒有繁中。新版本 Boss 技能在繁中資料中只有佔位字串，依使用者決定以簡中轉繁顯示。
 
 ### 2026-09-25 只比較兩場戰鬥重疊的時段；GCD 上限 2.5 秒
 - 變更：所有統計只計算到較短一方結束（時間軸標示範圍外）；對齊加入反向換算 `refToMine`；GCD 推估上限 2.5 秒；普通攻擊列入技能使用次數但不畫在時間軸。
