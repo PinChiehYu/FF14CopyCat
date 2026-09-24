@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
+import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
 import { fetchReport } from './fflogs/client'
-import { playersInFight } from './fflogs/report'
 import { Comparison } from './compare/Comparison'
 import type { Selection } from './compare/load'
 import type { Fight, Report } from './fflogs/types'
@@ -50,21 +50,16 @@ function fightLabel(fight: Fight): string {
 function ReportSelector({
   report,
   urlRef,
+  preferred,
   onChange,
 }: {
   report: Report
   urlRef: ReportRef
+  preferred?: Preference
   onChange: (selection: Selection | null) => void
 }) {
-  const [fightId, setFightId] = useState(() => {
-    const fromUrl = typeof urlRef.fight === 'number' ? report.fights.find((f) => f.id === urlRef.fight) : undefined
-    return (fromUrl ?? report.fights.at(-1))?.id
-  })
-  const fight = report.fights.find((f) => f.id === fightId)
-  const players = fight ? playersInFight(report, fight) : []
-
-  const [playerId, setPlayerId] = useState(urlRef.sourceId)
-  const player = players.find((p) => p.id === playerId)
+  const [overrides, setOverrides] = useState<Overrides>({ fightId: null, playerId: null })
+  const { fight, players, player, note } = resolveSelection(report, urlRef, overrides, preferred)
 
   useEffect(() => {
     onChange(fight && player ? { report, fight, player } : null)
@@ -77,7 +72,11 @@ function ReportSelector({
       <p className="report-title">{report.title}</p>
       <label>
         戰鬥
-        <select value={fightId ?? ''} onChange={(e) => setFightId(Number(e.target.value))}>
+        <select
+          value={fight?.id ?? ''}
+          // 換戰鬥時角色回到自動選擇
+          onChange={(e) => setOverrides({ fightId: Number(e.target.value), playerId: null })}
+        >
           {report.fights.map((f) => (
             <option key={f.id} value={f.id}>
               {fightLabel(f)}
@@ -87,7 +86,10 @@ function ReportSelector({
       </label>
       <label>
         角色
-        <select value={player?.id ?? ''} onChange={(e) => setPlayerId(Number(e.target.value))}>
+        <select
+          value={player?.id ?? ''}
+          onChange={(e) => setOverrides((o) => ({ ...o, playerId: Number(e.target.value) }))}
+        >
           <option value="" disabled>
             請選擇角色
           </option>
@@ -98,11 +100,20 @@ function ReportSelector({
           ))}
         </select>
       </label>
+      {note && !player && <p className="hint">{note}</p>}
     </div>
   )
 }
 
-function LogPicker({ label, onChange }: { label: string; onChange: (selection: Selection | null) => void }) {
+function LogPicker({
+  label,
+  preferred,
+  onChange,
+}: {
+  label: string
+  preferred?: Preference
+  onChange: (selection: Selection | null) => void
+}) {
   const [url, setUrl] = useState('')
   const ref = url.trim() ? parseReportUrl(url) : null
   const code = useDebounced(ref?.reportCode ?? null, 400)
@@ -132,6 +143,7 @@ function LogPicker({ label, onChange }: { label: string; onChange: (selection: S
           key={`${state.report.code}|${ref.fight ?? ''}|${ref.sourceId ?? ''}`}
           report={state.report}
           urlRef={ref}
+          preferred={preferred}
           onChange={onChange}
         />
       )}
@@ -142,6 +154,8 @@ function LogPicker({ label, onChange }: { label: string; onChange: (selection: S
 export default function App() {
   const [mine, setMine] = useState<Selection | null>(null)
   const [reference, setReference] = useState<Selection | null>(null)
+  // 參考日誌依我選的 Boss 與職業自動選擇戰鬥與角色
+  const preferred = mine ? { encounterID: mine.fight.encounterID, subType: mine.player.subType } : undefined
 
   return (
     <>
@@ -150,7 +164,7 @@ export default function App() {
 
       <div className="logs">
         <LogPicker label="我的日誌" onChange={setMine} />
-        <LogPicker label="參考日誌（高階玩家）" onChange={setReference} />
+        <LogPicker label="參考日誌（高階玩家）" preferred={preferred} onChange={setReference} />
       </div>
 
       {mine && reference && (
