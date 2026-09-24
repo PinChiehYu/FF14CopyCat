@@ -24,6 +24,30 @@ function toCasts(events: FFLogsEvent[], fight: Fight): TimedCast[] {
     .map((e) => ({ t: toFightTime(e.timestamp, fight.startTime), abilityId: e.abilityGameID! }))
 }
 
+// begincast 與 cast 的最大間隔；超過視為不相關（例如詠唱被打斷後又重新施放）
+const MAX_CAST_BAR_MS = 5000
+
+/**
+ * 玩家的施放時間取「開始施放」的時間：有詠唱條的技能 FFLogs 的 cast 事件在詠唱結束時，
+ * 因此以同技能前一個 begincast 取代。被打斷（只有 begincast 沒有 cast）的詠唱不計。
+ */
+export function playerCasts(events: FFLogsEvent[], fight: Fight): TimedCast[] {
+  const pending = new Map<number, number>()
+  const casts: TimedCast[] = []
+  for (const e of events) {
+    if (e.abilityGameID === undefined) continue
+    const t = toFightTime(e.timestamp, fight.startTime)
+    if (e.type === 'begincast') {
+      pending.set(e.abilityGameID, t)
+    } else if (e.type === 'cast') {
+      const begin = pending.get(e.abilityGameID)
+      pending.delete(e.abilityGameID)
+      casts.push({ t: begin !== undefined && t - begin <= MAX_CAST_BAR_MS ? begin : t, abilityId: e.abilityGameID })
+    }
+  }
+  return casts
+}
+
 export async function loadSide(selection: Selection, signal?: AbortSignal): Promise<SideData> {
   const { report, fight, player } = selection
   const [playerEvents, bossEvents] = await Promise.all([
@@ -32,7 +56,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
   ])
   return {
     selection,
-    playerCasts: toCasts(playerEvents, fight),
+    playerCasts: playerCasts(playerEvents, fight),
     bossCasts: toCasts(bossEvents, fight),
     duration: fight.endTime - fight.startTime,
   }

@@ -274,3 +274,87 @@ button:disabled {
   width: 2px;
   background: var(--error);
 }
+
+.highlight {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--error) 22%, transparent);
+  border-inline: 1px solid color-mix(in srgb, var(--error) 60%, transparent);
+}
+
+h3 {
+  font-size: 1.05em;
+  margin: 24px 0 8px;
+}
+
+.metrics-table {
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.metrics-table th,
+.metrics-table td {
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.metrics-table tbody th,
+.metrics-table thead th:first-child {
+  text-align: left;
+  font-weight: normal;
+}
+
+.metrics-table thead th {
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+.metrics-table .mine {
+  color: var(--mine);
+}
+
+.metrics-table .ref {
+  color: var(--ref);
+}
+
+.metrics-table tr.fewer td:nth-child(4) {
+  color: var(--error);
+}
+
+.usage-icon {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin-right: 6px;
+  border-radius: 3px;
+}
+
+.tag {
+  margin-left: 6px;
+  padding: 0 4px;
+  font-size: 0.75em;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+}
+
+.lost-list {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.lost-list li {
+  margin: 4px 0;
+}
+
+.lost-list button {
+  padding: 1px 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics {
+  overflow-x: auto;
+}

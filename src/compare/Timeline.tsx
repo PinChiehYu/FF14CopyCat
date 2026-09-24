@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Alignment, TimedCast } from '../analysis/alignment'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
@@ -39,15 +39,31 @@ export function Timeline({
   alignment,
   abilities,
   job,
+  highlights = [],
+  focus = null,
 }: {
   mine: SideData
   reference: SideData
   alignment: Alignment
   abilities: Map<number, Ability>
   job: JobModule | undefined
+  /** 以參考時間標示的區段（例如少打 GCD 的時段），畫在我的列上 */
+  highlights?: { start: number; end: number }[]
+  /** 要捲動到的參考時間；每次傳入新物件就會捲動一次 */
+  focus?: { t: number } | null
 }) {
   const [pxPerSec, setPxPerSec] = useState(20)
   const x = (ms: number) => (ms / 1000) * pxPerSec
+  const rootRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!focus || !scrollRef.current) return
+    scrollRef.current.scrollTo({ left: Math.max(0, (focus.t / 1000) * pxPerSec - 120), behavior: 'smooth' })
+    rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    // 只在 focus 改變時捲動；縮放時不重捲
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus])
 
   const mineEnd = alignment.mineToRef(mine.duration)
   const totalMs = Math.max(ref.duration, mineEnd)
@@ -62,7 +78,7 @@ export function Timeline({
   const ticks = Array.from({ length: Math.floor(totalMs / 10_000) + 1 }, (_, i) => i * 10_000)
 
   return (
-    <div className="timeline">
+    <div className="timeline" ref={rootRef}>
       <div className="timeline-toolbar">
         <label>
           縮放
@@ -88,7 +104,7 @@ export function Timeline({
           ))}
         </div>
 
-        <div className="timeline-scroll">
+        <div className="timeline-scroll" ref={scrollRef}>
           <div className="timeline-canvas" style={{ width }}>
             <div className="lane ruler">
               {ticks.map((t) => (
@@ -111,6 +127,15 @@ export function Timeline({
 
             {allLanes.map((lane) => (
               <div key={lane.label} className={`lane ${lane.side}`}>
+                {lane.side === 'mine' &&
+                  highlights.map((h) => (
+                    <span
+                      key={h.start}
+                      className="highlight"
+                      style={{ left: x(h.start), width: x(h.end - h.start) }}
+                      title="少打 GCD 的時段"
+                    />
+                  ))}
                 {lane.casts.map((c, i) => {
                   const ability = abilities.get(c.abilityId)
                   const time =

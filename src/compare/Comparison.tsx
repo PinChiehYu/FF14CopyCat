@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { buildAlignment } from '../analysis/alignment'
+import { gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityMap } from '../fflogs/report'
 import { getJob } from '../jobs'
 import { incompatibility, loadSide, type Selection, type SideData } from './load'
+import { Metrics } from './Metrics'
 import { Timeline } from './Timeline'
 
 // 錨點太少時對齊結果不可靠
@@ -42,6 +44,15 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
   )
   const job = getJob(reference.selection.player.subType)
   const drifts = alignment.anchors.map((a) => (a.ref - a.mine) / 1000)
+  const lost = useMemo(() => {
+    if (!job) return []
+    const gcds = (side: SideData) => side.playerCasts.filter((c) => job.isGcd(c.abilityId)).map((c) => c.t)
+    const mineGcds = gcds(mine)
+    const { gcdMs } = gcdStats(mineGcds)
+    return gcdMs === null ? [] : lostGcdWindows(mineGcds, gcds(reference), alignment.mineToRef, gcdMs)
+  }, [mine, reference, alignment, job])
+  // 每次點擊都產生新物件，讓時間軸即使捲到同一時間也會重新捲動
+  const [focus, setFocus] = useState<{ t: number } | null>(null)
 
   return (
     <>
@@ -61,7 +72,25 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
       </dl>
       {alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
-      <Timeline mine={mine} reference={reference} alignment={alignment} abilities={abilities} job={job} />
+      <Metrics
+        mine={mine}
+        reference={reference}
+        alignment={alignment}
+        abilities={abilities}
+        job={job}
+        lost={lost}
+        onFocus={(t) => setFocus({ t })}
+      />
+      <h3>時間軸</h3>
+      <Timeline
+        mine={mine}
+        reference={reference}
+        alignment={alignment}
+        abilities={abilities}
+        job={job}
+        highlights={lost.map((w) => ({ start: w.refStart, end: w.refEnd }))}
+        focus={focus}
+      />
     </>
   )
 }
