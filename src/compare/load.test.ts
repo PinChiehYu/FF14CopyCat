@@ -37,6 +37,15 @@ describe('playerCasts', () => {
     ])
   })
 
+  it('drops auto-attacks', () => {
+    const events = [
+      { timestamp: 2000, type: 'cast', abilityGameID: 7, sourceID: 6 }, // Attack
+      { timestamp: 2500, type: 'cast', abilityGameID: 8, sourceID: 6 }, // Shot
+      { timestamp: 3000, type: 'cast', abilityGameID: 9, sourceID: 6 },
+    ]
+    expect(playerCasts(events, fight, 6)).toEqual([{ t: 2000, abilityId: 9 }])
+  })
+
   it('keeps only casts by the given actor', () => {
     const events = [
       { timestamp: 2000, type: 'cast', abilityGameID: 1, sourceID: 6 },

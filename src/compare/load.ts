@@ -60,6 +60,9 @@ function toCasts(events: FFLogsEvent[], fight: Fight): TimedCast[] {
 // begincast 與 cast 的最大間隔；超過視為不相關（例如詠唱被打斷後又重新施放）
 const MAX_CAST_BAR_MS = 5000
 
+// 普通攻擊（近戰 Attack、遠程 Shot）：全部事件中每場約 300 次，不是玩家操作的技能
+const AUTO_ATTACKS = new Set([7, 8])
+
 /**
  * 玩家的施放時間取「開始施放」的時間：有詠唱條的技能 FFLogs 的 cast 事件在詠唱結束時，
  * 因此以同技能前一個 begincast 取代。被打斷（只有 begincast 沒有 cast）的詠唱不計。
@@ -68,7 +71,7 @@ export function playerCasts(events: FFLogsEvent[], fight: Fight, actorId?: numbe
   const pending = new Map<number, number>()
   const casts: TimedCast[] = []
   for (const e of events) {
-    if (e.abilityGameID === undefined) continue
+    if (e.abilityGameID === undefined || AUTO_ATTACKS.has(e.abilityGameID)) continue
     // 全部事件中也有別人對玩家施放的，只取玩家自己施放的
     if (actorId !== undefined && e.sourceID !== actorId) continue
     const t = toFightTime(e.timestamp, fight.startTime)

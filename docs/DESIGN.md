@@ -44,7 +44,7 @@
 
 開發順序（已與使用者確認）：**① 時間軸對齊＋並排時間軸（已完成）** → **② 通用指標（已完成）** → **③ 站位比較（已完成）** → **④ 建議（已完成，規則式）**。職業規則先支援 **Viper（蝰蛇劍士）**，之後加入 Samurai（武士）。
 
-玩家施放時間一律取「開始施放」：有詠唱條的技能以同技能前一個 `begincast` 取代 `cast`（`compare/load.ts` 的 `playerCasts()`），被打斷的詠唱不計。Boss 施放仍用 `cast`。
+玩家施放排除普通攻擊（Attack #7、Shot #8；全部事件中每場約 300 次，會塞滿 oGCD 列與技能次數表）。玩家施放時間一律取「開始施放」：有詠唱條的技能以同技能前一個 `begincast` 取代 `cast`（`compare/load.ts` 的 `playerCasts()`），被打斷的詠唱不計。Boss 施放仍用 `cast`。
 
 #### ① 時間軸對齊（`src/analysis/alignment.ts`）
 
