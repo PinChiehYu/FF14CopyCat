@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
-import { incompatibility, playerCasts, type Selection } from './load'
+import { actorPositions, incompatibility, playerCasts, type Selection } from './load'
+
+describe('actorPositions', () => {
+  const fight = { startTime: 1000 } as Fight
+  it('reads source or target resources of the actor in yalms', () => {
+    const events: FFLogsEvent[] = [
+      { timestamp: 3000, type: 'damage', sourceID: 9, targetID: 6, targetResources: { x: 10500, y: 9800 } },
+      { timestamp: 2000, type: 'cast', sourceID: 6, sourceResources: { x: 10000, y: 10000 } },
+      { timestamp: 2000, type: 'damage', sourceID: 6, sourceResources: { x: 10000, y: 10000 } }, // 同時間重複
+      { timestamp: 4000, type: 'cast', sourceID: 9, sourceResources: { x: 0, y: 0 } }, // 別人
+    ]
+    expect(actorPositions(events, fight, 6)).toEqual([
+      { t: 1000, x: 100, y: 100 },
+      { t: 2000, x: 105, y: 98 },
+    ])
+  })
+})
 
 describe('playerCasts', () => {
   const fight = { startTime: 1000 } as Fight
@@ -19,6 +35,14 @@ describe('playerCasts', () => {
       { t: 2000, abilityId: 2 },
       { t: 5000, abilityId: 4 },
     ])
+  })
+
+  it('keeps only casts by the given actor', () => {
+    const events = [
+      { timestamp: 2000, type: 'cast', abilityGameID: 1, sourceID: 6 },
+      { timestamp: 3000, type: 'cast', abilityGameID: 2, sourceID: 7 }, // 別人對玩家施放
+    ]
+    expect(playerCasts(events, fight, 6)).toEqual([{ t: 1000, abilityId: 1 }])
   })
 })
 

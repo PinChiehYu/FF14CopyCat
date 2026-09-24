@@ -1,4 +1,5 @@
 import type { TimedCast } from '../analysis/alignment'
+import type { PositionSample } from '../analysis/positions'
 import { toFightTime } from '../analysis/timeline'
 import { fetchFightEvents } from '../fflogs/client'
 import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
@@ -13,8 +14,40 @@ export interface SideData {
   selection: Selection
   playerCasts: TimedCast[]
   bossCasts: TimedCast[]
+  /** 玩家位置（戰鬥時間、yalm） */
+  playerPositions: PositionSample[]
+  /** 主要 Boss（施放最多次的敵人）的位置 */
+  bossPositions: PositionSample[]
   /** 戰鬥長度（毫秒） */
   duration: number
+}
+
+interface Resources {
+  x?: number
+  y?: number
+}
+
+/** 從事件的 source/targetResources 取出某角色的位置，依時間排序並去除同時間的重複取樣。 */
+export function actorPositions(events: FFLogsEvent[], fight: Fight, actorId: number): PositionSample[] {
+  const samples: PositionSample[] = []
+  for (const e of events) {
+    const res = (e.sourceID === actorId ? e.sourceResources : e.targetID === actorId ? e.targetResources : undefined) as
+      | Resources
+      | undefined
+    if (res?.x === undefined || res.y === undefined) continue
+    samples.push({ t: toFightTime(e.timestamp, fight.startTime), x: res.x / 100, y: res.y / 100 })
+  }
+  samples.sort((a, b) => a.t - b.t)
+  return samples.filter((s, i) => i === 0 || s.t !== samples[i - 1].t)
+}
+
+/** 施放次數最多的敵人視為主要 Boss。 */
+function mainEnemy(events: FFLogsEvent[]): number | undefined {
+  const counts = new Map<number, number>()
+  for (const e of events) {
+    if (e.type === 'cast' && e.sourceID !== undefined) counts.set(e.sourceID, (counts.get(e.sourceID) ?? 0) + 1)
+  }
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0]
 }
 
 function toCasts(events: FFLogsEvent[], fight: Fight): TimedCast[] {
@@ -31,11 +64,13 @@ const MAX_CAST_BAR_MS = 5000
  * 玩家的施放時間取「開始施放」的時間：有詠唱條的技能 FFLogs 的 cast 事件在詠唱結束時，
  * 因此以同技能前一個 begincast 取代。被打斷（只有 begincast 沒有 cast）的詠唱不計。
  */
-export function playerCasts(events: FFLogsEvent[], fight: Fight): TimedCast[] {
+export function playerCasts(events: FFLogsEvent[], fight: Fight, actorId?: number): TimedCast[] {
   const pending = new Map<number, number>()
   const casts: TimedCast[] = []
   for (const e of events) {
     if (e.abilityGameID === undefined) continue
+    // 全部事件中也有別人對玩家施放的，只取玩家自己施放的
+    if (actorId !== undefined && e.sourceID !== actorId) continue
     const t = toFightTime(e.timestamp, fight.startTime)
     if (e.type === 'begincast') {
       pending.set(e.abilityGameID, t)
@@ -50,14 +85,18 @@ export function playerCasts(events: FFLogsEvent[], fight: Fight): TimedCast[] {
 
 export async function loadSide(selection: Selection, signal?: AbortSignal): Promise<SideData> {
   const { report, fight, player } = selection
+  // 玩家取全部事件（約每 0.4 秒一筆位置），施放與位置都從中取得；只取施放時位置取樣太稀疏
   const [playerEvents, bossEvents] = await Promise.all([
-    fetchFightEvents(report.code, fight, { sourceId: player.id, dataType: 'Casts' }, signal),
+    fetchFightEvents(report.code, fight, { sourceId: player.id, dataType: 'All' }, signal),
     fetchFightEvents(report.code, fight, { hostility: 'Enemies', dataType: 'Casts' }, signal),
   ])
+  const boss = mainEnemy(bossEvents)
   return {
     selection,
-    playerCasts: playerCasts(playerEvents, fight),
+    playerCasts: playerCasts(playerEvents, fight, player.id),
     bossCasts: toCasts(bossEvents, fight),
+    playerPositions: actorPositions(playerEvents, fight, player.id),
+    bossPositions: boss === undefined ? [] : actorPositions(bossEvents, fight, boss),
     duration: fight.endTime - fight.startTime,
   }
 }

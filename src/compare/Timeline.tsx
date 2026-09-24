@@ -41,6 +41,8 @@ export function Timeline({
   job,
   highlights = [],
   focus = null,
+  cursor,
+  onSeek,
 }: {
   mine: SideData
   reference: SideData
@@ -51,6 +53,10 @@ export function Timeline({
   highlights?: { start: number; end: number }[]
   /** 要捲動到的參考時間；每次傳入新物件就會捲動一次 */
   focus?: { t: number } | null
+  /** 目前檢視的參考時間，畫成直線 */
+  cursor?: number
+  /** 點擊時間尺時移動游標 */
+  onSeek?: (t: number) => void
 }) {
   const [pxPerSec, setPxPerSec] = useState(20)
   const x = (ms: number) => (ms / 1000) * pxPerSec
@@ -106,7 +112,12 @@ export function Timeline({
 
         <div className="timeline-scroll" ref={scrollRef}>
           <div className="timeline-canvas" style={{ width }}>
-            <div className="lane ruler">
+            {cursor !== undefined && <span className="timeline-cursor" style={{ left: x(cursor) }} />}
+            <div
+              className="lane ruler"
+              title="點擊以移動站位圖的時間"
+              onClick={(e) => onSeek?.(((e.clientX - e.currentTarget.getBoundingClientRect().left) / pxPerSec) * 1000)}
+            >
               {ticks.map((t) => (
                 <span key={t} className="tick" style={{ left: x(t) }}>
                   {formatFightTime(t).replace(/\.\d$/, '')}
