@@ -52,7 +52,8 @@ node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的
 - 本機測試可在 `.env.local` 設 `VITE_API_BASE=https://ff14-copycat-api.ff14-copycat.workers.dev` 直接連已部署的 Worker（`ALLOWED_ORIGINS` 已含 `http://localhost:5173`）。測試用公開報告：`WATKBdHRh7m8PNQt`（fight 10 滅團 / 11 擊殺 Sugar Riot，Viper 玩家 source=34）；**使用者指定的比較基準**（皆為 Howling Blade 擊殺，驗證功能時兩組都要測）：
   - 武士：我的日誌 `https://www.fflogs.com/reports/FXLkqaK32PhQH8Ac?fight=1`（席德，source 6）、高階玩家 `https://www.fflogs.com/reports/pwTF16cgnB9G7fWM?fight=29`（安祖卡，source 13）。
   - 騎士：我的日誌 `https://www.fflogs.com/reports/hqNYDGK9A4pmWVXB?fight=18`（神曲莊園，source 40）、高階玩家 `https://www.fflogs.com/reports/khNfTaMtYwKBd36b?fight=10`（Lavid，source 5）。參考擊殺快 61 秒，可測大幅時間差與坦克技能。
-- 新增或修改職業模組時，用 `begincast` 為起點計算 GCD 間隔驗證分類（見 DESIGN.md 職業模組一節）。
+  - 黑魔法師（驗證用，非使用者指定）：`https://www.fflogs.com/reports/bX97vBapCPwKndL6?fight=3`（春風醒，source 2）vs `https://www.fflogs.com/reports/h6gRJZ2pfDFYMPjX?fight=13`（Nana七，source 28）。
+- 已支援職業：Viper、Samurai、Paladin、BlackMage（`src/jobs/`）。新增或修改職業模組時，用 `begincast` 為起點計算 GCD 間隔驗證分類（見 DESIGN.md 職業模組一節）。
 
 ## 專案目標
 

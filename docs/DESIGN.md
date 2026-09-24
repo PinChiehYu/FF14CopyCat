@@ -87,6 +87,7 @@
   - Viper（蝰蛇劍士）：技能 ID 34606–34633 為 GCD、34634–34647 為 oGCD；職能技能與藥水為 oGCD。
   - Samurai（武士）：ID 不連續，以明確列表定義 GCD（連擊、居合術、燕返、奧義斬浪等，含已被取代的舊技能）；其餘為 oGCD。以使用者的兩份日誌驗證：GCD 間隔集中在 2.0～2.25 秒，無小於 1.25 秒的間隔（代表沒有把 oGCD 誤判為 GCD）。
   - Paladin（騎士）：明確列表定義 GCD（連擊、Atonement 系列、Holy Spirit／Circle、Confiteor 與 Blade 系列、Goring Blade、Shield Lob、Clemency），`utility` 列出防禦技（Sentinel／Guardian、Bulwark、Hallowed Ground、Sheltron、Divine Veil、Intervention、Passage of Arms、Cover、Iron Will、Clemency）。以使用者的騎士日誌驗證：GCD 間隔集中在約 2.45～2.5 秒，560 多個 GCD 中只有一個間隔小於 2 秒。
+  - BlackMage（黑魔法師）：GCD 為所有攻擊魔法（火／冰／雷系列、Paradox、Despair、Xenoglossy、Foul、Flare Star 等，含低等級技能）與 Umbral Soul；`utility` 為 Manaward、Aetherial Manipulation、Between the Lines、Retrace。以兩份 Howling Blade 擊殺日誌驗證（`bX97vBapCPwKndL6` #3 春風醒 vs `h6gRJZ2pfDFYMPjX` #13 Nana七，非使用者指定）：GCD 間隔集中在 2.04～2.5 秒；兩份各只有一個約 0.6 秒的間隔，都是開場「預詠唱 Fire III → High Thunder」（預詠唱在戰鬥開始前，事件中沒有 begincast），不是分類錯誤。
   - 驗證方式：以 `begincast` 為起點計算相鄰 GCD 間隔，分布應集中在該職業 GCD 附近，不應出現遠小於 GCD 的間隔。
 - 注意：有詠唱條的技能（居合術、奧義斬浪等），FFLogs 的 `cast` 事件在詠唱結束時；已改用 `begincast` 作為施放時間（見上方）。
 
@@ -187,6 +188,10 @@
 待決定：站位差異（不同攻略）的處理方式、建議產生方式。
 
 ## 設計變更紀錄
+
+### 2026-09-25 新增黑魔法師職業規則
+- 變更：職業模組加入 BlackMage（GCD 分類與防禦／移動技能）。
+- 原因：使用者要求。
 
 ### 2026-09-25 技能繁中名稱
 - 變更：Worker 新增 `/abilities`，從 Boilmaster 鏡像取官方繁中名稱，沒有時以簡中轉繁（opencc-js）；前端以繁中顯示技能名稱，英文保留在滑鼠提示。新增外部依賴 `xivapi-v2.xivcdn.com`。

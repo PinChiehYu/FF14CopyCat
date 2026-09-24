@@ -1,3 +1,4 @@
+import { blackMage } from './blackMage'
 import { paladin } from './paladin'
 import { samurai } from './samurai'
 import { viper } from './viper'
@@ -13,7 +14,7 @@ export interface JobModule {
   utility?: ReadonlySet<number>
 }
 
-const JOBS: JobModule[] = [viper, samurai, paladin]
+const JOBS: JobModule[] = [viper, samurai, paladin, blackMage]
 
 export function getJob(subType: string): JobModule | undefined {
   return JOBS.find((job) => job.subType === subType)
