@@ -44,7 +44,7 @@
 
 開發順序（已與使用者確認）：**① 時間軸對齊＋並排時間軸（已完成）** → **② 通用指標（已完成）** → **③ 站位比較（已完成）** → **④ 建議（已完成，規則式）**。職業規則先支援 **Viper（蝰蛇劍士）**，之後加入 Samurai（武士）。
 
-玩家施放排除普通攻擊（Attack #7、Shot #8；全部事件中每場約 300 次，會塞滿 oGCD 列與技能次數表）。玩家施放時間一律取「開始施放」：有詠唱條的技能以同技能前一個 `begincast` 取代 `cast`（`compare/load.ts` 的 `playerCasts()`），被打斷的詠唱不計。Boss 施放仍用 `cast`。
+普通攻擊（Attack #7、Shot #8；每場約 300 次）另存為 `autoAttacks`：不畫在時間軸、不計入 GCD 與建議，但列入技能使用次數（標示「普通攻擊」），次數明顯較少可反映離 Boss 太遠或停手較久。玩家施放時間一律取「開始施放」：有詠唱條的技能以同技能前一個 `begincast` 取代 `cast`（`compare/load.ts` 的 `playerCasts()`），被打斷的詠唱不計。Boss 施放仍用 `cast`。
 
 #### ① 時間軸對齊（`src/analysis/alignment.ts`）
 
@@ -147,6 +147,24 @@
 比較基準實測：
 - 武士（席德 vs 安祖卡）：13 處，12 處為隨機變化（Windfang／Stonefang、Eminent／Revolutionary Reign、Wolves' Reign 方向、**第二階段 Hero's Blow 方向**）。第二階段兩人持續左右相反的站位，很可能是 Hero's Blow 方向不同造成，而非攻略不同。
 - 騎士（神曲莊園 vs Lavid）：20 處，11 處為隨機變化；其餘多為「只有我」（參考擊殺快 61 秒，跳過了部分機制）。
+
+#### 技能名稱翻譯（調查結果，尚未實作）
+
+目前技能名稱來自 FFLogs `masterData.abilities`，為英文。比較基準的伺服器（巴哈姆特、鳳凰、迦樓羅、泰坦）屬繁體中文版，目標是官方繁中名稱。
+
+| 來源 | 結果 |
+|---|---|
+| FFLogs 語系子網域 | `cn.`、`ja.` 等存在，**`tw.fflogs.com` 不存在**，沒有繁中；`translate` 參數只翻成英文 |
+| XIVAPI v2（`v2.xivapi.com`） | 只有國際版語言（en、ja、de、fr） |
+| Boilmaster 鏡像（`xivapi-v2.xivcdn.com`） | 支援 `language=chs`（簡中）與 **`language=tc`（繁中）**；可用 `sheet/Action?rows=...&fields=Name,Icon` 批次查詢 |
+
+實測（`tc`）：
+- 玩家技能都有官方繁中名稱，且與簡中翻譯不同（例如 Steel Fangs：繁中「壹之牙【咬創】」、簡中「咬噬尖齿」），不能用簡轉繁代替。
+- 較早的 Boss 技能有繁中（Wolves' Reign → 群狼劍）。
+- **新版本的 Boss 技能在繁中資料中只有 `_rsv_42079_…` 佔位字串**（例如 Hero's Blow、Sand Surge）：遊戲把新內容的名稱加密在客戶端、由伺服器提供，資料挖掘拿不到。簡中與日文有名稱。
+- 部分 Boss 技能（例如 42672）在所有語言都沒有名稱。
+
+可行做法：由 Worker 代查 xivcdn 並快取（避免前端直接依賴第三方與 CORS），名稱優先順序：繁中 → （`_rsv_` 或空白時）簡中轉繁或英文 → FFLogs 名稱。
 
 #### 之後的階段（提案）：先用規則式，之後可選擇加入 LLM 摘要。
 

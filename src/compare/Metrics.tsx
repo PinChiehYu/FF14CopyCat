@@ -3,6 +3,7 @@ import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import type { JobModule } from '../jobs'
+import { AUTO_ATTACKS } from './load'
 
 const seconds = (ms: number, digits = 1) => (ms / 1000).toFixed(digits)
 
@@ -136,7 +137,11 @@ export function Metrics({
                 <th>
                   {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
                   {ability?.name ?? `#${u.abilityId}`}
-                  {job && (job.isGcd(u.abilityId) ? <span className="tag">GCD</span> : null)}
+                  {AUTO_ATTACKS.has(u.abilityId) ? (
+                    <span className="tag">普通攻擊</span>
+                  ) : (
+                    job?.isGcd(u.abilityId) && <span className="tag">GCD</span>
+                  )}
                 </th>
                 <td>{u.mine}</td>
                 <td>{u.ref}</td>
@@ -149,7 +154,7 @@ export function Metrics({
       </table>
       <p className="hint">
         平均時機：把你（依 Boss 機制對齊後）與參考的每次使用依序配對（相距 30 秒以內才算同一次），計算你平均早或晚多少；
-        使用 30 次以上的技能（連擊等）不計算。
+        使用 30 次以上的技能（連擊等）不計算。普通攻擊不顯示在時間軸，次數明顯較少通常代表離 Boss 太遠或停手較久。
       </p>
     </section>
   )

@@ -62,8 +62,14 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
       stats.mine.gcdMs === null ? [] : lostGcdWindows(mineGcds, refGcds, alignment.mineToRef, stats.mine.gcdMs)
     return { gcd: stats, lost: windows }
   }, [mine, reference, alignment, job])
+  // 技能使用次數含普通攻擊（時間軸不畫）；次數多寡可反映是否離 Boss 太遠或停手
   const usage = useMemo(
-    () => abilityUsage(mine.playerCasts, reference.playerCasts, alignment.mineToRef),
+    () =>
+      abilityUsage(
+        [...mine.playerCasts, ...mine.autoAttacks],
+        [...reference.playerCasts, ...reference.autoAttacks],
+        alignment.mineToRef,
+      ),
     [mine, reference, alignment],
   )
   const duration = Math.max(reference.duration, alignment.mineToRef(mine.duration))

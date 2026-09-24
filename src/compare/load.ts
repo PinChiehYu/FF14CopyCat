@@ -12,7 +12,10 @@ export interface Selection {
 
 export interface SideData {
   selection: Selection
+  /** 玩家施放的技能（不含普通攻擊） */
   playerCasts: TimedCast[]
+  /** 普通攻擊：不畫在時間軸，只列入技能使用次數 */
+  autoAttacks: TimedCast[]
   bossCasts: TimedCast[]
   /** 玩家位置（戰鬥時間、yalm） */
   playerPositions: PositionSample[]
@@ -61,7 +64,14 @@ function toCasts(events: FFLogsEvent[], fight: Fight): TimedCast[] {
 const MAX_CAST_BAR_MS = 5000
 
 // 普通攻擊（近戰 Attack、遠程 Shot）：全部事件中每場約 300 次，不是玩家操作的技能
-const AUTO_ATTACKS = new Set([7, 8])
+export const AUTO_ATTACKS: ReadonlySet<number> = new Set([7, 8])
+
+/** 玩家的普通攻擊（次數可反映是否離 Boss 太遠或停手）。 */
+export function autoAttacks(events: FFLogsEvent[], fight: Fight, actorId: number): TimedCast[] {
+  return events
+    .filter((e) => e.type === 'cast' && e.sourceID === actorId && AUTO_ATTACKS.has(e.abilityGameID ?? -1))
+    .map((e) => ({ t: toFightTime(e.timestamp, fight.startTime), abilityId: e.abilityGameID! }))
+}
 
 /**
  * 玩家的施放時間取「開始施放」的時間：有詠唱條的技能 FFLogs 的 cast 事件在詠唱結束時，
@@ -97,6 +107,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
   return {
     selection,
     playerCasts: playerCasts(playerEvents, fight, player.id),
+    autoAttacks: autoAttacks(playerEvents, fight, player.id),
     bossCasts: toCasts(bossEvents, fight),
     playerPositions: actorPositions(playerEvents, fight, player.id),
     bossPositions: boss === undefined ? [] : actorPositions(bossEvents, fight, boss),

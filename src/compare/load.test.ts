@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
-import { actorPositions, incompatibility, playerCasts, type Selection } from './load'
+import { actorPositions, autoAttacks, incompatibility, playerCasts, type Selection } from './load'
 
 describe('actorPositions', () => {
   const fight = { startTime: 1000 } as Fight
@@ -37,13 +37,18 @@ describe('playerCasts', () => {
     ])
   })
 
-  it('drops auto-attacks', () => {
+  it('separates auto-attacks from other casts', () => {
     const events = [
       { timestamp: 2000, type: 'cast', abilityGameID: 7, sourceID: 6 }, // Attack
       { timestamp: 2500, type: 'cast', abilityGameID: 8, sourceID: 6 }, // Shot
+      { timestamp: 2800, type: 'cast', abilityGameID: 7, sourceID: 9 }, // 別人的普通攻擊
       { timestamp: 3000, type: 'cast', abilityGameID: 9, sourceID: 6 },
     ]
     expect(playerCasts(events, fight, 6)).toEqual([{ t: 2000, abilityId: 9 }])
+    expect(autoAttacks(events, fight, 6)).toEqual([
+      { t: 1000, abilityId: 7 },
+      { t: 1500, abilityId: 8 },
+    ])
   })
 
   it('keeps only casts by the given actor', () => {
