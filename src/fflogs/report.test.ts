@@ -32,6 +32,7 @@ const report: Report = {
       actor(47, '冽寒銀雪', 'Viper'), // 不在這場戰鬥
       actor(66, 'Boss', 'Boss', 'NPC'),
     ],
+    abilities: [],
   },
 }
 

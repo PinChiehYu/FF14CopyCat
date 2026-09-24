@@ -6,6 +6,9 @@
   --border: #e0dee4;
   --accent: #7a3bd6;
   --error: #c62828;
+  --ref: #2b7bd6;
+  --mine: #d9731a;
+  --anchor: #7a3bd6;
 
   font: 16px/1.5 system-ui, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
   color-scheme: light dark;
@@ -22,6 +25,9 @@
     --border: #2e303a;
     --accent: #c084fc;
     --error: #ef9a9a;
+    --ref: #6aa8f0;
+    --mine: #f0a35e;
+    --anchor: #c084fc;
   }
 }
 
@@ -31,7 +37,7 @@ body {
 }
 
 #root {
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 24px 16px;
   box-sizing: border-box;
@@ -95,9 +101,8 @@ h1 {
   color: var(--text-muted);
 }
 
-.ready {
-  margin-top: 24px;
-  font-weight: 600;
+.comparison {
+  margin-top: 32px;
 }
 
 .error {
@@ -117,4 +122,155 @@ button {
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.comparison h2 {
+  font-size: 1.2em;
+  margin: 0 0 8px;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+}
+
+.summary dt {
+  color: var(--text-muted);
+}
+
+.summary dd {
+  margin: 0;
+}
+
+.timeline-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.timeline-toolbar select {
+  margin-left: 6px;
+  font: inherit;
+  padding: 2px 4px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.timeline-body {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.timeline-labels {
+  flex: none;
+  width: 96px;
+  border-right: 1px solid var(--border);
+}
+
+.timeline-scroll {
+  flex: 1;
+  overflow-x: auto;
+}
+
+.timeline-canvas {
+  position: relative;
+}
+
+.lane-label,
+.lane {
+  height: 32px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--border);
+}
+
+.lane-label {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.lane-label.ref {
+  color: var(--ref);
+}
+
+.lane-label.mine {
+  color: var(--mine);
+}
+
+.ruler-label,
+.lane.ruler {
+  height: 24px;
+}
+
+.lane {
+  position: relative;
+}
+
+.lane.ref {
+  background: color-mix(in srgb, var(--ref) 6%, transparent);
+}
+
+.lane.mine {
+  background: color-mix(in srgb, var(--mine) 6%, transparent);
+}
+
+.tick {
+  position: absolute;
+  top: 4px;
+  font-size: 0.75em;
+  color: var(--text-muted);
+  border-left: 1px solid var(--border);
+  padding-left: 3px;
+}
+
+.boss-cast {
+  position: absolute;
+  top: 10px;
+  width: 2px;
+  height: 12px;
+  background: var(--text-muted);
+}
+
+.boss-cast.anchor {
+  top: 4px;
+  width: 3px;
+  height: 24px;
+  background: var(--anchor);
+}
+
+.cast {
+  position: absolute;
+  top: 4px;
+  width: 22px;
+  height: 22px;
+  margin-left: -11px;
+  border-radius: 4px;
+}
+
+.cast.unknown {
+  background: var(--text-muted);
+}
+
+.end-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--error);
 }

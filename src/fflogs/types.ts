@@ -24,13 +24,21 @@ export interface Actor {
   gameID: number
 }
 
+export interface Ability {
+  gameID: number
+  name: string
+  /** 圖示檔名，例如 '003000-003729.png'；網址見 abilityIconUrl() */
+  icon: string
+  type: string
+}
+
 export interface Report {
   code: string
   title: string
   startTime: number
   endTime: number
   fights: Fight[]
-  masterData: { actors: Actor[] }
+  masterData: { actors: Actor[]; abilities: Ability[] }
 }
 
 /** FFLogs 事件是鬆散的 JSON，只列出共通欄位。 */

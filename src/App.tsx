@@ -2,14 +2,10 @@ import { useEffect, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { fetchReport } from './fflogs/client'
 import { playersInFight } from './fflogs/report'
-import type { Actor, Fight, Report } from './fflogs/types'
+import { Comparison } from './compare/Comparison'
+import type { Selection } from './compare/load'
+import type { Fight, Report } from './fflogs/types'
 import { parseReportUrl, type ReportRef } from './fflogs/url'
-
-export interface Selection {
-  report: Report
-  fight: Fight
-  player: Actor
-}
 
 function useDebounced<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value)
@@ -152,9 +148,12 @@ export default function App() {
       </div>
 
       {mine && reference && (
-        <p className="ready">
-          準備比較：{mine.player.name}（{mine.player.subType}）vs {reference.player.name}（{reference.player.subType}）
-        </p>
+        <section className="comparison">
+          <h2>
+            {mine.player.name} vs {reference.player.name}（{reference.player.subType}）
+          </h2>
+          <Comparison mine={mine} reference={reference} />
+        </section>
       )}
     </>
   )

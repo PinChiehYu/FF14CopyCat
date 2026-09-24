@@ -28,6 +28,12 @@ export const REPORT_QUERY = /* GraphQL */ `
             petOwner
             gameID
           }
+          abilities {
+            gameID
+            name
+            icon
+            type
+          }
         }
       }
     }

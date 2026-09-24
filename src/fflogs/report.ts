@@ -1,4 +1,12 @@
-import type { Actor, Fight, Report } from './types'
+import type { Ability, Actor, Fight, Report } from './types'
+
+export function abilityIconUrl(icon: string): string {
+  return `https://assets.rpglogs.com/img/ff/abilities/${icon}`
+}
+
+export function abilityMap(report: Report): Map<number, Ability> {
+  return new Map(report.masterData.abilities.map((a) => [a.gameID, a]))
+}
 
 // FFLogs 把極限技記成 type 'Player' 的假角色（名稱如 'Limit Break'、'Multiple Players'）。
 const NON_PLAYER_SUBTYPES = new Set(['LimitBreak', 'Unknown'])
