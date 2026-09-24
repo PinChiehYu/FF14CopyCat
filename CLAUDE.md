@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 工作規則
+
+- **一律使用繁體中文與使用者對話**（程式碼識別字、commit message 維持英文）。
+- **系統設計有調整時，必須記錄到 [docs/DESIGN.md](docs/DESIGN.md)**：更新「目前設計」對應段落，並在「設計變更紀錄」新增一筆（日期、變更內容、原因），與實作放在同一個 commit。設計調整包含：架構／部署方式、資料流與 API 端點、外部服務、分析方法與演算法、已與使用者議定的規格或優先順序。純 bug 修正或重構不需記錄。本檔（CLAUDE.md）的架構描述也要同步更新。
+
 ## Commands
 
 Vite + React + TypeScript，測試用 Vitest，lint 用 oxlint。Node.js 24。
