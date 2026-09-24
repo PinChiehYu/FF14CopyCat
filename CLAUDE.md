@@ -5,6 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 工作規則
 
 - **一律使用繁體中文與使用者對話**（程式碼識別字、commit message 維持英文）。
+- **推送前先詢問**：完成一段工作後在本機 commit，回報結果並詢問是否推送；使用者回覆「推送」後才 `git push`（每次都要重新取得同意）。Worker 部署（`npm run worker:deploy`）屬於實作的一部分，可在前端推送前進行。
+- 使用者常在工作進行中補充需求或更換測試資料；收到後在同一輪處理，並在回報中說明。
 - **每次推送新程式碼後都要確認新版已建置並通過測試**：push 到 `main` 會觸發 `.github/workflows/deploy.yml`（lint → test → build → deploy → 冒煙測試）。推送後追蹤該次 workflow 直到完成，失敗就查原因修正；並以下方的比較基準日誌在正式站實際操作驗證這次的變更。改了 `worker/` 則先 `npm run worker:deploy` 再推送前端。
 - **系統設計有調整時，必須記錄到 [docs/DESIGN.md](docs/DESIGN.md)**：更新「目前設計」對應段落，並在「設計變更紀錄」新增一筆（日期、變更內容、原因），與實作放在同一個 commit。設計調整包含：架構／部署方式、資料流與 API 端點、外部服務、分析方法與演算法、已與使用者議定的規格或優先順序。純 bug 修正或重構不需記錄。本檔（CLAUDE.md）的架構描述也要同步更新。
 
@@ -25,13 +27,21 @@ npx wrangler deploy -c worker/wrangler.toml --dry-run --outdir <tmp>   # 不登�
 node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的冒煙測試（CI 部署後自動執行）
 ```
 
-- 在這台 Windows 機器上，Node 裝在 `C:\Program Files\nodejs`；若 shell 找不到 `node`/`npm`，先把它加進 PATH。
+- 在這台 Windows 機器上，Node 裝在 `C:\Program Files\nodejs`；若 shell 找不到 `node`/`npm`，先把它加進 PATH（PowerShell：`$env:Path = "C:\Program Files\nodejs;" + $env:Path`）。使用者自己的終端機也可能找不到 `npx`，需要請他們開新終端機或用完整路徑。
 - 在 Git Bash 設定 `BASE_PATH=/xxx/` 會被 MSYS 改寫成 Windows 路徑，需加 `MSYS_NO_PATHCONV=1`。
+- 開發環境注意事項：
+  - Bash 工具執行含 heredoc 的長指令偶爾失敗（cwd 追蹤錯誤）；建立檔案用 Write 工具，指令改用 PowerShell。
+  - PowerShell 的 `git commit -F -` 收不到 here-string；commit message 先寫到 scratchpad 檔案再 `git commit -F <檔案>`。
+  - PowerShell 印中文前要設 `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`，否則亂碼。
+  - 探索 FFLogs 資料時，用 scratchpad 的 Node 腳本直接打已部署的 Worker（加 `Origin: https://pinchiehyu.github.io` 標頭）。
+  - 瀏覽器面板在視窗被遮住時截圖會失敗；改用 `javascript_tool` 讀 DOM 驗證，輸入連結用 `form_input`。
+  - GitHub CLI（`gh`）沒有安裝；查 workflow 狀態用公開 API：`https://api.github.com/repos/PinChiehYu/FF14CopyCat/actions/runs`。
+  - `wrangler` 已在這台機器以使用者的 Cloudflare 帳號登入；Worker Secrets 由使用者在 Cloudflare 儀表板設定，不要要求使用者把 secret 貼到對話中。
 - `tsc -b` 同時檢查前端（`tsconfig.app.json`）與 Worker（`worker/tsconfig.json`，WebWorker lib，不含 DOM）；Vitest 會一併執行 `worker/` 下的測試。
 
 ## 架構：GitHub Pages 前端 + Cloudflare Worker 代理
 
-- **前端**（`src/`）：部署到 GitHub Pages 專案站台 `https://pinchiehyu.github.io/FF14CopyCat/`。`.github/workflows/deploy.yml` 在 push 到 `main` 時執行 lint → test → build → deploy，並以 repo 名稱設定 `BASE_PATH`（`vite.config.ts` 的 `base`）。站內路徑一律透過 `import.meta.env.BASE_URL` 組出，不要寫死 `/`。
+- **前端**（`src/`）：部署到 GitHub Pages 專案站台 `https://pinchiehyu.github.io/FF14CopyCat/`。`.github/workflows/deploy.yml` 在 push 到 `main` 時執行 lint → test → build → deploy → 冒煙測試（`scripts/smoke-test.mjs`，確認正式站已換成本次建置且 Worker 可用），並以 repo 名稱設定 `BASE_PATH`（`vite.config.ts` 的 `base`）。站內路徑一律透過 `import.meta.env.BASE_URL` 組出，不要寫死 `/`。
 - **Worker 代理**（`worker/`）：持有 FFLogs client credentials（`wrangler secret` 的 `FFLOGS_CLIENT_ID` / `FFLOGS_CLIENT_SECRET`），向 `/api/v2/client` 查詢。訪客不需登入 FFLogs。已部署於 `https://ff14-copycat-api.ff14-copycat.workers.dev`；前端的 Worker 網址寫在 `src/config.ts`（正式建置用已部署網址、開發模式用 `localhost:8787`，可用 `VITE_API_BASE` 覆寫）。Worker 網址或 `ALLOWED_ORIGINS` 變更時兩邊要一起改。Worker 不隨 GitHub Actions 部署，要手動 `npm run worker:deploy`。
 - **代理只開放固定的 REST 端點**，GraphQL 查詢寫死在 `worker/src/queries.ts`，前端不能送任意查詢：
   - `GET /reports/:code` → 報告、fights、masterData.actors、masterData.abilities
@@ -44,7 +54,7 @@ node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的
 
 ## 前端比較流程
 
-`App.tsx`（貼連結、選戰鬥與玩家；選擇規則在 `compare/autoSelect.ts` 的 `resolveSelection()`，參考日誌以我的 Boss／職業為 `preferred` 自動選擇）→ `compare/Comparison.tsx`（檢查同 Boss／同職業、載入 4 組施放事件）→ `analysis/alignment.ts`（`buildAlignment()` 產生 `mineToRef()`）→ `compare/AdviceList.tsx`（`analysis/advice.ts` 的規則式建議，彙整下列各分析）＋ `compare/Mechanics.tsx`（`analysis/mechanics.ts` 的 Boss 機制差異）＋ `compare/Metrics.tsx`（`analysis/metrics.ts` 的 GCD 概況、少打 GCD 的時段、技能次數與時機）＋ `compare/Positions.tsx`（`analysis/positions.ts` 的站位差異與對稱判斷、俯視圖）＋ `compare/Timeline.tsx`（以參考時間為橫軸的並排時間軸，可標示區段與捲動到指定時間）。玩家施放時間取開始施放（`load.ts` 的 `playerCasts()` 以 `begincast` 取代 `cast`）。玩家資料抓 `dataType=All`，施放與位置都從中取得（全部事件中也有別人對玩家的施放，要以 `sourceID` 過濾）。`Comparison.tsx` 持有共用的時間游標 `cursor`（參考時間）與時間軸捲動用的 `focus`。所有統計都用裁切到比較範圍的 `mineInRange`／`refInRange`（`clipSide()`），只有時間軸與 Boss 機制差異用完整資料；新增統計時也要用裁切後的資料。
+`App.tsx`（貼連結、選戰鬥與玩家；選擇規則在 `compare/autoSelect.ts` 的 `resolveSelection()`，參考日誌以我的 Boss／職業為 `preferred` 自動選擇）→ `compare/Comparison.tsx`（檢查同 Boss／同職業；每邊載入玩家全部事件與敵方施放，共 4 個請求；載入後另查技能繁中名稱）→ `analysis/alignment.ts`（`buildAlignment()` 產生 `mineToRef()`）→ `compare/AdviceList.tsx`（`analysis/advice.ts` 的規則式建議，彙整下列各分析）＋ `compare/Mechanics.tsx`（`analysis/mechanics.ts` 的 Boss 機制差異）＋ `compare/Metrics.tsx`（`analysis/metrics.ts` 的 GCD 概況、少打 GCD 的時段、技能次數與時機）＋ `compare/Positions.tsx`（`analysis/positions.ts` 的站位差異與對稱判斷、俯視圖）＋ `compare/Timeline.tsx`（以參考時間為橫軸的並排時間軸，可標示區段與捲動到指定時間）。玩家施放時間取開始施放（`load.ts` 的 `playerCasts()` 以 `begincast` 取代 `cast`）；普通攻擊（#7、#8）另存 `autoAttacks`，只列入技能使用次數。GCD 推估上限 2.5 秒（`metrics.ts`）。玩家資料抓 `dataType=All`，施放與位置都從中取得（全部事件中也有別人對玩家的施放，要以 `sourceID` 過濾）。`Comparison.tsx` 持有共用的時間游標 `cursor`（參考時間）與時間軸捲動用的 `focus`。所有統計都用裁切到比較範圍的 `mineInRange`／`refInRange`（`clipSide()`），只有時間軸與 Boss 機制差異用完整資料；新增統計時也要用裁切後的資料。
 
 - 對齊演算法的細節與設計理由見 [docs/DESIGN.md](docs/DESIGN.md)；調整門檻（`maxOccurrences`、`dedupeMs`）前先用實際日誌驗證。
 - 職業規則放在 `src/jobs/<job>.ts`，實作 `JobModule` 並加入 `jobs/index.ts` 的 `JOBS`；以 FFLogs `subType`（如 `Viper`）查找。
@@ -74,5 +84,7 @@ node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的
   - 位置資料需在事件查詢加上 `includeResources: true`，由 `sourceResources` / `targetResources` 的 `x`、`y`、`facing` 取得；位置只在有事件時才有取樣，時間上不連續，比較時需要插值或以最近取樣點對齊。座標單位為 1/100 yalm（例如場地中心 (100, 100) 記為 `x: 10000, y: 10000`）。
   - `masterData.actors` 中 type 為 `Player` 的不全是真人：極限技會以 subType `LimitBreak` 的假角色（名稱如 `Limit Break`、`Multiple Players`）出現，且同名玩家可能另有 subType `Unknown` 的項目。選玩家一律透過 `src/fflogs/report.ts` 的 `playersInFight()`。
   - 單一玩家整場戰鬥的全部事件約 4000 筆、1.4 MB，一頁（limit 10000）通常就能取完；Boss 事件用 `hostility=Enemies`。
-- **時間軸對齊**：兩份日誌的擊殺時間、轉場時間不同，單純用絕對時間比較會失準。應以 Boss 的技能事件（施放/傷害）作為錨點做分段對齊。
-- **分析邏輯與職業相關**：建議把職業別的規則（技能 ID、GCD 定義、Buff 窗口）做成可擴充的模組，而非寫死在比較流程中。xivanalysis 為開源專案（GitHub: `xivanalysis/xivanalysis`），可作為職業規則與分析模組設計的參考。
+- **時間軸對齊**：兩份日誌的擊殺時間、轉場時間不同，單純用絕對時間比較會失準；已實作以 Boss 低頻技能為錨點的分段對齊（`analysis/alignment.ts`）。
+- **Boss 隨機機制**：同一機制的隨機變化常使用不同技能 ID（甚至同名不同 ID，例如 Hero's Blow #42079／#42081），站位差異可能是機制造成，見 `analysis/mechanics.ts`。
+- **分析邏輯與職業相關**：職業別的規則（GCD 定義、防禦技，之後的冷卻與爆發窗口）放在 `src/jobs/` 的模組，而非寫死在比較流程中。xivanalysis 為開源專案（GitHub: `xivanalysis/xivanalysis`），可作為職業規則與分析模組設計的參考。
+- 目前進度、未決事項與後續方向見 [docs/DESIGN.md](docs/DESIGN.md) 的「待辦與未決事項」。
