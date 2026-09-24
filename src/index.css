@@ -46,13 +46,6 @@ h1 {
   color: var(--text-muted);
 }
 
-.auth {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
 .logs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -72,32 +65,39 @@ h1 {
   margin-bottom: 8px;
 }
 
-.log-input input {
+.log-input input,
+.log-input select {
+  display: block;
   width: 100%;
   box-sizing: border-box;
+  margin-top: 4px;
   padding: 8px;
   font: inherit;
+  font-weight: normal;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg);
   color: var(--text);
 }
 
-.log-input dl {
+.selectors {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  margin: 12px 0 0;
+  gap: 12px;
+  margin-top: 16px;
 }
 
-.log-input dt {
+.selectors label {
+  margin-bottom: 0;
+}
+
+.report-title {
+  margin: 0;
   color: var(--text-muted);
 }
 
-.log-input dd {
-  margin: 0;
-  font-family: ui-monospace, Consolas, monospace;
-  overflow-wrap: anywhere;
+.ready {
+  margin-top: 24px;
+  font-weight: 600;
 }
 
 .error {

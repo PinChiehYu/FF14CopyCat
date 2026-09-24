@@ -1,9 +1,124 @@
-import { useState } from 'react'
-import { getAccessToken, isConfigured, logout, startLogin } from './fflogs/auth'
-import { parseReportUrl } from './fflogs/url'
+import { useEffect, useState } from 'react'
+import { formatFightTime } from './analysis/timeline'
+import { fetchReport } from './fflogs/client'
+import type { Actor, Fight, Report } from './fflogs/types'
+import { parseReportUrl, type ReportRef } from './fflogs/url'
 
-function LogInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  const ref = value.trim() ? parseReportUrl(value) : null
+export interface Selection {
+  report: Report
+  fight: Fight
+  player: Actor
+}
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), ms)
+    return () => clearTimeout(id)
+  }, [value, ms])
+  return debounced
+}
+
+type LoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; report: Report }
+
+function useReport(code: string | null): LoadState {
+  const [result, setResult] = useState<{ code: string; report?: Report; error?: string } | null>(null)
+
+  useEffect(() => {
+    if (!code) return
+    const controller = new AbortController()
+    fetchReport(code, controller.signal)
+      .then((report) => setResult({ code, report }))
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) setResult({ code, error: err instanceof Error ? err.message : String(err) })
+      })
+    return () => controller.abort()
+  }, [code])
+
+  if (!code) return { status: 'idle' }
+  if (result?.code !== code) return { status: 'loading' }
+  if (result.report) return { status: 'ready', report: result.report }
+  return { status: 'error', message: result.error ?? '未知錯誤' }
+}
+
+function fightLabel(fight: Fight): string {
+  const outcome = fight.kill ? '擊殺' : fight.kill === false ? '滅團' : ''
+  return `#${fight.id} ${fight.name} ${outcome} (${formatFightTime(fight.endTime - fight.startTime)})`
+}
+
+function playersInFight(report: Report, fight: Fight): Actor[] {
+  const ids = new Set(fight.friendlyPlayers ?? [])
+  return report.masterData.actors.filter((a) => a.type === 'Player' && ids.has(a.id))
+}
+
+function ReportSelector({
+  report,
+  urlRef,
+  onChange,
+}: {
+  report: Report
+  urlRef: ReportRef
+  onChange: (selection: Selection | null) => void
+}) {
+  const [fightId, setFightId] = useState(() => {
+    const fromUrl = typeof urlRef.fight === 'number' ? report.fights.find((f) => f.id === urlRef.fight) : undefined
+    return (fromUrl ?? report.fights.at(-1))?.id
+  })
+  const fight = report.fights.find((f) => f.id === fightId)
+  const players = fight ? playersInFight(report, fight) : []
+
+  const [playerId, setPlayerId] = useState(urlRef.sourceId)
+  const player = players.find((p) => p.id === playerId)
+
+  useEffect(() => {
+    onChange(fight && player ? { report, fight, player } : null)
+  }, [report, fight, player, onChange])
+
+  if (report.fights.length === 0) return <p className="error">這份報告沒有戰鬥紀錄</p>
+
+  return (
+    <div className="selectors">
+      <p className="report-title">{report.title}</p>
+      <label>
+        戰鬥
+        <select value={fightId ?? ''} onChange={(e) => setFightId(Number(e.target.value))}>
+          {report.fights.map((f) => (
+            <option key={f.id} value={f.id}>
+              {fightLabel(f)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        角色
+        <select value={player?.id ?? ''} onChange={(e) => setPlayerId(Number(e.target.value))}>
+          <option value="" disabled>
+            請選擇角色
+          </option>
+          {players.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}（{p.subType}）
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  )
+}
+
+function LogPicker({ label, onChange }: { label: string; onChange: (selection: Selection | null) => void }) {
+  const [url, setUrl] = useState('')
+  const ref = url.trim() ? parseReportUrl(url) : null
+  const code = useDebounced(ref?.reportCode ?? null, 400)
+  const state = useReport(code)
+
+  useEffect(() => {
+    if (state.status !== 'ready') onChange(null)
+  }, [state.status, onChange])
 
   return (
     <section className="log-input">
@@ -12,59 +127,39 @@ function LogInput({ label, value, onChange }: { label: string; value: string; on
         <input
           type="url"
           placeholder="https://www.fflogs.com/reports/..."
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
         />
       </label>
-      {value.trim() && !ref && <p className="error">無法辨識的 FFLogs 報告連結</p>}
-      {ref && (
-        <dl>
-          <dt>報告</dt>
-          <dd>{ref.reportCode}</dd>
-          <dt>戰鬥</dt>
-          <dd>{ref.fight ?? '（未指定）'}</dd>
-          <dt>角色</dt>
-          <dd>{ref.sourceId ?? '（未指定）'}</dd>
-        </dl>
+      {url.trim() && !ref && <p className="error">無法辨識的 FFLogs 報告連結</p>}
+      {state.status === 'loading' && <p>載入報告中…</p>}
+      {state.status === 'error' && <p className="error">{state.message}</p>}
+      {state.status === 'ready' && ref && (
+        <ReportSelector key={state.report.code} report={state.report} urlRef={ref} onChange={onChange} />
       )}
     </section>
   )
 }
 
 export default function App() {
-  const [mine, setMine] = useState('')
-  const [reference, setReference] = useState('')
-  const [loggedIn, setLoggedIn] = useState(() => getAccessToken() !== null)
+  const [mine, setMine] = useState<Selection | null>(null)
+  const [reference, setReference] = useState<Selection | null>(null)
 
   return (
     <>
       <h1>FF14 CopyCat</h1>
       <p className="subtitle">比較你與高階玩家的 FFLogs 日誌，找出技能循環與站位的差異。</p>
 
-      <div className="auth">
-        {!isConfigured() ? (
-          <span className="error">尚未設定 VITE_FFLOGS_CLIENT_ID，無法登入 FFLogs。</span>
-        ) : loggedIn ? (
-          <>
-            <span>已登入 FFLogs</span>
-            <button
-              onClick={() => {
-                logout()
-                setLoggedIn(false)
-              }}
-            >
-              登出
-            </button>
-          </>
-        ) : (
-          <button onClick={() => void startLogin()}>使用 FFLogs 帳號登入</button>
-        )}
+      <div className="logs">
+        <LogPicker label="我的日誌" onChange={setMine} />
+        <LogPicker label="參考日誌（高階玩家）" onChange={setReference} />
       </div>
 
-      <div className="logs">
-        <LogInput label="我的日誌" value={mine} onChange={setMine} />
-        <LogInput label="參考日誌（高階玩家）" value={reference} onChange={setReference} />
-      </div>
+      {mine && reference && (
+        <p className="ready">
+          準備比較：{mine.player.name}（{mine.player.subType}）vs {reference.player.name}（{reference.player.subType}）
+        </p>
+      )}
     </>
   )
 }

@@ -1,0 +1,4 @@
+# 複製成 worker/.dev.vars 供 `npm run worker:dev` 使用（勿提交）。
+# 在 https://www.fflogs.com/api/clients/ 建立「非 public」用戶端取得。
+FFLOGS_CLIENT_ID=
+FFLOGS_CLIENT_SECRET=

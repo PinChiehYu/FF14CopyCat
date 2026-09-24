@@ -1,0 +1,16 @@
+name = "ff14-copycat-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[vars]
+# 允許呼叫此代理的前端來源（以逗號分隔）
+ALLOWED_ORIGINS = "https://pinchiehyu.github.io,http://localhost:5173"
+
+# 每個 IP 每分鐘最多 60 次請求（快取命中也計入）
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60

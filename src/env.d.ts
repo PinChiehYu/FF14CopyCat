@@ -1,5 +1,5 @@
 interface ImportMetaEnv {
-  readonly VITE_FFLOGS_CLIENT_ID?: string
+  readonly VITE_API_BASE?: string
 }
 
 interface ImportMeta {
