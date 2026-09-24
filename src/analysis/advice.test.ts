@@ -79,10 +79,20 @@ describe('generateAdvice', () => {
       'Ikishoten 少用 2 次（你 5 次、參考 7 次）',
       '爆發藥少用 3 次（你 0 次、參考 3 次）',
       '1 個技能各少用 1 次',
-      '職能技能使用次數較少',
+      '職能與防禦技能使用次數較少',
     ])
     expect(advice.map((a) => a.severity)).toEqual(['high', 'high', 'medium', 'low'])
     expect(advice[3].detail).toMatch('Sprint（0／6）')
+  })
+
+  it('groups job defensives and tank role actions instead of flagging them as missed cooldowns', () => {
+    // 7382 Intervention（職業防禦技）、7535 Reprisal（坦克職能技能），且都較晚使用
+    const advice = generateAdvice(
+      input({ usage: [usage(7382, 2, 7), usage(7535, 7, 9, 9000, 7)], isUtility: (id) => id === 7382 }),
+    )
+    expect(advice).toHaveLength(1)
+    expect(advice[0]).toMatchObject({ severity: 'low', title: '職能與防禦技能使用次數較少' })
+    expect(advice[0].detail).toMatch('#7382（2／7）、#7535（7／9）')
   })
 
   it('does not treat fewer GCDs as missed cooldowns', () => {
@@ -119,5 +129,27 @@ describe('generateAdvice', () => {
     expect(position.detail).toMatch('少打了 GCD')
     expect(advice.find((a) => a.title.includes('不同攻略'))?.title).toMatch('左右對稱')
     expect(advice.some((a) => a.at === 200_000)).toBe(false)
+  })
+
+  it('downgrades position differences caused by a different random mechanic', () => {
+    const [a] = generateAdvice(
+      input({
+        divergences: [{ start: 100_000, end: 110_000, maxDistance: 15, mirror: null }],
+        mechanics: [{ t: 95_000, mine: [1], ref: [5], kind: 'variant' }],
+      }),
+    )
+    expect(a.severity).toBe('low')
+    expect(a.detail).toMatch('隨機機制不同（你：Ikishoten；參考：Meikyo Shisui）')
+  })
+
+  it('adds ability IDs when variants share a name', () => {
+    const [a] = generateAdvice(
+      input({
+        abilityName: () => "Hero's Blow",
+        divergences: [{ start: 100_000, end: 110_000, maxDistance: 30, mirror: null }],
+        mechanics: [{ t: 95_000, mine: [42081], ref: [42079], kind: 'variant' }],
+      }),
+    )
+    expect(a.detail).toMatch("你：Hero's Blow #42081；參考：Hero's Blow #42079")
   })
 })

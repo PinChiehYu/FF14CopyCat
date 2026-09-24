@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { buildAlignment } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
+import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { compareTracks, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
@@ -8,6 +9,7 @@ import { abilityMap } from '../fflogs/report'
 import { getJob } from '../jobs'
 import { incompatibility, loadSide, type Selection, type SideData } from './load'
 import { AdviceList } from './AdviceList'
+import { Mechanics } from './Mechanics'
 import { Metrics } from './Metrics'
 import { Positions } from './Positions'
 import { Timeline } from './Timeline'
@@ -70,9 +72,22 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
     const track = compareTracks(mineSamples, reference.playerPositions, reference.bossPositions, duration)
     return { mineSamples, track, divergences: divergences(track, DIVERGENCE_YALM) }
   }, [mine, reference, alignment, duration])
+  const mechanics = useMemo(
+    () =>
+      mechanicDifferences(
+        mine.bossCasts,
+        reference.bossCasts,
+        alignment.mineToRef,
+        alignment.mineToRef(mine.duration),
+        reference.duration,
+      ),
+    [mine, reference, alignment],
+  )
+  const abilityName = (id: number) => abilities.get(id)?.name ?? `#${id}`
   const advice = useMemo(
     () =>
       generateAdvice({
+        mechanics,
         durationMs: reference.duration,
         gcd,
         lost,
@@ -81,10 +96,11 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
         track: positions.track,
         abilityName: (id) => abilities.get(id)?.name ?? `#${id}`,
         isGcd: job?.isGcd,
+        isUtility: job?.utility ? (id) => job.utility!.has(id) : undefined,
         mineToRef: alignment.mineToRef,
         firstUse: (id) => mine.playerCasts.find((c) => c.abilityId === id)?.t,
       }),
-    [reference, gcd, lost, usage, positions, abilities, job, alignment, mine],
+    [reference, gcd, lost, usage, positions, abilities, job, alignment, mine, mechanics],
   )
 
   // 目前檢視的參考時間（站位圖、時間軸游標）
@@ -116,6 +132,8 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
       <h3>建議</h3>
       <AdviceList advice={advice} onJump={jumpTo} />
+      <h3>Boss 機制差異</h3>
+      <Mechanics differences={mechanics} abilityName={abilityName} onJump={jumpTo} />
       <Metrics gcd={gcd} usage={usage} abilities={abilities} job={job} lost={lost} onFocus={jumpTo} />
       <h3>站位比較</h3>
       <Positions

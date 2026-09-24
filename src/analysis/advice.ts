@@ -1,3 +1,4 @@
+import type { MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
 import { MIRROR_LABELS, type Divergence, type TrackPoint } from './positions'
 import { formatFightTime } from './timeline'
@@ -22,21 +23,63 @@ export interface AdviceInput {
   track: TrackPoint[]
   abilityName: (id: number) => string
   isGcd?: (id: number) => boolean
+  /** 職業的防禦／輔助技能（職業模組提供） */
+  isUtility?: (id: number) => boolean
   /** 我的戰鬥時間換算成參考時間 */
   mineToRef: (t: number) => number
   /** 我第一次使用某技能的時間（我的戰鬥時間） */
   firstUse: (abilityId: number) => number | undefined
+  /** Boss 機制不同的時間點 */
+  mechanics?: MechanicDifference[]
 }
 
-// 職能技能：少用通常不影響輸出，只列為低優先
+// 機制差異發生在時段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
+const MECHANIC_LEAD_MS = 10_000
+
+/** 與時段相關的 Boss 隨機變化（同時間施放不同技能）。 */
+function mechanicNear(mechanics: MechanicDifference[] | undefined, start: number, end: number) {
+  return mechanics?.find((m) => m.kind === 'variant' && m.t >= start - MECHANIC_LEAD_MS && m.t <= end)
+}
+
+function mechanicNote(input: AdviceInput, start: number, end: number): string {
+  const m = mechanicNear(input.mechanics, start, end)
+  if (!m) return ''
+  // 同名不同 ID 的變化（例如左右兩種版本）附上 ID 才分得出來
+  const all = [...m.mine, ...m.ref]
+  const label = (id: number) => {
+    const name = input.abilityName(id)
+    return all.some((o) => o !== id && input.abilityName(o) === name) ? `${name} #${id}` : name
+  }
+  const names = (ids: number[]) => ids.map(label).join('、')
+  return `這段之前 Boss 的隨機機制不同（你：${names(m.mine)}；參考：${names(m.ref)}），差異可能是機制造成。`
+}
+
+// 職能技能：依攻略使用，少用通常不影響輸出，只列為低優先
 const ROLE_ACTIONS = new Set([
   3, // Sprint
+  // 坦克
+  7531, // Rampart
+  7533, // Provoke
+  7535, // Reprisal
+  7537, // Shirk
+  7538, // Interject
+  7540, // Low Blow
+  // 近戰／遠程物理
   7541, // Second Wind
   7542, // Bloodbath
   7546, // True North
   7548, // Arm's Length
   7549, // Feint
+  7551, // Head Graze
+  7557, // Peloton
   7863, // Leg Sweep
+  // 法系
+  7559, // Surecast
+  7560, // Addle
+  7562, // Lucid Dreaming
+  // 治療
+  7568, // Esuna
+  7571, // Rescue
 ])
 const POTION_NAME = /Gemdraught|Tincture|Draught|Potion/i
 
@@ -56,7 +99,8 @@ function averageDistance(track: TrackPoint[], start: number, end: number): numbe
   return ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : null
 }
 
-function lostGcdAdvice({ lost, track }: AdviceInput): Advice[] {
+function lostGcdAdvice(input: AdviceInput): Advice[] {
+  const { lost, track } = input
   if (lost.length === 0) return []
   const total = lost.reduce((sum, w) => sum + w.refGcds, 0)
   const top = [...lost].sort((a, b) => b.refGcds - a.refGcds || b.mineEnd - b.mineStart - (a.mineEnd - a.mineStart))
@@ -75,7 +119,7 @@ function lostGcdAdvice({ lost, track }: AdviceInput): Advice[] {
     items.push({
       severity: w.refGcds >= 3 ? 'high' : 'medium',
       title: `${formatFightTime(w.mineStart)} 停手 ${seconds(w.mineEnd - w.mineStart)} 秒`,
-      detail: `參考在同一段打了 ${w.refGcds} 個 GCD。${movement}`,
+      detail: `參考在同一段打了 ${w.refGcds} 個 GCD。${movement}${mechanicNote(input, w.refStart, w.refEnd)}`,
       at: w.refStart,
     })
   }
@@ -97,14 +141,15 @@ function gcdSpeedAdvice({ gcd, durationMs }: AdviceInput): Advice[] {
   ]
 }
 
-function usageAdvice({ usage, abilityName, isGcd, firstUse, mineToRef }: AdviceInput): Advice[] {
+function usageAdvice({ usage, abilityName, isGcd, isUtility, firstUse, mineToRef }: AdviceInput): Advice[] {
   const items: Advice[] = []
   const slightlyFewer: string[] = []
   const roleFewer: string[] = []
 
   for (const u of usage) {
     const name = abilityName(u.abilityId)
-    const role = ROLE_ACTIONS.has(u.abilityId)
+    // 職能技能與職業的防禦／輔助技能都依攻略使用
+    const role = ROLE_ACTIONS.has(u.abilityId) || (isUtility?.(u.abilityId) ?? false)
     const gcd = isGcd?.(u.abilityId) ?? false
     const fewer = u.ref - u.mine
 
@@ -163,26 +208,32 @@ function usageAdvice({ usage, abilityName, isGcd, firstUse, mineToRef }: AdviceI
   if (roleFewer.length > 0) {
     items.push({
       severity: 'low',
-      title: '職能技能使用次數較少',
-      detail: `${roleFewer.join('、')}（你／參考）。少用通常不影響輸出，視攻略需要使用。`,
+      title: '職能與防禦技能使用次數較少',
+      detail: `${roleFewer.join('、')}（你／參考）。這些技能依攻略與減傷分配使用，次數不同不一定是錯誤。`,
     })
   }
   return items
 }
 
-function positionAdvice({ divergences, lost }: AdviceInput): Advice[] {
+function positionAdvice(input: AdviceInput): Advice[] {
+  const { divergences, lost, mechanics } = input
   const overlapsLost = (d: Divergence) => lost.some((w) => w.refStart < d.end && w.refEnd > d.start)
   const unexplained = divergences
     .filter((d) => !d.mirror && d.end - d.start >= LONG_DIVERGENCE_MS)
     .sort((a, b) => b.end - b.start - (a.end - a.start))
-  const items: Advice[] = unexplained.slice(0, MAX_ITEMS).map((d) => ({
-    severity: overlapsLost(d) ? 'high' : 'medium',
-    title: `${formatFightTime(d.start)} 起 ${seconds(d.end - d.start)} 秒站位與參考不同（最遠 ${d.maxDistance.toFixed(1)} yalm）`,
-    detail: overlapsLost(d)
-      ? '這段同時少打了 GCD，站位可能讓你無法持續攻擊。對照俯視圖看參考的站位與移動路線。'
-      : '對照俯視圖看參考的站位與移動路線；若是攻略分配不同可忽略。',
-    at: d.start,
-  }))
+  const items: Advice[] = unexplained.slice(0, MAX_ITEMS).map((d) => {
+    const byMechanic = mechanicNear(mechanics, d.start, d.end) !== undefined
+    return {
+      // 機制本身不同時，站位不同是合理的，降一級
+      severity: byMechanic ? 'low' : overlapsLost(d) ? 'high' : 'medium',
+      title: `${formatFightTime(d.start)} 起 ${seconds(d.end - d.start)} 秒站位與參考不同（最遠 ${d.maxDistance.toFixed(1)} yalm）`,
+      detail:
+        (overlapsLost(d)
+          ? '這段同時少打了 GCD，站位可能讓你無法持續攻擊。對照俯視圖看參考的站位與移動路線。'
+          : '對照俯視圖看參考的站位與移動路線；若是攻略分配不同可忽略。') + mechanicNote(input, d.start, d.end),
+      at: d.start,
+    }
+  })
 
   const mirrored = divergences.filter((d) => d.mirror)
   if (mirrored.length > 0) {

@@ -43,12 +43,15 @@ node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的
 
 ## 前端比較流程
 
-`App.tsx`（貼連結、選戰鬥與玩家；選擇規則在 `compare/autoSelect.ts` 的 `resolveSelection()`，參考日誌以我的 Boss／職業為 `preferred` 自動選擇）→ `compare/Comparison.tsx`（檢查同 Boss／同職業、載入 4 組施放事件）→ `analysis/alignment.ts`（`buildAlignment()` 產生 `mineToRef()`）→ `compare/AdviceList.tsx`（`analysis/advice.ts` 的規則式建議，彙整下列各分析）＋ `compare/Metrics.tsx`（`analysis/metrics.ts` 的 GCD 概況、少打 GCD 的時段、技能次數與時機）＋ `compare/Positions.tsx`（`analysis/positions.ts` 的站位差異與對稱判斷、俯視圖）＋ `compare/Timeline.tsx`（以參考時間為橫軸的並排時間軸，可標示區段與捲動到指定時間）。玩家施放時間取開始施放（`load.ts` 的 `playerCasts()` 以 `begincast` 取代 `cast`）。玩家資料抓 `dataType=All`，施放與位置都從中取得（全部事件中也有別人對玩家的施放，要以 `sourceID` 過濾）。`Comparison.tsx` 持有共用的時間游標 `cursor`（參考時間）與時間軸捲動用的 `focus`。
+`App.tsx`（貼連結、選戰鬥與玩家；選擇規則在 `compare/autoSelect.ts` 的 `resolveSelection()`，參考日誌以我的 Boss／職業為 `preferred` 自動選擇）→ `compare/Comparison.tsx`（檢查同 Boss／同職業、載入 4 組施放事件）→ `analysis/alignment.ts`（`buildAlignment()` 產生 `mineToRef()`）→ `compare/AdviceList.tsx`（`analysis/advice.ts` 的規則式建議，彙整下列各分析）＋ `compare/Mechanics.tsx`（`analysis/mechanics.ts` 的 Boss 機制差異）＋ `compare/Metrics.tsx`（`analysis/metrics.ts` 的 GCD 概況、少打 GCD 的時段、技能次數與時機）＋ `compare/Positions.tsx`（`analysis/positions.ts` 的站位差異與對稱判斷、俯視圖）＋ `compare/Timeline.tsx`（以參考時間為橫軸的並排時間軸，可標示區段與捲動到指定時間）。玩家施放時間取開始施放（`load.ts` 的 `playerCasts()` 以 `begincast` 取代 `cast`）。玩家資料抓 `dataType=All`，施放與位置都從中取得（全部事件中也有別人對玩家的施放，要以 `sourceID` 過濾）。`Comparison.tsx` 持有共用的時間游標 `cursor`（參考時間）與時間軸捲動用的 `focus`。
 
 - 對齊演算法的細節與設計理由見 [docs/DESIGN.md](docs/DESIGN.md)；調整門檻（`maxOccurrences`、`dedupeMs`）前先用實際日誌驗證。
 - 職業規則放在 `src/jobs/<job>.ts`，實作 `JobModule` 並加入 `jobs/index.ts` 的 `JOBS`；以 FFLogs `subType`（如 `Viper`）查找。
 - React 19 中 `ref` 是保留 prop，元件 prop 不要命名為 `ref`（比較雙方用 `mine` / `reference`）。
-- 本機測試可在 `.env.local` 設 `VITE_API_BASE=https://ff14-copycat-api.ff14-copycat.workers.dev` 直接連已部署的 Worker（`ALLOWED_ORIGINS` 已含 `http://localhost:5173`）。測試用公開報告：`WATKBdHRh7m8PNQt`（fight 10 滅團 / 11 擊殺 Sugar Riot，Viper 玩家 source=34）；**使用者指定的比較基準**（Howling Blade 擊殺，武士）：我的日誌 `https://www.fflogs.com/reports/FXLkqaK32PhQH8Ac?fight=1`（席德，source 6）、高階玩家 `https://www.fflogs.com/reports/pwTF16cgnB9G7fWM?fight=29`（安祖卡，source 13）。驗證功能時優先用這組。
+- 本機測試可在 `.env.local` 設 `VITE_API_BASE=https://ff14-copycat-api.ff14-copycat.workers.dev` 直接連已部署的 Worker（`ALLOWED_ORIGINS` 已含 `http://localhost:5173`）。測試用公開報告：`WATKBdHRh7m8PNQt`（fight 10 滅團 / 11 擊殺 Sugar Riot，Viper 玩家 source=34）；**使用者指定的比較基準**（皆為 Howling Blade 擊殺，驗證功能時兩組都要測）：
+  - 武士：我的日誌 `https://www.fflogs.com/reports/FXLkqaK32PhQH8Ac?fight=1`（席德，source 6）、高階玩家 `https://www.fflogs.com/reports/pwTF16cgnB9G7fWM?fight=29`（安祖卡，source 13）。
+  - 騎士：我的日誌 `https://www.fflogs.com/reports/hqNYDGK9A4pmWVXB?fight=18`（神曲莊園，source 40）、高階玩家 `https://www.fflogs.com/reports/khNfTaMtYwKBd36b?fight=10`（Lavid，source 5）。參考擊殺快 61 秒，可測大幅時間差與坦克技能。
+- 新增或修改職業模組時，用 `begincast` 為起點計算 GCD 間隔驗證分類（見 DESIGN.md 職業模組一節）。
 
 ## 專案目標
 

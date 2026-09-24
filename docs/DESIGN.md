@@ -79,10 +79,13 @@
 
 #### 職業模組（`src/jobs/`）
 
-- `JobModule`：`subType`、中文名稱、`isGcd(abilityId)`，之後會加入冷卻時間、爆發窗口等規則。
+- `JobModule`：`subType`、中文名稱、`isGcd(abilityId)`、`utility`（防禦／減傷／輔助技能，依攻略使用；建議中與職能技能合併為低優先，不列為「少用」或「較晚使用」），之後會加入冷卻時間、爆發窗口等規則。
+- 職能技能（所有職業共用）在 `analysis/advice.ts` 的 `ROLE_ACTIONS`：坦克（Rampart、Provoke、Reprisal、Shirk…）、近戰／遠程、法系、治療。
 - 已支援：
   - Viper（蝰蛇劍士）：技能 ID 34606–34633 為 GCD、34634–34647 為 oGCD；職能技能與藥水為 oGCD。
   - Samurai（武士）：ID 不連續，以明確列表定義 GCD（連擊、居合術、燕返、奧義斬浪等，含已被取代的舊技能）；其餘為 oGCD。以使用者的兩份日誌驗證：GCD 間隔集中在 2.0～2.25 秒，無小於 1.25 秒的間隔（代表沒有把 oGCD 誤判為 GCD）。
+  - Paladin（騎士）：明確列表定義 GCD（連擊、Atonement 系列、Holy Spirit／Circle、Confiteor 與 Blade 系列、Goring Blade、Shield Lob、Clemency），`utility` 列出防禦技（Sentinel／Guardian、Bulwark、Hallowed Ground、Sheltron、Divine Veil、Intervention、Passage of Arms、Cover、Iron Will、Clemency）。以使用者的騎士日誌驗證：GCD 間隔集中在約 2.45～2.5 秒，560 多個 GCD 中只有一個間隔小於 2 秒。
+  - 驗證方式：以 `begincast` 為起點計算相鄰 GCD 間隔，分布應集中在該職業 GCD 附近，不應出現遠小於 GCD 的間隔。
 - 注意：有詠唱條的技能（居合術、奧義斬浪等），FFLogs 的 `cast` 事件在詠唱結束時；已改用 `begincast` 作為施放時間（見上方）。
 
 #### ② 通用指標（`src/analysis/metrics.ts`、`src/compare/Metrics.tsx`）
@@ -130,11 +133,30 @@
 
 之後可選擇加入 LLM 摘要（經 Worker 呼叫、需 API 金鑰與費用），把規則結果改寫成更自然的建議。
 
+#### Boss 機制差異（`src/analysis/mechanics.ts`、`src/compare/Mechanics.tsx`）
+
+列出兩場戰鬥中 Boss 機制不同的時間點，讓使用者知道站位／走位差異可能是機制造成：
+
+1. Boss 施放去重（同技能 1 秒內算一次），排除施放超過 8 次的技能（自動攻擊等，與對齊相同）。
+2. 我的施放換算成參考時間。同一技能在另一邊 **5 秒**內也有施放就算相同（轉場附近對齊可能差幾秒；初版用 1.5 秒，把同一個機制差 2～3 秒誤列成「只有我」＋「只有參考」）。
+3. 沒配對的施放依時間合併成時間點（1.5 秒內）：兩邊都有 → **不同變化**（隨機機制）；只有一邊 → **只有我／只有參考**（常是輸出較高的一方提早轉場而跳過）。超過較短一方戰鬥結束時間的不列。
+4. 同名不同 ID 的技能（例如 Hero's Blow #42079 與 #42081，左右兩種版本）顯示時附上 ID。
+
+與建議整合：站位差異或停手時段開始前 10 秒內到結束之間有「不同變化」時，建議中註明機制不同；站位差異因此降為「參考」等級。
+
+比較基準實測：
+- 武士（席德 vs 安祖卡）：13 處，12 處為隨機變化（Windfang／Stonefang、Eminent／Revolutionary Reign、Wolves' Reign 方向、**第二階段 Hero's Blow 方向**）。第二階段兩人持續左右相反的站位，很可能是 Hero's Blow 方向不同造成，而非攻略不同。
+- 騎士（神曲莊園 vs Lavid）：20 處，11 處為隨機變化；其餘多為「只有我」（參考擊殺快 61 秒，跳過了部分機制）。
+
 #### 之後的階段（提案）：先用規則式，之後可選擇加入 LLM 摘要。
 
 待決定：站位差異（不同攻略）的處理方式、建議產生方式。
 
 ## 設計變更紀錄
+
+### 2026-09-25 Boss 機制差異、騎士職業規則、防禦技分類
+- 變更：新增 Boss 機制差異列表並整合進建議；新增 Paladin 模組；`JobModule` 加入 `utility`，職能技能清單擴充到所有職業；新增騎士比較基準。
+- 原因：使用者要求列出 Boss 隨機機制不同處；武士日誌顯示第二階段的左右相反站位很可能是隨機機制（Hero's Blow 方向）造成。以騎士日誌測試時，建議把坦克的減傷與輔助技能（Intervention、Reprisal、Provoke 等）當成「冷卻好就用」的輸出技能，是錯誤建議，因此加入防禦／輔助分類。
 
 ### 2026-09-25 規則式建議（階段 ④）
 - 變更：新增規則式建議，整合停手、GCD 速度、技能使用、站位的分析結果，依重要性排序並可跳轉；GCD 統計與技能使用改在 `Comparison` 計算一次，供指標與建議共用。
