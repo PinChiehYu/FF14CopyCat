@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 工作規則
 
 - **一律使用繁體中文與使用者對話**（程式碼識別字、commit message 維持英文）。
+- **每次推送新程式碼後都要確認新版已建置並通過測試**：push 到 `main` 會觸發 `.github/workflows/deploy.yml`（lint → test → build → deploy → 冒煙測試）。推送後追蹤該次 workflow 直到完成，失敗就查原因修正；並以下方的比較基準日誌在正式站實際操作驗證這次的變更。改了 `worker/` 則先 `npm run worker:deploy` 再推送前端。
 - **系統設計有調整時，必須記錄到 [docs/DESIGN.md](docs/DESIGN.md)**：更新「目前設計」對應段落，並在「設計變更紀錄」新增一筆（日期、變更內容、原因），與實作放在同一個 commit。設計調整包含：架構／部署方式、資料流與 API 端點、外部服務、分析方法與演算法、已與使用者議定的規格或優先順序。純 bug 修正或重構不需記錄。本檔（CLAUDE.md）的架構描述也要同步更新。
 
 ## Commands
@@ -21,6 +22,7 @@ npm run lint
 npm run worker:dev                   # 本機 Worker 代理 http://localhost:8787（需 worker/.dev.vars）
 npm run worker:deploy                # 部署 Worker 到 Cloudflare（需先 npx wrangler login）
 npx wrangler deploy -c worker/wrangler.toml --dry-run --outdir <tmp>   # 不登入即可驗證 Worker 設定
+node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的冒煙測試（CI 部署後自動執行）
 ```
 
 - 在這台 Windows 機器上，Node 裝在 `C:\Program Files\nodejs`；若 shell 找不到 `node`/`npm`，先把它加進 PATH。
@@ -46,7 +48,7 @@ npx wrangler deploy -c worker/wrangler.toml --dry-run --outdir <tmp>   # 不登�
 - 對齊演算法的細節與設計理由見 [docs/DESIGN.md](docs/DESIGN.md)；調整門檻（`maxOccurrences`、`dedupeMs`）前先用實際日誌驗證。
 - 職業規則放在 `src/jobs/<job>.ts`，實作 `JobModule` 並加入 `jobs/index.ts` 的 `JOBS`；以 FFLogs `subType`（如 `Viper`）查找。
 - React 19 中 `ref` 是保留 prop，元件 prop 不要命名為 `ref`（比較雙方用 `mine` / `reference`）。
-- 本機測試可在 `.env.local` 設 `VITE_API_BASE=https://ff14-copycat-api.ff14-copycat.workers.dev` 直接連已部署的 Worker（`ALLOWED_ORIGINS` 已含 `http://localhost:5173`）。測試用公開報告：`WATKBdHRh7m8PNQt`（fight 10 滅團 / 11 擊殺 Sugar Riot，Viper 玩家 source=34）；使用者指定的比較基準：`pwTF16cgnB9G7fWM` fight 29 與 `h6gRJZ2pfDFYMPjX` fight 13 的武士（source 13 / 27，Howling Blade 擊殺）。
+- 本機測試可在 `.env.local` 設 `VITE_API_BASE=https://ff14-copycat-api.ff14-copycat.workers.dev` 直接連已部署的 Worker（`ALLOWED_ORIGINS` 已含 `http://localhost:5173`）。測試用公開報告：`WATKBdHRh7m8PNQt`（fight 10 滅團 / 11 擊殺 Sugar Riot，Viper 玩家 source=34）；**使用者指定的比較基準**（Howling Blade 擊殺，武士）：我的日誌 `https://www.fflogs.com/reports/FXLkqaK32PhQH8Ac?fight=1`（席德，source 6）、高階玩家 `https://www.fflogs.com/reports/pwTF16cgnB9G7fWM?fight=29`（安祖卡，source 13）。驗證功能時優先用這組。
 
 ## 專案目標
 

@@ -18,6 +18,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      script: ${{ steps.bundle.outputs.script }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,6 +32,9 @@ jobs:
       - run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+      # 記下這次建置的 JS 檔名，冒煙測試用來確認正式站已換成新版
+      - id: bundle
+        run: echo "script=$(grep -o 'assets/index-[^"]*\.js' dist/index.html)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:
@@ -45,3 +50,17 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # 部署後對正式站與 Worker 做實際請求測試
+  smoke:
+    if: github.event_name != 'pull_request'
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/smoke-test.mjs
+        env:
+          EXPECTED_SCRIPT: ${{ needs.build.outputs.script }}

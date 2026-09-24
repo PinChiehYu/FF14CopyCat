@@ -13,6 +13,7 @@
 ```
 
 - **前端**：Vite + React + TypeScript，部署於 https://pinchiehyu.github.io/FF14CopyCat/ ，由 GitHub Actions 在 push 到 `main` 時建置部署（Pages Source 必須為 GitHub Actions）。
+- **CI／CD**（`.github/workflows/deploy.yml`）：每次 push 到 `main` 自動執行 lint → 單元測試 → 建置 → 部署 → **冒煙測試**（`scripts/smoke-test.mjs`）。冒煙測試對正式站與 Worker 發出實際請求：確認正式站已換成本次建置且指向 Worker、Worker 能回傳報告與含位置的事件、會拒絕未允許的來源；正式站更新有延遲，最多重試約 1 分鐘。Pull request 只執行到建置。
 - **Worker 代理**：https://ff14-copycat-api.ff14-copycat.workers.dev ，持有 FFLogs client ID / secret（Cloudflare Secrets），訪客不需登入 FFLogs。手動以 `npm run worker:deploy` 部署。
 - **前端取得 Worker 網址**：寫在 `src/config.ts`（網址非機密），可用 `VITE_API_BASE` 覆寫。
 
@@ -65,7 +66,7 @@
 已知限制：
 - 同一機制的隨機變化會使用不同技能 ID（例如 42641/42642），因此不會成為錨點。
 - 轉場提前是「跳躍」，但錨點間線性內插會把跳躍平均分散在整個區段（例如 402～459 秒之間 56 秒沒有錨點）。目前誤差在數秒內；之後可考慮以 Boss 目標切換或無敵等事件辨識轉場點改為分段對齊。
-- 比較基準：`pwTF16cgnB9G7fWM` #29 與 `h6gRJZ2pfDFYMPjX` #13 的武士（使用者指定的測試資料）。
+- 比較基準（使用者指定）：我的日誌 `FXLkqaK32PhQH8Ac` #1（武士 席德，13:50 擊殺）vs 高階玩家 `pwTF16cgnB9G7fWM` #29（武士 安祖卡，13:56 擊殺）：194 個錨點、時間差 -6.8～+0.2 秒；GCD 342 vs 360、oGCD 175 vs 207。
 
 #### 並排時間軸（`src/compare/Timeline.tsx`）
 
@@ -91,6 +92,10 @@
 待決定：站位差異（不同攻略）的處理方式、建議產生方式。
 
 ## 設計變更紀錄
+
+### 2026-09-25 部署後自動冒煙測試；更新比較基準
+- 變更：CI 在部署後加入冒煙測試，以實際請求驗證正式站與 Worker；比較基準改為 `FXLkqaK32PhQH8Ac` #1（我）vs `pwTF16cgnB9G7fWM` #29（高階玩家）的武士。
+- 原因：使用者要求每次推送新程式碼都自動建置新版並測試；單元測試無法發現部署層面的問題（例如 Pages 來源設定錯誤、Worker 網址錯誤）。
 
 ### 2026-09-25 參考日誌自動選擇戰鬥與角色
 - 變更：參考日誌依「我的日誌」的 Boss 與職業自動選擇戰鬥（同 Boss 最後一次擊殺）與角色（同職業恰好一位時）；同職業有兩位以上時由使用者選擇。連結中指定的 fight / source 與手動選擇仍優先。
