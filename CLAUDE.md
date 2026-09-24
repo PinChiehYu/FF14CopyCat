@@ -49,6 +49,8 @@ npx wrangler deploy -c worker/wrangler.toml --dry-run --outdir <tmp>   # 不登�
 - **資料來源為 FFLogs API v2（GraphQL）**，一律經由 Worker 代理存取（見上方架構）。
   - 事件查詢有分頁（`nextPageTimestamp`），需迴圈抓完整場戰鬥。
   - 事件的 `timestamp` 是相對於**整份報告**開始的毫秒數；比較兩份日誌前必須減去各自 fight 的 `startTime` 以正規化到戰鬥開始時間。
-  - 位置資料需在事件查詢加上 `includeResources: true`，由 `sourceResources` / `targetResources` 的 `x`、`y`、`facing` 取得；位置只在有事件時才有取樣，時間上不連續，比較時需要插值或以最近取樣點對齊。
+  - 位置資料需在事件查詢加上 `includeResources: true`，由 `sourceResources` / `targetResources` 的 `x`、`y`、`facing` 取得；位置只在有事件時才有取樣，時間上不連續，比較時需要插值或以最近取樣點對齊。座標單位為 1/100 yalm（例如場地中心 (100, 100) 記為 `x: 10000, y: 10000`）。
+  - `masterData.actors` 中 type 為 `Player` 的不全是真人：極限技會以 subType `LimitBreak` 的假角色（名稱如 `Limit Break`、`Multiple Players`）出現，且同名玩家可能另有 subType `Unknown` 的項目。選玩家一律透過 `src/fflogs/report.ts` 的 `playersInFight()`。
+  - 單一玩家整場戰鬥的全部事件約 4000 筆、1.4 MB，一頁（limit 10000）通常就能取完；Boss 事件用 `hostility=Enemies`。
 - **時間軸對齊**：兩份日誌的擊殺時間、轉場時間不同，單純用絕對時間比較會失準。應以 Boss 的技能事件（施放/傷害）作為錨點做分段對齊。
 - **分析邏輯與職業相關**：建議把職業別的規則（技能 ID、GCD 定義、Buff 窗口）做成可擴充的模組，而非寫死在比較流程中。xivanalysis 為開源專案（GitHub: `xivanalysis/xivanalysis`），可作為職業規則與分析模組設計的參考。

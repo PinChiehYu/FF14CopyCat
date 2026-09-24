@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { fetchReport } from './fflogs/client'
+import { playersInFight } from './fflogs/report'
 import type { Actor, Fight, Report } from './fflogs/types'
 import { parseReportUrl, type ReportRef } from './fflogs/url'
 
@@ -48,11 +49,6 @@ function useReport(code: string | null): LoadState {
 function fightLabel(fight: Fight): string {
   const outcome = fight.kill ? '擊殺' : fight.kill === false ? '滅團' : ''
   return `#${fight.id} ${fight.name} ${outcome} (${formatFightTime(fight.endTime - fight.startTime)})`
-}
-
-function playersInFight(report: Report, fight: Fight): Actor[] {
-  const ids = new Set(fight.friendlyPlayers ?? [])
-  return report.masterData.actors.filter((a) => a.type === 'Player' && ids.has(a.id))
 }
 
 function ReportSelector({
