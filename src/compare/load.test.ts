@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
-import { actorPositions, autoAttacks, incompatibility, playerCasts, type Selection } from './load'
+import {
+  actorPositions,
+  autoAttacks,
+  clipSide,
+  incompatibility,
+  playerCasts,
+  type Selection,
+  type SideData,
+} from './load'
 
 describe('actorPositions', () => {
   const fight = { startTime: 1000 } as Fight
@@ -65,6 +73,32 @@ function selection(encounterID: number, subType: string): Selection {
   const player = { id: 1, name: 'p', subType } as Actor
   return { report: {} as Report, fight, player }
 }
+
+describe('clipSide', () => {
+  it('drops data after the end time', () => {
+    const side: SideData = {
+      selection: {} as Selection,
+      playerCasts: [
+        { t: 1000, abilityId: 1 },
+        { t: 9000, abilityId: 1 },
+      ],
+      autoAttacks: [{ t: 8000, abilityId: 7 }],
+      bossCasts: [{ t: 5000, abilityId: 2 }],
+      playerPositions: [
+        { t: 4000, x: 100, y: 100 },
+        { t: 6000, x: 100, y: 100 },
+      ],
+      bossPositions: [],
+      duration: 10_000,
+    }
+    const clipped = clipSide(side, 5000)
+    expect(clipped.playerCasts).toEqual([{ t: 1000, abilityId: 1 }])
+    expect(clipped.autoAttacks).toEqual([])
+    expect(clipped.bossCasts).toHaveLength(1)
+    expect(clipped.playerPositions).toHaveLength(1)
+    expect(clipped.duration).toBe(5000)
+  })
+})
 
 describe('incompatibility', () => {
   it('accepts same encounter and job', () => {

@@ -16,6 +16,15 @@ describe('buildAlignment', () => {
     expect(mineToRef(100_000)).toBe(90_000) // 最後錨點之後斜率 1
   })
 
+  it('inverts the mapping with refToMine', () => {
+    const mine = [cast(10, 1), cast(60, 2), cast(90, 3)]
+    const ref = [cast(10, 1), cast(50, 2), cast(80, 3)]
+    const { mineToRef, refToMine } = buildAlignment(mine, ref)
+    for (const t of [0, 5_000, 35_000, 75_000, 100_000]) {
+      expect(refToMine(mineToRef(t))).toBeCloseTo(t)
+    }
+  })
+
   it('matches the nth occurrence and merges simultaneous casts', () => {
     const mine = [cast(10, 7), cast(10.2, 7), cast(40, 7)]
     const ref = [cast(12, 7), cast(45, 7)]

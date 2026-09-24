@@ -18,6 +18,24 @@ export interface Alignment {
   anchors: Anchor[]
   /** 把我的戰鬥時間換算成參考日誌中「同一個機制」的時間 */
   mineToRef(t: number): number
+  /** mineToRef 的反函數：參考時間換算成我的戰鬥時間 */
+  refToMine(t: number): number
+}
+
+/** 依錨點做分段線性換算；points 在 from 與 to 上都嚴格遞增，最後一點之後以斜率 1 外推。 */
+function piecewise(points: { from: number; to: number }[], t: number): number {
+  let lo = 0
+  let hi = points.length - 1
+  if (t >= points[hi].from) return points[hi].to + (t - points[hi].from)
+  if (t <= points[0].from) return points[0].to + (t - points[0].from)
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1
+    if (points[mid].from <= t) lo = mid
+    else hi = mid
+  }
+  const a = points[lo]
+  const b = points[hi]
+  return a.to + ((t - a.from) * (b.to - a.to)) / (b.from - a.from)
 }
 
 export interface AlignmentOptions {
@@ -94,23 +112,13 @@ export function buildAlignment(
   // 同一時間點多個技能只留第一個，確保內插區段長度 > 0
   const anchors = longestIncreasing(candidates).filter((a, i, all) => i === 0 || a.mine > all[i - 1].mine)
   const points = [{ mine: 0, ref: 0 }, ...anchors]
+  // LIS 保證 ref 嚴格遞增、上面的過濾保證 mine 嚴格遞增，因此兩個方向都能分段內插
+  const forward = points.map((p) => ({ from: p.mine, to: p.ref }))
+  const backward = points.map((p) => ({ from: p.ref, to: p.mine }))
 
   return {
     anchors,
-    mineToRef(t: number): number {
-      // 找出 t 所在的區段（points 依 mine 遞增）
-      let lo = 0
-      let hi = points.length - 1
-      if (t >= points[hi].mine) return points[hi].ref + (t - points[hi].mine)
-      if (t <= points[0].mine) return points[0].ref + (t - points[0].mine)
-      while (hi - lo > 1) {
-        const mid = (lo + hi) >> 1
-        if (points[mid].mine <= t) lo = mid
-        else hi = mid
-      }
-      const a = points[lo]
-      const b = points[hi]
-      return a.ref + ((t - a.mine) * (b.ref - a.ref)) / (b.mine - a.mine)
-    },
+    mineToRef: (t) => piecewise(forward, t),
+    refToMine: (t) => piecewise(backward, t),
   }
 }

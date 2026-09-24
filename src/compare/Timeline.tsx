@@ -43,6 +43,7 @@ export function Timeline({
   focus = null,
   cursor,
   onSeek,
+  compareEnd,
 }: {
   mine: SideData
   reference: SideData
@@ -57,6 +58,8 @@ export function Timeline({
   cursor?: number
   /** 點擊時間尺時移動游標 */
   onSeek?: (t: number) => void
+  /** 比較範圍結束（參考時間）；之後的部分標示為範圍外 */
+  compareEnd?: number
 }) {
   const [pxPerSec, setPxPerSec] = useState(20)
   const x = (ms: number) => (ms / 1000) * pxPerSec
@@ -114,6 +117,11 @@ export function Timeline({
         <div className="timeline-scroll" ref={scrollRef}>
           <div className="timeline-canvas" style={{ width }}>
             {cursor !== undefined && <span className="timeline-cursor" style={{ left: x(cursor) }} />}
+            {compareEnd !== undefined && totalMs - compareEnd >= 1000 && (
+              <span className="out-of-range" style={{ left: x(compareEnd) }} title="超出比較範圍：另一方的戰鬥已結束，不列入統計">
+                比較範圍外
+              </span>
+            )}
             <div
               className="lane ruler"
               title="點擊以移動站位圖的時間"

@@ -2,7 +2,7 @@ import type { TimedCast } from './alignment'
 
 export interface GcdStats {
   count: number
-  /** 推估的 GCD 間隔（毫秒）：1.5～3 秒之間相鄰 GCD 間隔的中位數；GCD 太少時為 null */
+  /** 推估的 GCD 間隔（毫秒）：相鄰 GCD 間隔的中位數，上限 2.5 秒；GCD 太少時為 null */
   gcdMs: number | null
   /** 空檔總計（毫秒）：每個間隔超出 GCD 的部分加總，含 Boss 無法攻擊的時間 */
   idleMs: number
@@ -10,6 +10,9 @@ export interface GcdStats {
 
 // 容許的誤差（網路延遲、動畫鎖）
 const IDLE_TOLERANCE_MS = 100
+// GCD 最長 2.5 秒（無加速時的基礎值）；實際間隔會因延遲略長，取樣時多容許 100 毫秒
+const MAX_GCD_MS = 2500
+const MIN_GCD_SAMPLE_MS = 1500
 
 function median(values: number[]): number | null {
   if (values.length === 0) return null
@@ -24,7 +27,8 @@ function gaps(times: number[]): number[] {
 /** @param gcdTimes 依時間排序的 GCD 開始施放時間 */
 export function gcdStats(gcdTimes: number[]): GcdStats {
   const intervals = gaps(gcdTimes)
-  const gcdMs = median(intervals.filter((g) => g >= 1500 && g <= 3000))
+  const sampled = median(intervals.filter((g) => g >= MIN_GCD_SAMPLE_MS && g <= MAX_GCD_MS + IDLE_TOLERANCE_MS))
+  const gcdMs = sampled === null ? null : Math.min(sampled, MAX_GCD_MS)
   const idleMs =
     gcdMs === null ? 0 : intervals.reduce((sum, g) => sum + Math.max(0, g - gcdMs - IDLE_TOLERANCE_MS), 0)
   return { count: gcdTimes.length, gcdMs, idleMs }

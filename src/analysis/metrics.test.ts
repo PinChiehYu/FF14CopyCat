@@ -15,6 +15,12 @@ describe('gcdStats', () => {
     expect(stats.idleMs).toBe(10_000 - 2100 - 100)
   })
 
+  it('caps the GCD at 2.5 seconds even when latency stretches intervals', () => {
+    // 2.5 秒 GCD 加上延遲，實測間隔約 2.505 秒；3 秒的間隔是停手，不應拉高推估
+    const times = [0, 2505, 5010, 7515, 10_020, 13_020, 16_020]
+    expect(gcdStats(times).gcdMs).toBe(2500)
+  })
+
   it('handles too few GCDs', () => {
     expect(gcdStats([0])).toEqual({ count: 1, gcdMs: null, idleMs: 0 })
   })

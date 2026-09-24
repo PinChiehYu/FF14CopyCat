@@ -7,7 +7,7 @@ import { compareTracks, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityMap } from '../fflogs/report'
 import { getJob } from '../jobs'
-import { incompatibility, loadSide, type Selection, type SideData } from './load'
+import { clipSide, incompatibility, loadSide, type Selection, type SideData } from './load'
 import { AdviceList } from './AdviceList'
 import { Mechanics } from './Mechanics'
 import { Metrics } from './Metrics'
@@ -52,32 +52,42 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
   )
   const job = getJob(reference.selection.player.subType)
   const drifts = alignment.anchors.map((a) => (a.ref - a.mine) / 1000)
+
+  // 比較範圍：兩場戰鬥都還在進行的時段（參考時間 0～較短一方結束）。
+  // 較長一方超出的部分沒有比較對象，不列入任何統計；時間軸仍完整顯示但標示為範圍外。
+  const duration = Math.max(reference.duration, alignment.mineToRef(mine.duration))
+  const compareEnd = Math.min(reference.duration, alignment.mineToRef(mine.duration))
+  const mineInRange = useMemo(
+    () => clipSide(mine, Math.min(mine.duration, alignment.refToMine(compareEnd))),
+    [mine, alignment, compareEnd],
+  )
+  const refInRange = useMemo(() => clipSide(reference, compareEnd), [reference, compareEnd])
+
   const { gcd, lost } = useMemo(() => {
     if (!job) return { gcd: null, lost: [] }
     const gcds = (side: SideData) => side.playerCasts.filter((c) => job.isGcd(c.abilityId)).map((c) => c.t)
-    const mineGcds = gcds(mine)
-    const refGcds = gcds(reference)
+    const mineGcds = gcds(mineInRange)
+    const refGcds = gcds(refInRange)
     const stats = { mine: gcdStats(mineGcds), ref: gcdStats(refGcds) }
     const windows =
       stats.mine.gcdMs === null ? [] : lostGcdWindows(mineGcds, refGcds, alignment.mineToRef, stats.mine.gcdMs)
     return { gcd: stats, lost: windows }
-  }, [mine, reference, alignment, job])
+  }, [mineInRange, refInRange, alignment, job])
   // 技能使用次數含普通攻擊（時間軸不畫）；次數多寡可反映是否離 Boss 太遠或停手
   const usage = useMemo(
     () =>
       abilityUsage(
-        [...mine.playerCasts, ...mine.autoAttacks],
-        [...reference.playerCasts, ...reference.autoAttacks],
+        [...mineInRange.playerCasts, ...mineInRange.autoAttacks],
+        [...refInRange.playerCasts, ...refInRange.autoAttacks],
         alignment.mineToRef,
       ),
-    [mine, reference, alignment],
+    [mineInRange, refInRange, alignment],
   )
-  const duration = Math.max(reference.duration, alignment.mineToRef(mine.duration))
   const positions = useMemo(() => {
-    const mineSamples = mine.playerPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
-    const track = compareTracks(mineSamples, reference.playerPositions, reference.bossPositions, duration)
+    const mineSamples = mineInRange.playerPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
+    const track = compareTracks(mineSamples, refInRange.playerPositions, reference.bossPositions, compareEnd)
     return { mineSamples, track, divergences: divergences(track, DIVERGENCE_YALM) }
-  }, [mine, reference, alignment, duration])
+  }, [mineInRange, refInRange, reference, alignment, compareEnd])
   const mechanics = useMemo(
     () =>
       mechanicDifferences(
@@ -94,7 +104,7 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
     () =>
       generateAdvice({
         mechanics,
-        durationMs: reference.duration,
+        durationMs: compareEnd,
         gcd,
         lost,
         usage,
@@ -104,9 +114,9 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
         isGcd: job?.isGcd,
         isUtility: job?.utility ? (id) => job.utility!.has(id) : undefined,
         mineToRef: alignment.mineToRef,
-        firstUse: (id) => mine.playerCasts.find((c) => c.abilityId === id)?.t,
+        firstUse: (id) => mineInRange.playerCasts.find((c) => c.abilityId === id)?.t,
       }),
-    [reference, gcd, lost, usage, positions, abilities, job, alignment, mine, mechanics],
+    [compareEnd, gcd, lost, usage, positions, abilities, job, alignment, mineInRange, mechanics],
   )
 
   // 目前檢視的參考時間（站位圖、時間軸游標）
@@ -127,6 +137,12 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
           {killLabel(mine)}／參考 {formatFightTime(reference.duration)}
           {killLabel(reference)}
         </dd>
+        <dt>比較範圍</dt>
+        <dd>
+          參考 0:00～{formatFightTime(compareEnd)}（我的 0:00～{formatFightTime(mineInRange.duration)}）
+          {duration - compareEnd >= 1000 &&
+            `；${reference.duration > compareEnd ? '參考' : '我'}之後的 ${((duration - compareEnd) / 1000).toFixed(1)} 秒沒有比較對象，不列入統計`}
+        </dd>
         <dt>對齊錨點</dt>
         <dd>
           {alignment.anchors.length} 個
@@ -146,9 +162,9 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
         track={positions.track}
         divergences={positions.divergences}
         mineSamples={positions.mineSamples}
-        refSamples={reference.playerPositions}
+        refSamples={refInRange.playerPositions}
         threshold={DIVERGENCE_YALM}
-        duration={duration}
+        duration={compareEnd}
         cursor={cursor}
         onSeek={setCursor}
         onJump={jumpTo}
@@ -164,6 +180,7 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
         focus={focus}
         cursor={cursor}
         onSeek={setCursor}
+        compareEnd={compareEnd}
       />
     </>
   )

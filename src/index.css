@@ -416,6 +416,20 @@ h3 {
   border-color: var(--mine);
 }
 
+.out-of-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 2;
+  padding: 26px 0 0 8px;
+  font-size: 0.8em;
+  color: var(--text-muted);
+  border-left: 2px dashed var(--text-muted);
+  background: color-mix(in srgb, var(--bg) 65%, transparent);
+  pointer-events: none;
+}
+
 .timeline-cursor {
   position: absolute;
   top: 0;

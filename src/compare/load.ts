@@ -115,6 +115,23 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
   }
 }
 
+/**
+ * 只保留 endMs（該側自己的戰鬥時間）之前的資料。兩場戰鬥長度不同時，
+ * 較長一方超出的部分沒有比較對象，不列入統計。
+ */
+export function clipSide(side: SideData, endMs: number): SideData {
+  const before = <T extends { t: number }>(items: T[]) => items.filter((i) => i.t <= endMs)
+  return {
+    ...side,
+    playerCasts: before(side.playerCasts),
+    autoAttacks: before(side.autoAttacks),
+    bossCasts: before(side.bossCasts),
+    playerPositions: before(side.playerPositions),
+    bossPositions: before(side.bossPositions),
+    duration: Math.min(side.duration, endMs),
+  }
+}
+
 /** 兩邊是否可比較；不行時回傳原因。 */
 export function incompatibility(mine: Selection, ref: Selection): string | null {
   if (mine.fight.encounterID !== ref.fight.encounterID) {
