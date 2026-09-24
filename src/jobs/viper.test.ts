@@ -14,6 +14,6 @@ describe('viper', () => {
   })
 
   it('returns undefined for jobs without a module', () => {
-    expect(getJob('Samurai')).toBeUndefined()
+    expect(getJob('Monk')).toBeUndefined()
   })
 })
