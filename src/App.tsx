@@ -127,7 +127,13 @@ function LogPicker({ label, onChange }: { label: string; onChange: (selection: S
       {state.status === 'loading' && <p>載入報告中…</p>}
       {state.status === 'error' && <p className="error">{state.message}</p>}
       {state.status === 'ready' && ref && (
-        <ReportSelector key={state.report.code} report={state.report} urlRef={ref} onChange={onChange} />
+        // 連結中的 fight / source 改變時重新套用預選
+        <ReportSelector
+          key={`${state.report.code}|${ref.fight ?? ''}|${ref.sourceId ?? ''}`}
+          report={state.report}
+          urlRef={ref}
+          onChange={onChange}
+        />
       )}
     </section>
   )
