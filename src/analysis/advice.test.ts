@@ -165,28 +165,37 @@ describe('generateAdvice', () => {
     expect(advice[1].at).toBe(29_000)
   })
 
-  it('reports unexplained position differences and summarises mirrored ones', () => {
+  it('highlights position differences around boss mechanics and summarises mirrored ones', () => {
     const advice = generateAdvice(
       input({
         divergences: [
-          { start: 100_000, end: 110_000, maxDistance: 15, mirror: null },
-          { start: 200_000, end: 201_000, maxDistance: 20, mirror: null }, // 太短
-          { start: 300_000, end: 400_000, maxDistance: 33, mirror: 'left-right' },
+          // 機制前後，且同時少打 GCD → 優先
+          { start: 100_000, end: 110_000, maxDistance: 15, mirror: null, mechanics: [{ t: 108_000, abilityId: 5 }] },
+          // 機制前後（短的也列出）→ 建議
+          { start: 150_000, end: 152_000, maxDistance: 12, mirror: null, mechanics: [{ t: 153_000, abilityId: 1 }] },
+          // 附近沒有機制、較長 → 參考
+          { start: 200_000, end: 210_000, maxDistance: 20, mirror: null, mechanics: [] },
+          // 附近沒有機制、太短 → 不列
+          { start: 250_000, end: 251_000, maxDistance: 20, mirror: null, mechanics: [] },
+          { start: 300_000, end: 400_000, maxDistance: 33, mirror: 'left-right', mechanics: [] },
         ],
         lost: [{ mineStart: 105_000, mineEnd: 109_000, refStart: 105_000, refEnd: 109_000, refGcds: 1 }],
       }),
     )
-    const position = advice.find((a) => a.at === 100_000)!
-    expect(position.severity).toBe('high')
-    expect(position.detail).toMatch('少打了 GCD')
+    const worst = advice.find((a) => a.at === 100_000)!
+    expect(worst).toMatchObject({ severity: 'high', title: '1:48.0 機制「Meikyo Shisui」結算時站位與參考不同（最遠 15.0 yalm）' })
+    expect(worst.detail).toMatch('少打了 GCD')
+    expect(advice.find((a) => a.at === 150_000)).toMatchObject({ severity: 'medium' })
+    expect(advice.find((a) => a.at === 200_000)).toMatchObject({ severity: 'low' })
+    expect(advice.find((a) => a.at === 200_000)?.title).toMatch('附近沒有 Boss 機制')
+    expect(advice.some((a) => a.at === 250_000)).toBe(false)
     expect(advice.find((a) => a.title.includes('不同攻略'))?.title).toMatch('左右對稱')
-    expect(advice.some((a) => a.at === 200_000)).toBe(false)
   })
 
   it('downgrades position differences caused by a different random mechanic', () => {
     const [a] = generateAdvice(
       input({
-        divergences: [{ start: 100_000, end: 110_000, maxDistance: 15, mirror: null }],
+        divergences: [{ start: 100_000, end: 110_000, maxDistance: 15, mirror: null, mechanics: [{ t: 104_000, abilityId: 1 }] }],
         mechanics: [{ t: 95_000, mine: [1], ref: [5], kind: 'variant' }],
       }),
     )
@@ -198,7 +207,7 @@ describe('generateAdvice', () => {
     const [a] = generateAdvice(
       input({
         abilityName: () => "Hero's Blow",
-        divergences: [{ start: 100_000, end: 110_000, maxDistance: 30, mirror: null }],
+        divergences: [{ start: 100_000, end: 110_000, maxDistance: 30, mirror: null, mechanics: [{ t: 104_000, abilityId: 42079 }] }],
         mechanics: [{ t: 95_000, mine: [42081], ref: [42079], kind: 'variant' }],
       }),
     )

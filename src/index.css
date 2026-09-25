@@ -496,6 +496,27 @@ h3 {
   fill: color-mix(in srgb, var(--error) 18%, transparent);
 }
 
+.distance-chart .band.mechanic {
+  fill: color-mix(in srgb, var(--error) 40%, transparent);
+}
+
+.divergence-list li.at-mechanic > button {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.mechanic-note {
+  margin: 2px 0 6px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.tag.mechanic {
+  margin: 0 6px 0 0;
+  color: var(--error);
+  border-color: var(--error);
+}
+
 .distance-chart .band.mirrored {
   fill: color-mix(in srgb, var(--text-muted) 18%, transparent);
 }

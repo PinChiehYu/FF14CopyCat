@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareTracks, divergences, positionAt, type PositionSample } from './positions'
+import { attachMechanics, compareTracks, divergences, positionAt, type PositionSample } from './positions'
 
 const s = (seconds: number, x: number, y: number): PositionSample => ({ t: seconds * 1000, x, y })
 
@@ -55,6 +55,25 @@ describe('compareTracks / divergences', () => {
     const [d] = divergences(compareTracks(mine, refP, refBoss, 30_000, { x: 100, y: 100 }))
     expect(d.maxDistance).toBeGreaterThan(20)
     expect(d.mirror).toBe('left-right')
+  })
+
+  it('attaches boss mechanics resolving while the players are apart', () => {
+    const divs = [
+      { start: 10_000, end: 16_000, maxDistance: 10, mirror: null, mechanics: [] },
+      { start: 40_000, end: 42_000, maxDistance: 12, mirror: null, mechanics: [] },
+    ]
+    const autos = Array.from({ length: 20 }, (_, i) => ({ t: i * 3000, abilityId: 99 })) // 自動攻擊
+    const boss = [
+      ...autos,
+      { t: 9500, abilityId: 1 }, // 區段開始前，還沒分開 → 不算
+      { t: 13_000, abilityId: 2 }, // 區段中、相距 10 → 算
+      { t: 15_500, abilityId: 3 }, // 區段中但該點距離已回到 5 → 不算
+      { t: 43_500, abilityId: 4 }, // 區段結束後 → 不算
+    ]
+    const distance = (t: number) => (t === 15_500 ? 5 : t >= 10_000 && t <= 16_000 ? 10 : 2)
+    const [a, b] = attachMechanics(divs, boss, distance, 8)
+    expect(a.mechanics.map((m) => m.abilityId)).toEqual([2])
+    expect(b.mechanics).toEqual([])
   })
 
   it('ignores short blips', () => {

@@ -3,7 +3,7 @@ import { buildAlignment } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
 import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
-import { compareTracks, divergences } from '../analysis/positions'
+import { attachMechanics, compareTracks, distanceAt, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, type AbilityName } from '../fflogs/client'
 import { abilityMap } from '../fflogs/report'
@@ -114,7 +114,14 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   const positions = useMemo(() => {
     const mineSamples = mineInRange.playerPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
     const track = compareTracks(mineSamples, refInRange.playerPositions, reference.bossPositions, compareEnd)
-    return { mineSamples, track, divergences: divergences(track, DIVERGENCE_YALM) }
+    // 標示每段差異期間、兩人仍相距超過門檻時結算的 Boss 機制（參考日誌的 Boss 施放）
+    const found = attachMechanics(
+      divergences(track, DIVERGENCE_YALM),
+      refInRange.bossCasts,
+      (t) => distanceAt(track, t),
+      DIVERGENCE_YALM,
+    )
+    return { mineSamples, track, divergences: found }
   }, [mineInRange, refInRange, reference, alignment, compareEnd])
   const mechanics = useMemo(
     () =>
@@ -199,6 +206,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       />
       <h3>站位比較</h3>
       <Positions
+        abilityName={abilityName}
         track={positions.track}
         divergences={positions.divergences}
         mineSamples={positions.mineSamples}

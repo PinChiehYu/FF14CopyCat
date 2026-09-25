@@ -1,3 +1,5 @@
+import type { TimedCast } from './alignment'
+
 /** 位置取樣，座標單位為 yalm（FFLogs 原始值 ÷ 100），時間為戰鬥時間（毫秒）。 */
 export interface PositionSample {
   t: number
@@ -135,6 +137,57 @@ export interface Divergence {
   maxDistance: number
   /** 區段內多數時間，我的位置接近參考的對稱位置（可能是不同攻略）；否則為 null */
   mirror: MirrorKind | null
+  /** 區段期間結算的 Boss 機制（見 attachMechanics）；站位差異在機制結算時才有明顯意義 */
+  mechanics: TimedCast[]
+}
+
+export interface MechanicOptions {
+  /** 施放超過此次數的 Boss 技能（自動攻擊等）不算機制 */
+  maxOccurrences?: number
+  /** 同一技能這段時間內重複施放視為一次 */
+  dedupeMs?: number
+}
+
+/** 取樣軌跡中最接近 t 的點的兩人距離。 */
+export function distanceAt(track: TrackPoint[], t: number): number | null {
+  if (track.length === 0) return null
+  const step = track.length > 1 ? track[1].t - track[0].t : 1
+  return track[Math.min(track.length - 1, Math.max(0, Math.round(t / step)))].distance
+}
+
+/**
+ * 找出每段站位差異期間結算的 Boss 機制：Boss 施放完成（約為機制結算）落在區段內，
+ * 且結算當下兩人距離超過門檻。只看區段前後時間的話，機制密集的戰鬥（例如 Howling Blade）
+ * 會掛上還沒分開或已回到相近位置時結算的機制。
+ * @param bossCasts 參考日誌的 Boss 施放（參考時間）
+ * @param distance 參考時間 t 時兩人的距離
+ */
+export function attachMechanics(
+  divergences: Divergence[],
+  bossCasts: TimedCast[],
+  distance: (t: number) => number | null,
+  thresholdYalm: number,
+  { maxOccurrences = 8, dedupeMs = 1000 }: MechanicOptions = {},
+): Divergence[] {
+  const last = new Map<number, number>()
+  const deduped = [...bossCasts]
+    .sort((a, b) => a.t - b.t)
+    .filter((c) => {
+      const prev = last.get(c.abilityId)
+      last.set(c.abilityId, c.t)
+      return prev === undefined || c.t - prev >= dedupeMs
+    })
+  const counts = new Map<number, number>()
+  for (const c of deduped) counts.set(c.abilityId, (counts.get(c.abilityId) ?? 0) + 1)
+  const mechanics = deduped.filter((c) => (counts.get(c.abilityId) ?? 0) <= maxOccurrences)
+
+  return divergences.map((d) => ({
+    ...d,
+    mechanics: mechanics.filter((m) => {
+      const d0 = distance(m.t)
+      return m.t >= d.start && m.t <= d.end && d0 !== null && d0 > thresholdYalm
+    }),
+  }))
 }
 
 /** 對稱位置能解釋大部分差距：對稱後距離在門檻的 3/4 內，且不到原距離的一半。 */
@@ -186,6 +239,7 @@ export function divergences(
         end: r.end,
         maxDistance: Math.max(...r.points.map((p) => p.distance ?? 0)),
         mirror: count > r.points.length / 2 ? common : null,
+        mechanics: [],
       }
     })
 }

@@ -1,4 +1,11 @@
-import { MIRROR_LABELS, type Divergence, type Point, type PositionSample, type TrackPoint } from '../analysis/positions'
+import {
+  distanceAt,
+  MIRROR_LABELS,
+  type Divergence,
+  type Point,
+  type PositionSample,
+  type TrackPoint,
+} from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
 
 // 地圖上顯示游標前多久的移動軌跡
@@ -6,6 +13,8 @@ const TRAIL_MS = 5000
 const MAP_SIZE = 360
 const CHART_WIDTH = 1000
 const CHART_HEIGHT = 90
+// 每段站位差異最多列出幾個機制
+const MAX_LISTED_MECHANICS = 3
 
 function nearest(track: TrackPoint[], t: number): TrackPoint | undefined {
   if (track.length === 0) return undefined
@@ -111,7 +120,7 @@ function DistanceChart({
       {divergences.map((d) => (
         <rect
           key={d.start}
-          className={d.mirror ? 'band mirrored' : 'band'}
+          className={d.mirror ? 'band mirrored' : d.mechanics.length > 0 ? 'band mechanic' : 'band'}
           x={x(d.start)}
           width={Math.max(2, x(d.end) - x(d.start))}
           y={0}
@@ -126,6 +135,7 @@ function DistanceChart({
 }
 
 export function Positions({
+  abilityName,
   track,
   divergences,
   mineSamples,
@@ -136,6 +146,7 @@ export function Positions({
   onSeek,
   onJump,
 }: {
+  abilityName: (id: number) => string
   track: TrackPoint[]
   divergences: Divergence[]
   /** 已換算成參考時間 */
@@ -152,13 +163,29 @@ export function Positions({
   const now = nearest(track, cursor)
   const hasData = track.some((p) => p.distance !== null)
   if (!hasData) return <p className="hint">這兩份日誌沒有足夠的位置資料。</p>
+  const atMechanic = divergences.filter((d) => d.mechanics.length > 0).length
+  const mirrored = divergences.filter((d) => d.mirror).length
+  // 同一段內重複的機制名稱只列一次，最多列 3 個；附上機制結算當下兩人的距離
+  const mechanicLabel = (d: Divergence) => {
+    const seen = new Set<string>()
+    const unique = d.mechanics
+      .map((m) => ({ name: abilityName(m.abilityId), t: m.t }))
+      .filter((m) => !seen.has(m.name) && seen.add(m.name))
+    const listed = unique.slice(0, MAX_LISTED_MECHANICS).map((m) => {
+      const distance = distanceAt(track, m.t)
+      return `${m.name}（${formatFightTime(m.t)}${distance != null ? `，相距 ${distance.toFixed(1)} yalm` : ''}）`
+    })
+    const more = unique.length > MAX_LISTED_MECHANICS ? ` 等 ${unique.length} 個` : ''
+    return listed.join('、') + more
+  }
 
   return (
     <section className="positions">
       <p>
-        兩人距離持續超過 {threshold} yalm 的時段共 {divergences.length} 段
-        {divergences.some((d) => d.mirror) && `，其中 ${divergences.filter((d) => d.mirror).length} 段可能是對稱站位（不同攻略）`}
-        。站位差異僅供參考，不同攻略或分配的站位本來就可能不同。
+        兩人距離持續超過 {threshold} yalm 的時段共 {divergences.length} 段，其中{' '}
+        <strong>{atMechanic} 段在 Boss 機制結算時仍站在不同位置</strong>（以「機制」標示，最值得對照）
+        {mirrored > 0 && `，${mirrored} 段可能是對稱站位（不同攻略）`}
+        。站位差異在機制結算時才有明顯意義；其餘多半只是移動路線不同。
       </p>
       <DistanceChart
         track={track}
@@ -189,12 +216,18 @@ export function Positions({
         </div>
         <ul className="divergence-list">
           {divergences.map((d) => (
-            <li key={d.start}>
+            <li key={d.start} className={d.mechanics.length > 0 ? 'at-mechanic' : undefined}>
               <button type="button" onClick={() => onJump(d.start)}>
                 {formatFightTime(d.start)}–{formatFightTime(d.end)}
               </button>{' '}
               最遠 {d.maxDistance.toFixed(1)} yalm
               {d.mirror && <span className="tag">可能是{MIRROR_LABELS[d.mirror]}站位</span>}
+              {d.mechanics.length > 0 && (
+                <div className="mechanic-note">
+                  <span className="tag mechanic">機制</span>
+                  {mechanicLabel(d)}
+                </div>
+              )}
             </li>
           ))}
         </ul>

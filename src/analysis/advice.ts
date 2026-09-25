@@ -70,6 +70,8 @@ const LATE_COOLDOWN_MS = 5000
 const LONG_DIVERGENCE_MS = 5000
 // 最多列出幾段停手／站位
 const MAX_ITEMS = 3
+// 機制結算時的站位差異最多列出幾段
+const MAX_MECHANIC_POSITIONS = 5
 
 const seconds = (ms: number) => (ms / 1000).toFixed(1)
 
@@ -237,24 +239,44 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUs
 }
 
 function positionAdvice(input: AdviceInput): Advice[] {
-  const { divergences, lost, mechanics } = input
+  const { divergences, lost, mechanics, abilityName } = input
   const overlapsLost = (d: Divergence) => lost.some((w) => w.refStart < d.end && w.refEnd > d.start)
-  const unexplained = divergences
-    .filter((d) => !d.mirror && d.end - d.start >= LONG_DIVERGENCE_MS)
-    .sort((a, b) => b.end - b.start - (a.end - a.start))
-  const items: Advice[] = unexplained.slice(0, MAX_ITEMS).map((d) => {
-    const byMechanic = mechanicNear(mechanics, d.start, d.end) !== undefined
+  const lostNote = (d: Divergence) => (overlapsLost(d) ? '這段同時少打了 GCD，站位可能讓你無法持續攻擊。' : '')
+  const unexplained = divergences.filter((d) => !d.mirror)
+
+  // 站位差異在 Boss 機制結算時才有明顯意義：有機制的差異優先列出，並指出是哪個機制
+  const atMechanic = unexplained
+    .filter((d) => d.mechanics.length > 0)
+    .sort((a, b) => Number(overlapsLost(b)) - Number(overlapsLost(a)) || b.maxDistance - a.maxDistance)
+    .slice(0, MAX_MECHANIC_POSITIONS)
+  const items: Advice[] = atMechanic.map((d) => {
+    const names = [...new Set(d.mechanics.map((m) => abilityName(m.abilityId)))].slice(0, 2).join('、')
+    const byVariant = mechanicNear(mechanics, d.start, d.end) !== undefined
     return {
-      // 機制本身不同時，站位不同是合理的，降一級
-      severity: byMechanic ? 'low' : overlapsLost(d) ? 'high' : 'medium',
-      title: `${formatFightTime(d.start)} 起 ${seconds(d.end - d.start)} 秒站位與參考不同（最遠 ${d.maxDistance.toFixed(1)} yalm）`,
+      // 機制本身隨機不同時，站位不同是合理的，降為參考
+      severity: byVariant ? 'low' : overlapsLost(d) ? 'high' : 'medium',
+      title: `${formatFightTime(d.mechanics[0].t)} 機制「${names}」結算時站位與參考不同（最遠 ${d.maxDistance.toFixed(1)} yalm）`,
       detail:
-        (overlapsLost(d)
-          ? '這段同時少打了 GCD，站位可能讓你無法持續攻擊。對照俯視圖看參考的站位與移動路線。'
-          : '對照俯視圖看參考的站位與移動路線；若是攻略分配不同可忽略。') + mechanicNote(input, d.start, d.end),
+        `差異從 ${formatFightTime(d.start)} 持續 ${seconds(d.end - d.start)} 秒。${lostNote(d)}` +
+        '對照俯視圖看參考在這個機制的站位與移動路線；若是攻略分配不同可忽略。' +
+        mechanicNote(input, d.start, d.end),
       at: d.start,
     }
   })
+
+  // 附近沒有機制的站位差異通常只是移動路線不同，只列出較長的幾段、列為參考
+  const elsewhere = unexplained
+    .filter((d) => d.mechanics.length === 0 && d.end - d.start >= LONG_DIVERGENCE_MS)
+    .sort((a, b) => b.end - b.start - (a.end - a.start))
+    .slice(0, MAX_ITEMS)
+  for (const d of elsewhere) {
+    items.push({
+      severity: 'low',
+      title: `${formatFightTime(d.start)} 起 ${seconds(d.end - d.start)} 秒站位與參考不同（附近沒有 Boss 機制）`,
+      detail: `最遠 ${d.maxDistance.toFixed(1)} yalm。${lostNote(d)}附近沒有 Boss 機制，差異可能只是移動路線不同。`,
+      at: d.start,
+    })
+  }
 
   const mirrored = divergences.filter((d) => d.mirror)
   if (mirrored.length > 0) {
