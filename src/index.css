@@ -341,10 +341,20 @@ h3 {
   color: var(--text-muted);
 }
 
-.tag.mitigation,
-.tag.movement {
+.usage .group-header th {
+  padding-top: 14px;
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 2px solid var(--border);
+}
+
+.usage tbody:first-of-type .group-header th {
+  padding-top: 4px;
+}
+
+.usage-group.mitigation .group-header th,
+.usage-group.movement .group-header th {
   color: var(--ref);
-  border-color: var(--ref);
 }
 
 .lost-list {

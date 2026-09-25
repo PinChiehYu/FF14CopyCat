@@ -4,7 +4,7 @@ import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import type { JobModule } from '../jobs'
 import type { AbilityCategory } from '../jobs/roleActions'
-import { AUTO_ATTACKS } from './load'
+import { groupUsage } from './usageGroups'
 
 const seconds = (ms: number, digits = 1) => (ms / 1000).toFixed(digits)
 
@@ -107,12 +107,27 @@ export function Metrics({
   lost: LostWindow[]
   onFocus: (refTime: number) => void
 }) {
-  const tag = (id: number) => {
-    if (AUTO_ATTACKS.has(id)) return '普通攻擊'
-    const kind = category(id)
-    if (kind === 'mitigation') return '減傷'
-    if (kind === 'movement') return '移動'
-    return job?.isGcd(id) ? 'GCD' : null
+  const groups = groupUsage(usage, category, job?.isGcd)
+  const row = (u: AbilityUsage) => {
+    const ability = abilities.get(u.abilityId)
+    const timing =
+      u.avgDelayMs === null
+        ? '—'
+        : Math.abs(u.avgDelayMs) < 500
+          ? '相同'
+          : `${u.avgDelayMs > 0 ? '晚' : '早'} ${seconds(Math.abs(u.avgDelayMs))} 秒`
+    return (
+      <tr key={u.abilityId} className={u.mine < u.ref ? 'fewer' : undefined}>
+        <th>
+          {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
+          <span title={ability?.englishName}>{ability?.name ?? `#${u.abilityId}`}</span>
+        </th>
+        <td>{u.mine}</td>
+        <td>{u.ref}</td>
+        <td>{u.mine === u.ref ? '' : signed(u.mine - u.ref, 0)}</td>
+        <td>{timing}</td>
+      </tr>
+    )
   }
   return (
     <section className="metrics">
@@ -133,32 +148,16 @@ export function Metrics({
             <th>平均時機</th>
           </tr>
         </thead>
-        <tbody>
-          {usage.map((u) => {
-            const ability = abilities.get(u.abilityId)
-            const timing =
-              u.avgDelayMs === null
-                ? '—'
-                : Math.abs(u.avgDelayMs) < 500
-                  ? '相同'
-                  : `${u.avgDelayMs > 0 ? '晚' : '早'} ${seconds(Math.abs(u.avgDelayMs))} 秒`
-            return (
-              <tr key={u.abilityId} className={u.mine < u.ref ? 'fewer' : undefined}>
-                <th>
-                  {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
-                  <span title={ability?.englishName}>{ability?.name ?? `#${u.abilityId}`}</span>
-                  {tag(u.abilityId) && (
-                    <span className={`tag ${category(u.abilityId)}`}>{tag(u.abilityId)}</span>
-                  )}
-                </th>
-                <td>{u.mine}</td>
-                <td>{u.ref}</td>
-                <td>{u.mine === u.ref ? '' : signed(u.mine - u.ref, 0)}</td>
-                <td>{timing}</td>
-              </tr>
-            )
-          })}
-        </tbody>
+        {groups.map((group) => (
+          <tbody key={group.key} className={`usage-group ${group.key}`}>
+            <tr className="group-header">
+              <th colSpan={5}>
+                {group.label}（{group.rows.length}）
+              </th>
+            </tr>
+            {group.rows.map(row)}
+          </tbody>
+        ))}
       </table>
       <p className="hint">
         平均時機：把你（依 Boss 機制對齊後）與參考的每次使用依序配對（相距 30 秒以內才算同一次），計算你平均早或晚多少；
