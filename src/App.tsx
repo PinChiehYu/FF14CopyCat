@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
 import { fetchFightNames, fetchReport, translateReport } from './fflogs/client'
-import { jobName } from './jobs/names'
+import { jobName, jobRole } from './jobs/names'
 import { Comparison } from './compare/Comparison'
 import type { Selection } from './compare/load'
 import type { Actor, Fight, Report } from './fflogs/types'
@@ -66,10 +66,13 @@ function fightOption(fight: Fight): DropdownOption<number> {
     value: fight.id,
     title: fight.englishName,
     content: (
-      <span className="option-row">
+      // 固定欄寬，讓每列的徽章與長度對齊
+      <span className="option-row fight-option">
         <span className="option-id">#{fight.id}</span>
         <span className="option-main">{fight.name}</span>
-        {outcome && <span className={`badge ${fight.kill ? 'kill' : 'wipe'}`}>{outcome}</span>}
+        <span className="option-badge">
+          {outcome && <span className={`badge ${fight.kill ? 'kill' : 'wipe'}`}>{outcome}</span>}
+        </span>
         <span className="option-meta">{formatFightTime(fight.endTime - fight.startTime)}</span>
       </span>
     ),
@@ -82,7 +85,7 @@ function playerOption(player: Actor): DropdownOption<number> {
     content: (
       <span className="option-row">
         <span className="option-main">{player.name}</span>
-        <span className="badge job">{jobName(player.subType)}</span>
+        <span className={`badge job ${jobRole(player.subType)}`}>{jobName(player.subType)}</span>
       </span>
     ),
   }
@@ -100,7 +103,7 @@ function ReportSelector({
   onChange: (selection: Selection | null) => void
 }) {
   const [overrides, setOverrides] = useState<Overrides>({ fightId: null, playerId: null })
-  const { fight, players, player, note } = resolveSelection(report, urlRef, overrides, preferred)
+  const { fight, players, player, note, locked } = resolveSelection(report, urlRef, overrides, preferred)
 
   useEffect(() => {
     onChange(fight && player ? { report, fight, player } : null)
@@ -122,6 +125,8 @@ function ReportSelector({
         options={players.map(playerOption)}
         value={player?.id ?? null}
         placeholder="請選擇角色"
+        disabled={locked}
+        disabledTitle="這場戰鬥只有這位與你同職業的玩家"
         onChange={(playerId) => setOverrides((o) => ({ ...o, playerId }))}
       />
       {note && !player && <p className="hint">{note}</p>}

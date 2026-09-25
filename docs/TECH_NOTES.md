@@ -258,6 +258,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
 
+### 2026-09-26 共用分頁元件；職能分類
+- 變更：新增 `src/ui/Tabs.tsx`（role=tablist，左右鍵切換，選中的分頁消失時回到第一個），用於建議與技能使用次數；`Dropdown` 新增 `disabled`；`jobs/names.ts` 新增 `jobRole()`（tank／healer／dps）；`resolveSelection()` 回傳 `locked`，有 `preferred` 時 `players` 只含同職業玩家。
+- 原因：介面改為分頁與鎖定參考角色（見 DESIGN.md）。
+
 ### 2026-09-26 Boss 名稱查詢；自訂下拉選單
 - 變更：Worker 新增 `/npc-names`（BNpcName 以英文搜尋）；前端載入報告後翻譯戰鬥名稱；新增 `src/ui/Dropdown.tsx` 取代戰鬥與角色的原生 `<select>`。Worker 已部署。
 - 原因：NPC 的 gameID 對不到名稱表，只能以英文名稱搜尋；原生 `<select>` 的選項無法排版徽章。

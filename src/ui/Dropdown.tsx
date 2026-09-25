@@ -14,12 +14,18 @@ export function Dropdown<T>({
   options,
   value,
   placeholder = '請選擇',
+  disabled = false,
+  disabledTitle,
   onChange,
 }: {
   label: string
   options: DropdownOption<T>[]
   value: T | null
   placeholder?: string
+  /** 鎖定選擇（例如參考日誌只有一位同職業玩家） */
+  disabled?: boolean
+  /** 鎖定時滑鼠停留的說明 */
+  disabledTitle?: string
   onChange: (value: T) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -85,16 +91,21 @@ export function Dropdown<T>({
         aria-expanded={open}
         aria-labelledby={`${id}-label`}
         aria-activedescendant={open ? `${id}-${active}` : undefined}
-        title={selected?.title}
+        title={disabled ? disabledTitle : selected?.title}
+        disabled={disabled}
         onClick={toggle}
         onKeyDown={onKeyDown}
       >
         <span className="dropdown-value">
           {selected ? selected.content : <span className="dropdown-placeholder">{placeholder}</span>}
         </span>
-        <span className="dropdown-arrow" aria-hidden="true" />
+        {disabled ? (
+          <span className="dropdown-lock">已鎖定</span>
+        ) : (
+          <span className="dropdown-arrow" aria-hidden="true" />
+        )}
       </button>
-      {open && (
+      {open && !disabled && (
         <ul className="dropdown-list" role="listbox" ref={list} aria-labelledby={`${id}-label`}>
           {options.map((o, i) => (
             <li

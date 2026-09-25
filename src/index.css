@@ -11,6 +11,9 @@
   --anchor: #7a3bd6;
   --kill: #2e7d32;
   --wipe: #c62828;
+  --tank: #2f6fd1;
+  --healer: #2e8b3e;
+  --dps: #c93838;
 
   font: 16px/1.5 system-ui, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
   color-scheme: light dark;
@@ -32,6 +35,9 @@
     --anchor: #c084fc;
     --kill: #6fcf8e;
     --wipe: #ef9a9a;
+    --tank: #7aa7f5;
+    --healer: #74d08a;
+    --dps: #f08a8a;
   }
 }
 
@@ -138,6 +144,18 @@ h1 {
   min-width: 0;
 }
 
+.dropdown-button:disabled {
+  cursor: default;
+  background: var(--surface);
+  border-style: dashed;
+}
+
+.dropdown-lock {
+  flex: none;
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
 .dropdown-placeholder {
   color: var(--text-muted);
 }
@@ -237,9 +255,35 @@ h1 {
   background: color-mix(in srgb, var(--wipe) 14%, transparent);
 }
 
-.badge.job {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+/* 職業依職能上色：坦克藍、治療綠、輸出紅 */
+.badge.job.tank {
+  color: var(--tank);
+  background: color-mix(in srgb, var(--tank) 14%, transparent);
+}
+
+.badge.job.healer {
+  color: var(--healer);
+  background: color-mix(in srgb, var(--healer) 14%, transparent);
+}
+
+.badge.job.dps {
+  color: var(--dps);
+  background: color-mix(in srgb, var(--dps) 14%, transparent);
+}
+
+/* 戰鬥選項：編號、名稱、結果、長度各自固定欄寬 */
+.fight-option {
+  display: grid;
+  grid-template-columns: 3em minmax(0, 1fr) 3.5em 4.8em;
+}
+
+.option-badge {
+  display: flex;
+  justify-content: center;
+}
+
+.fight-option .option-meta {
+  text-align: right;
 }
 
 .comparison {
@@ -482,20 +526,69 @@ h3 {
   color: var(--text-muted);
 }
 
-.usage .group-header th {
-  padding-top: 14px;
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9em;
+}
+
+.usage-card {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.usage-card.fewer {
+  border-left: 3px solid var(--error);
+}
+
+.usage-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 6px;
   font-weight: 600;
-  color: var(--text);
-  border-bottom: 2px solid var(--border);
 }
 
-.usage tbody:first-of-type .group-header th {
-  padding-top: 4px;
+.usage-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.usage-group.mitigation .group-header th,
-.usage-group.movement .group-header th {
+.usage-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1.6fr;
+  gap: 4px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-stats dt {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.usage-stats dt.mine {
+  color: var(--mine);
+}
+
+.usage-stats dt.ref {
   color: var(--ref);
+}
+
+.usage-stats dd {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.usage-card.fewer .usage-diff {
+  color: var(--error);
 }
 
 .lost-list {
@@ -528,28 +621,77 @@ h3 {
   gap: 8px;
 }
 
-.advice-groups {
-  display: grid;
-  gap: 8px;
-}
-
-.advice-group > summary {
+.tab-list {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  --tab-color: var(--accent);
+  display: inline-flex;
   align-items: center;
-  padding: 6px 4px;
-  cursor: pointer;
+  gap: 6px;
+  margin-bottom: -1px;
+  padding: 6px 14px;
+  font: inherit;
   font-weight: 600;
-}
-
-.advice-group > summary .count {
-  font-weight: normal;
   color: var(--text-muted);
-  font-size: 0.9em;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
 }
 
-.advice-group[open] > summary {
-  margin-bottom: 6px;
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.active {
+  color: var(--tab-color);
+  border-bottom-color: var(--tab-color);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.tab.high {
+  --tab-color: var(--error);
+}
+
+.tab.medium {
+  --tab-color: var(--mine);
+}
+
+.tab.low {
+  --tab-color: var(--text-muted);
+}
+
+.tab.mitigation,
+.tab.movement {
+  --tab-color: var(--ref);
+}
+
+.tab-count {
+  min-width: 1.6em;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: normal;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.tab.active .tab-count {
+  color: var(--tab-color);
+  border-color: color-mix(in srgb, var(--tab-color) 40%, var(--border));
 }
 
 .advice {
@@ -576,25 +718,6 @@ h3 {
   margin: 4px 0 0;
   font-size: 0.9em;
   color: var(--text-muted);
-}
-
-.advice-group .severity {
-  font-size: 0.85em;
-  padding: 1px 8px;
-  border-radius: 3px;
-  white-space: nowrap;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-}
-
-.advice-group.high .severity {
-  color: var(--error);
-  border-color: var(--error);
-}
-
-.advice-group.medium .severity {
-  color: var(--mine);
-  border-color: var(--mine);
 }
 
 .out-of-range {

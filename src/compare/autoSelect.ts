@@ -21,6 +21,8 @@ export interface Resolved {
   player: Actor | undefined
   /** 無法自動選擇角色時給使用者的說明 */
   note: string | null
+  /** 參考日誌只有一位與我同職業的玩家時鎖定，不讓使用者改選 */
+  locked: boolean
 }
 
 function pickFight(report: Report, urlRef: ReportRef, overrides: Overrides, preferred?: Preference): Fight | undefined {
@@ -41,7 +43,8 @@ function pickFight(report: Report, urlRef: ReportRef, overrides: Overrides, pref
 
 /**
  * 決定目前選擇的戰鬥與角色。優先順序：手動選擇 → 連結中的 fight / source → 依我的日誌自動選擇。
- * 角色自動選擇：這場戰鬥中與我同職業的玩家恰好一位時自動選取；兩位以上或沒有時留給使用者選。
+ * 參考日誌（有 preferred）只列出與我同職業的玩家：恰好一位時自動選取並鎖定；兩位以上時由使用者（或連結的 source）
+ * 在其中選擇；沒有時不選。
  */
 export function resolveSelection(
   report: Report,
@@ -53,14 +56,20 @@ export function resolveSelection(
   const players = fight ? playersInFight(report, fight) : []
   const byId = (id: number | null | undefined) => (id == null ? undefined : players.find((p) => p.id === id))
 
-  const chosen = byId(overrides.playerId) ?? byId(urlRef.sourceId)
-  if (chosen || !preferred) return { fight, players, player: chosen, note: null }
+  if (!preferred) {
+    const chosen = byId(overrides.playerId) ?? byId(urlRef.sourceId)
+    return { fight, players, player: chosen, note: null, locked: false }
+  }
 
+  // 已知我的職業：只能選同職業；只有一位時直接鎖定
   const sameJob = players.filter((p) => p.subType === preferred.subType)
-  if (sameJob.length === 1) return { fight, players, player: sameJob[0], note: null }
-  const note =
-    sameJob.length > 1
+  if (sameJob.length === 1) return { fight, players: sameJob, player: sameJob[0], note: null, locked: true }
+  const pick = (id: number | null | undefined) => (id == null ? undefined : sameJob.find((p) => p.id === id))
+  const chosen = pick(overrides.playerId) ?? pick(urlRef.sourceId)
+  const note = chosen
+    ? null
+    : sameJob.length > 1
       ? `這場戰鬥有 ${sameJob.length} 位${jobName(preferred.subType)}，請選擇要比較的對象`
       : `這場戰鬥沒有${jobName(preferred.subType)}`
-  return { fight, players, player: undefined, note }
+  return { fight, players: sameJob, player: chosen, note, locked: false }
 }

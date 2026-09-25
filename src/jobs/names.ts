@@ -25,6 +25,16 @@ const JOB_NAMES: Record<string, string> = {
   BlueMage: '青魔道士',
 }
 
+export type JobRole = 'tank' | 'healer' | 'dps'
+
+const TANKS = new Set(['Paladin', 'Warrior', 'DarkKnight', 'Gunbreaker'])
+const HEALERS = new Set(['WhiteMage', 'Scholar', 'Astrologian', 'Sage'])
+
+/** 職業的職能（坦克／治療／輸出），介面以藍／綠／紅區分；未知職業視為輸出。 */
+export function jobRole(subType: string): JobRole {
+  return TANKS.has(subType) ? 'tank' : HEALERS.has(subType) ? 'healer' : 'dps'
+}
+
 /** FFLogs 的 subType（例如 'BlackMage'）轉為繁中職業名稱；未知的職業沿用原名。 */
 export function jobName(subType: string): string {
   return JOB_NAMES[subType] ?? subType

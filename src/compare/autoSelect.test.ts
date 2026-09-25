@@ -61,16 +61,25 @@ describe('resolveSelection', () => {
     expect(absent.note).toBe('這場戰鬥沒有騎士')
   })
 
-  it('respects URL and manual choices over the preference', () => {
+  it('locks the only same-job player, ignoring URL and manual player choices', () => {
     const pref = { encounterID: 100, subType: 'Samurai' }
-    expect(resolveSelection(report, { reportCode: 'x', fight: 5, sourceId: 2 }, none, pref)).toMatchObject({
-      fight: { id: 5 },
-      player: { id: 2 },
-    })
+    const fromUrl = resolveSelection(report, { reportCode: 'x', fight: 5, sourceId: 2 }, none, pref)
+    expect(fromUrl).toMatchObject({ fight: { id: 5 }, player: { id: 1 }, locked: true })
+    expect(fromUrl.players.map((p) => p.id)).toEqual([1])
     expect(resolveSelection(report, { reportCode: 'x' }, { fightId: 3, playerId: 3 }, pref)).toMatchObject({
       fight: { id: 3 },
-      player: { id: 3 },
+      player: { id: 1 },
+      locked: true,
     })
+  })
+
+  it('lets the user choose among several same-job players only', () => {
+    const pref = { encounterID: 97, subType: 'Viper' }
+    const r = resolveSelection(report, { reportCode: 'x' }, { fightId: null, playerId: 4 }, pref)
+    expect(r).toMatchObject({ player: { id: 4 }, note: null, locked: false })
+    expect(r.players.map((p) => p.id)).toEqual([2, 4])
+    // 選了別的職業不算
+    expect(resolveSelection(report, { reportCode: 'x' }, { fightId: null, playerId: 1 }, pref).player).toBeUndefined()
   })
 
   it('falls back to the last fight when the encounter is missing', () => {

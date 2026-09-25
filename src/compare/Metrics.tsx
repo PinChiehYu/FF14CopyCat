@@ -5,6 +5,7 @@ import type { Ability } from '../fflogs/types'
 import type { JobModule } from '../jobs'
 import type { AbilityCategory } from '../jobs/roleActions'
 import { groupUsage } from './usageGroups'
+import { Tabs } from '../ui/Tabs'
 
 const seconds = (ms: number, digits = 1) => (ms / 1000).toFixed(digits)
 
@@ -116,19 +117,42 @@ export function Metrics({
         : Math.abs(u.avgDelayMs) < 500
           ? '相同'
           : `${u.avgDelayMs > 0 ? '晚' : '早'} ${seconds(Math.abs(u.avgDelayMs))} 秒`
+    const diff = u.mine - u.ref
     return (
-      <tr key={u.abilityId} className={u.mine < u.ref ? 'fewer' : undefined}>
-        <th>
+      <li key={u.abilityId} className={`usage-card${diff < 0 ? ' fewer' : diff > 0 ? ' more' : ''}`}>
+        <div className="usage-name" title={ability?.englishName}>
           {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
-          <span title={ability?.englishName}>{ability?.name ?? `#${u.abilityId}`}</span>
-        </th>
-        <td>{u.mine}</td>
-        <td>{u.ref}</td>
-        <td>{u.mine === u.ref ? '' : signed(u.mine - u.ref, 0)}</td>
-        <td>{timing}</td>
-      </tr>
+          <span>{ability?.name ?? `#${u.abilityId}`}</span>
+        </div>
+        <dl className="usage-stats">
+          <div>
+            <dt className="mine">我</dt>
+            <dd>{u.mine}</dd>
+          </div>
+          <div>
+            <dt className="ref">參考</dt>
+            <dd>{u.ref}</dd>
+          </div>
+          <div>
+            <dt>差距</dt>
+            <dd className="usage-diff">{diff === 0 ? '—' : signed(diff, 0)}</dd>
+          </div>
+          <div>
+            <dt>平均時機</dt>
+            <dd>{timing}</dd>
+          </div>
+        </dl>
+      </li>
     )
   }
+  // 依分類分頁，每頁以卡片橫向排列
+  const tabs = groups.map((group) => ({
+    key: group.key,
+    label: group.label,
+    count: group.rows.length,
+    variant: group.key,
+    content: <ul className="usage-grid">{group.rows.map(row)}</ul>,
+  }))
   return (
     <section className="metrics">
       {gcd ? (
@@ -138,27 +162,7 @@ export function Metrics({
       )}
 
       <h3>技能使用次數</h3>
-      <table className="metrics-table usage">
-        <thead>
-          <tr>
-            <th>技能</th>
-            <th className="mine">我</th>
-            <th className="ref">參考</th>
-            <th>差距</th>
-            <th>平均時機</th>
-          </tr>
-        </thead>
-        {groups.map((group) => (
-          <tbody key={group.key} className={`usage-group ${group.key}`}>
-            <tr className="group-header">
-              <th colSpan={5}>
-                {group.label}（{group.rows.length}）
-              </th>
-            </tr>
-            {group.rows.map(row)}
-          </tbody>
-        ))}
-      </table>
+      <Tabs tabs={tabs} label="技能分類" />
       <p className="hint">
         平均時機：把你（依 Boss 機制對齊後）與參考的每次使用依序配對（相距 30 秒以內才算同一次），計算你平均早或晚多少；
         使用 30 次以上的技能（連擊等）不計算。普通攻擊不顯示在時間軸，次數明顯較少通常代表離 Boss 太遠或停手較久。
