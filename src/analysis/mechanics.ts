@@ -22,6 +22,59 @@ export interface MechanicOptions {
   maxOccurrences?: number
 }
 
+/**
+ * 機制差異一側的技能名稱。同一次攻擊常由多個同名技能 ID 組成（例如多個判定），同名只列一次；
+ * 兩邊同名但 ID 不同（例如左右兩種版本）且這一側只有單一 ID 時附上 ID 才分得出來。
+ */
+export function mechanicLabel(ids: number[], others: number[], abilityName: (id: number) => string): string {
+  const byName = new Map<string, number[]>()
+  for (const id of ids) byName.set(abilityName(id), [...(byName.get(abilityName(id)) ?? []), id])
+  return [...byName]
+    .map(([name, own]) => {
+      const theirs = others.filter((o) => abilityName(o) === name)
+      const differs = theirs.some((o) => !own.includes(o))
+      return differs && own.length === 1 ? `${name} #${own[0]}` : name
+    })
+    .join('、')
+}
+
+export interface MergedDifference extends MechanicDifference {
+  /** 合併的最後一個時間點（參考時間） */
+  last: number
+  /** 合併了幾個時間點 */
+  count: number
+}
+
+/**
+ * 顯示用：同一招的連續結算（兩邊的技能名稱與類型都相同、間隔 gapMs 以內）合併成一列，ID 取聯集。
+ */
+export function mergeRepeats(
+  differences: MechanicDifference[],
+  abilityName: (id: number) => string,
+  gapMs = 6000,
+): MergedDifference[] {
+  const key = (ids: number[]) => [...new Set(ids.map(abilityName))].sort().join('|')
+  const merged: MergedDifference[] = []
+  for (const d of differences) {
+    const prev = merged.at(-1)
+    if (
+      prev &&
+      prev.kind === d.kind &&
+      d.t - prev.last <= gapMs &&
+      key(prev.mine) === key(d.mine) &&
+      key(prev.ref) === key(d.ref)
+    ) {
+      prev.last = d.t
+      prev.count++
+      prev.mine = [...new Set([...prev.mine, ...d.mine])]
+      prev.ref = [...new Set([...prev.ref, ...d.ref])]
+    } else {
+      merged.push({ ...d, last: d.t, count: 1 })
+    }
+  }
+  return merged
+}
+
 function dedupe(casts: TimedCast[], dedupeMs: number): TimedCast[] {
   const last = new Map<number, number>()
   return [...casts]

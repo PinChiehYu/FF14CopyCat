@@ -1,4 +1,51 @@
 import { describe, expect, it } from 'vitest'
+import { mechanicLabel, mergeRepeats } from './mechanics'
+
+describe('mergeRepeats', () => {
+  const names: Record<number, string> = { 1: '音頻爆炸', 2: '音頻爆炸', 5: '靜音爆炸', 7: '放入B面', 8: '放入A面' }
+  const name = (id: number) => names[id]
+
+  it('merges consecutive resolutions of the same mechanic', () => {
+    const merged = mergeRepeats(
+      [
+        { t: 191_500, mine: [1], ref: [5], kind: 'variant' },
+        { t: 196_500, mine: [1, 2], ref: [5], kind: 'variant' },
+        { t: 201_500, mine: [2], ref: [5], kind: 'variant' },
+        { t: 230_000, mine: [1], ref: [5], kind: 'variant' }, // 間隔太久
+        { t: 232_000, mine: [7], ref: [8], kind: 'variant' }, // 不同技能
+      ],
+      name,
+    )
+    expect(merged.map((m) => [m.t, m.last, m.count, m.mine])).toEqual([
+      [191_500, 201_500, 3, [1, 2]],
+      [230_000, 230_000, 1, [1]],
+      [232_000, 232_000, 1, [7]],
+    ])
+  })
+})
+
+describe('mechanicLabel', () => {
+  const names: Record<number, string> = {
+    1: '四連指向、定格＆播放',
+    2: '四連指向、定格＆播放',
+    3: '四連指向、定格＆播放',
+    4: '四連指向、定格＆播放',
+    10: '英雄之擊',
+    11: '英雄之擊',
+    20: '月焚',
+  }
+  const name = (id: number) => names[id]
+
+  it('shows a multi-hit attack made of several same-name IDs once', () => {
+    expect(mechanicLabel([1, 2, 3, 4], [], name)).toBe('四連指向、定格＆播放')
+    expect(mechanicLabel([1, 2, 3, 4, 20], [1, 2, 3], name)).toBe('四連指向、定格＆播放、月焚')
+  })
+
+  it('keeps the ID for single-ID variants with the same name on the other side', () => {
+    expect(mechanicLabel([10], [11], name)).toBe('英雄之擊 #10')
+    expect(mechanicLabel([11], [10], name)).toBe('英雄之擊 #11')
+  })
+})
 import type { TimedCast } from './alignment'
 import { mechanicDifferences } from './mechanics'
 

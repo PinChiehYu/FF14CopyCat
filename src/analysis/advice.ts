@@ -1,5 +1,5 @@
 import type { AbilityCategory } from '../jobs/roleActions'
-import type { MechanicDifference } from './mechanics'
+import { mechanicLabel, type MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
 import { MIRROR_LABELS, type Divergence, type TrackPoint } from './positions'
 import { formatFightTime } from './timeline'
@@ -48,14 +48,8 @@ function mechanicNear(mechanics: MechanicDifference[] | undefined, start: number
 function mechanicNote(input: AdviceInput, start: number, end: number): string {
   const m = mechanicNear(input.mechanics, start, end)
   if (!m) return ''
-  // 同名不同 ID 的變化（例如左右兩種版本）附上 ID 才分得出來
-  const all = [...m.mine, ...m.ref]
-  const label = (id: number) => {
-    const name = input.abilityName(id)
-    return all.some((o) => o !== id && input.abilityName(o) === name) ? `${name} #${id}` : name
-  }
-  const names = (ids: number[]) => ids.map(label).join('、')
-  return `這段之前 Boss 的隨機機制不同（你：${names(m.mine)}；參考：${names(m.ref)}），差異可能是機制造成。`
+  const names = (ids: number[], others: number[]) => mechanicLabel(ids, others, input.abilityName)
+  return `這段之前 Boss 的隨機機制不同（你：${names(m.mine, m.ref)}；參考：${names(m.ref, m.mine)}），差異可能是機制造成。`
 }
 
 const POTION_NAME = /Gemdraught|Tincture|Draught|Potion/i
