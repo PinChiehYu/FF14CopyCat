@@ -39,6 +39,17 @@ describe('groupUsage', () => {
     ])
   })
 
+  it('puts abilities I used fewer times first, most missing uses first', () => {
+    const usage = [
+      { ...row(9), mine: 12, ref: 10 }, // 多用
+      { ...row(15), mine: 8, ref: 9 }, // 少 1
+      { ...row(16), mine: 3, ref: 3 },
+      { ...row(21), mine: 2, ref: 6 }, // 少 4
+    ]
+    const [gcd] = groupUsage(usage, category, paladin.isGcd)
+    expect(gcd.rows.map((r) => r.abilityId)).toEqual([21, 15, 9, 16])
+  })
+
   it('omits empty groups and treats everything as non-GCD without GCD rules', () => {
     const groups = groupUsage([row(9), row(20)], category)
     expect(groups.map((g) => g.label)).toEqual(['非 GCD'])

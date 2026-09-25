@@ -32,7 +32,14 @@ export function usageGroupOf(
   return isGcd?.(abilityId) ? 'gcd' : 'ogcd'
 }
 
-/** 依固定順序分組，組內維持原本的排序；空的分組不回傳。 */
+/** 組內排序：我比參考少用的技能在前（少得越多越前面），其餘維持原本的排序。 */
+function fewerFirst(a: AbilityUsage, b: AbilityUsage): number {
+  const fewerA = Math.max(0, a.ref - a.mine)
+  const fewerB = Math.max(0, b.ref - b.mine)
+  return fewerB - fewerA
+}
+
+/** 依固定順序分組，組內少用的技能優先；空的分組不回傳。 */
 export function groupUsage(
   usage: AbilityUsage[],
   category: (id: number) => AbilityCategory,
@@ -41,6 +48,6 @@ export function groupUsage(
   return GROUPS.map(({ key, label }) => ({
     key,
     label,
-    rows: usage.filter((u) => usageGroupOf(u.abilityId, category, isGcd) === key),
+    rows: usage.filter((u) => usageGroupOf(u.abilityId, category, isGcd) === key).sort(fewerFirst),
   })).filter((g) => g.rows.length > 0)
 }
