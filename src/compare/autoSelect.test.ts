@@ -19,7 +19,7 @@ const report: Report = {
     fight(1, 100, false, [1, 2, 3]),
     fight(2, 100, true, [1, 2, 3]), // Howling Blade 擊殺：一位武士
     fight(3, 100, false, [1, 2, 3]),
-    fight(4, 97, true, [1, 2, 3, 4]), // Dancing Green 擊殺：兩位蝰蛇
+    fight(4, 97, true, [1, 2, 3, 4]), // Dancing Green 擊殺：兩位毒蛇劍士
     fight(5, 98, true, [1, 2]),
   ],
   masterData: {
@@ -48,7 +48,7 @@ describe('resolveSelection', () => {
     const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 97, subType: 'Viper' })
     expect(r.fight?.id).toBe(4)
     expect(r.player).toBeUndefined()
-    expect(r.note).toMatch('2 位 Viper')
+    expect(r.note).toBe('這場戰鬥有 2 位毒蛇劍士，請選擇要比較的對象')
   })
 
   it('explains when the job is absent', () => {
@@ -58,7 +58,7 @@ describe('resolveSelection', () => {
 
     const absent = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 98, subType: 'Paladin' })
     expect(absent.player).toBeUndefined()
-    expect(absent.note).toMatch('沒有 Paladin')
+    expect(absent.note).toBe('這場戰鬥沒有騎士')
   })
 
   it('respects URL and manual choices over the preference', () => {

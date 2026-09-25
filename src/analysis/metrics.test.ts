@@ -78,13 +78,14 @@ describe('abilityUsage', () => {
       { t: 5000, abilityId: 2 },
     ]
     const rows = abilityUsage(mine, ref, identity)
-    expect(rows[0]).toEqual({ abilityId: 1, mine: 2, ref: 3, matched: 2, avgDelayMs: 3000 })
-    expect(rows[1]).toEqual({ abilityId: 2, mine: 1, ref: 1, matched: 1, avgDelayMs: 0 })
+    // 參考第 3 次（126 秒）沒有對應的使用
+    expect(rows[0]).toEqual({ abilityId: 1, mine: 2, ref: 3, matched: 2, avgDelayMs: 3000, unmatchedRef: [126_000] })
+    expect(rows[1]).toEqual({ abilityId: 2, mine: 1, ref: 1, matched: 1, avgDelayMs: 0, unmatchedRef: [] })
   })
 
   it('reports abilities used by only one side', () => {
     const rows = abilityUsage([{ t: 0, abilityId: 9 }], [], identity)
-    expect(rows).toEqual([{ abilityId: 9, mine: 1, ref: 0, matched: 0, avgDelayMs: null }])
+    expect(rows).toEqual([{ abilityId: 9, mine: 1, ref: 0, matched: 0, avgDelayMs: null, unmatchedRef: [] }])
   })
 
   it('skips timing for spammed abilities', () => {

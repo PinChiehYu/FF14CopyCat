@@ -8,7 +8,8 @@ import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, type AbilityName } from '../fflogs/client'
 import { abilityMap } from '../fflogs/report'
 import { getJob } from '../jobs'
-import { clipSide, incompatibility, loadSide, type Selection, type SideData } from './load'
+import { abilityCategory } from '../jobs/roleActions'
+import { clipSide, incompatibility, loadSide, withoutAbilities, type Selection, type SideData } from './load'
 import { AdviceList } from './AdviceList'
 import { Mechanics } from './Mechanics'
 import { Metrics } from './Metrics'
@@ -61,7 +62,12 @@ function killLabel(side: SideData): string {
   return side.selection.fight.kill ? '（擊殺）' : '（滅團）'
 }
 
-function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
+function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; reference: SideData }) {
+  const job = getJob(refLoaded.selection.player.subType)
+  // 不需紀錄的技能（挑釁、退避、坦姿開關）一開始就移除
+  const category = useMemo(() => (id: number) => abilityCategory(id, job), [job])
+  const mine = useMemo(() => withoutAbilities(mineLoaded, (id) => category(id) === 'ignored'), [mineLoaded, category])
+  const reference = useMemo(() => withoutAbilities(refLoaded, (id) => category(id) === 'ignored'), [refLoaded, category])
   const alignment = useMemo(() => buildAlignment(mine.bossCasts, reference.bossCasts), [mine, reference])
   const zhNames = useAbilityNames(mine, reference)
   // 顯示用：有繁中名稱時取代 FFLogs 的英文名稱，英文保留在 englishName
@@ -73,7 +79,6 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
     }
     return merged
   }, [mine, reference, zhNames])
-  const job = getJob(reference.selection.player.subType)
   const drifts = alignment.anchors.map((a) => (a.ref - a.mine) / 1000)
 
   // 比較範圍：兩場戰鬥都還在進行的時段（參考時間 0～較短一方結束）。
@@ -139,11 +144,11 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
           return a?.englishName ?? a?.name ?? `#${id}`
         },
         isGcd: job?.isGcd,
-        isUtility: job?.utility ? (id) => job.utility!.has(id) : undefined,
+        category,
         mineToRef: alignment.mineToRef,
         firstUse: (id) => mineInRange.playerCasts.find((c) => c.abilityId === id)?.t,
       }),
-    [compareEnd, gcd, lost, usage, positions, abilities, job, alignment, mineInRange, mechanics],
+    [compareEnd, gcd, lost, usage, positions, abilities, job, category, alignment, mineInRange, mechanics],
   )
 
   // 目前檢視的參考時間（站位圖、時間軸游標）
@@ -183,7 +188,15 @@ function Loaded({ mine, reference }: { mine: SideData; reference: SideData }) {
       <AdviceList advice={advice} onJump={jumpTo} />
       <h3>Boss 機制差異</h3>
       <Mechanics differences={mechanics} abilityName={abilityName} onJump={jumpTo} />
-      <Metrics gcd={gcd} usage={usage} abilities={abilities} job={job} lost={lost} onFocus={jumpTo} />
+      <Metrics
+        gcd={gcd}
+        usage={usage}
+        abilities={abilities}
+        job={job}
+        category={category}
+        lost={lost}
+        onFocus={jumpTo}
+      />
       <h3>站位比較</h3>
       <Positions
         track={positions.track}

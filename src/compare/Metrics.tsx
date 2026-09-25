@@ -3,6 +3,7 @@ import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import type { JobModule } from '../jobs'
+import type { AbilityCategory } from '../jobs/roleActions'
 import { AUTO_ATTACKS } from './load'
 
 const seconds = (ms: number, digits = 1) => (ms / 1000).toFixed(digits)
@@ -93,6 +94,7 @@ export function Metrics({
   usage,
   abilities,
   job,
+  category,
   lost,
   onFocus,
 }: {
@@ -101,9 +103,17 @@ export function Metrics({
   usage: AbilityUsage[]
   abilities: Map<number, Ability>
   job: JobModule | undefined
+  category: (abilityId: number) => AbilityCategory
   lost: LostWindow[]
   onFocus: (refTime: number) => void
 }) {
+  const tag = (id: number) => {
+    if (AUTO_ATTACKS.has(id)) return '普通攻擊'
+    const kind = category(id)
+    if (kind === 'mitigation') return '減傷'
+    if (kind === 'movement') return '移動'
+    return job?.isGcd(id) ? 'GCD' : null
+  }
   return (
     <section className="metrics">
       {gcd ? (
@@ -137,10 +147,8 @@ export function Metrics({
                 <th>
                   {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
                   <span title={ability?.englishName}>{ability?.name ?? `#${u.abilityId}`}</span>
-                  {AUTO_ATTACKS.has(u.abilityId) ? (
-                    <span className="tag">普通攻擊</span>
-                  ) : (
-                    job?.isGcd(u.abilityId) && <span className="tag">GCD</span>
+                  {tag(u.abilityId) && (
+                    <span className={`tag ${category(u.abilityId)}`}>{tag(u.abilityId)}</span>
                   )}
                 </th>
                 <td>{u.mine}</td>

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { paladin } from '../jobs/paladin'
+import { abilityCategory } from '../jobs/roleActions'
 import { generateAdvice, type AdviceInput } from './advice'
 import type { AbilityUsage } from './metrics'
 import type { TrackPoint } from './positions'
@@ -12,8 +14,15 @@ const names: Record<number, string> = {
   6: 'Gekko',
 }
 
-function usage(abilityId: number, mine: number, ref: number, avgDelayMs: number | null = 0, matched = Math.min(mine, ref)): AbilityUsage {
-  return { abilityId, mine, ref, matched, avgDelayMs }
+function usage(
+  abilityId: number,
+  mine: number,
+  ref: number,
+  avgDelayMs: number | null = 0,
+  matched = Math.min(mine, ref),
+  unmatchedRef: number[] = [],
+): AbilityUsage {
+  return { abilityId, mine, ref, matched, avgDelayMs, unmatchedRef }
 }
 
 function input(overrides: Partial<AdviceInput> = {}): AdviceInput {
@@ -26,6 +35,8 @@ function input(overrides: Partial<AdviceInput> = {}): AdviceInput {
     track: [],
     abilityName: (id) => names[id] ?? `#${id}`,
     isGcd: (id) => id === 2 || id === 6,
+    // 使用實際的分類：騎士模組（減傷、坦姿）加上職能技能
+    category: (id) => abilityCategory(id, paladin),
     mineToRef: (t) => t,
     firstUse: () => undefined,
     ...overrides,
@@ -71,28 +82,56 @@ describe('generateAdvice', () => {
     expect(a.title).toMatch('約少 4.6 個 GCD')
   })
 
-  it('ranks missed potions and cooldowns above role actions', () => {
+  it('ranks missed potions and cooldowns above other utility actions', () => {
+    // 7546 True North、7541 Second Wind 為其他輔助技能
     const advice = generateAdvice(
-      input({ usage: [usage(3, 0, 6), usage(1, 5, 7), usage(5, 14, 15), usage(4, 0, 3)] }),
+      input({ usage: [usage(7546, 0, 4), usage(1, 5, 7), usage(5, 14, 15), usage(4, 0, 3), usage(7541, 0, 1)] }),
     )
     expect(advice.map((a) => a.title)).toEqual([
       'Ikishoten 少用 2 次（你 5 次、參考 7 次）',
       '爆發藥少用 3 次（你 0 次、參考 3 次）',
       '1 個技能各少用 1 次',
-      '職能與防禦技能使用次數較少',
+      '輔助技能使用次數較少',
     ])
     expect(advice.map((a) => a.severity)).toEqual(['high', 'high', 'medium', 'low'])
-    expect(advice[3].detail).toMatch('Sprint（0／6）')
+    expect(advice[3].detail).toMatch('#7546（0／4）、#7541（0／1）')
   })
 
-  it('groups job defensives and tank role actions instead of flagging them as missed cooldowns', () => {
-    // 7382 Intervention（職業防禦技）、7535 Reprisal（坦克職能技能），且都較晚使用
+  it('ignores tank provoke, shirk and stance toggles', () => {
+    // 7533 Provoke、7537 Shirk、28 Iron Will、32065 Release Iron Will
     const advice = generateAdvice(
-      input({ usage: [usage(7382, 2, 7), usage(7535, 7, 9, 9000, 7)], isUtility: (id) => id === 7382 }),
+      input({ usage: [usage(7533, 1, 3), usage(7537, 0, 2), usage(28, 0, 4), usage(32065, 0, 4)] }),
     )
-    expect(advice).toHaveLength(1)
-    expect(advice[0]).toMatchObject({ severity: 'low', title: '職能與防禦技能使用次數較少' })
-    expect(advice[0].detail).toMatch('#7382（2／7）、#7535（7／9）')
+    expect(advice).toEqual([])
+  })
+
+  it('lists when the reference used mitigation that I did not', () => {
+    // 7535 Reprisal（職能減傷）、7382 Intervention（騎士減傷）
+    const advice = generateAdvice(
+      input({
+        usage: [
+          usage(7535, 6, 9, 0, 6, [83_000, 225_000, 400_000]),
+          usage(7382, 7, 7, 0, 6, [300_000]),
+        ],
+      }),
+    )
+    expect(advice[0]).toMatchObject({
+      severity: 'high',
+      title: '減傷：#7535 少用 3 次（你 6 次、參考 9 次）',
+      at: 83_000,
+    })
+    expect(advice[0].detail).toMatch('參考在 1:23.0、3:45.0、6:40.0 使用，你在前後 30 秒內沒有使用')
+    expect(advice[1]).toMatchObject({ severity: 'medium', title: '減傷：#7382 有 1 次使用時機與參考不同', at: 300_000 })
+  })
+
+  it('treats Sprint as an important movement action', () => {
+    const [a] = generateAdvice(input({ usage: [usage(3, 0, 6, null, 0, [10_000, 70_000])] }))
+    expect(a).toMatchObject({ severity: 'high', title: '移動：Sprint 少用 6 次（你 0 次、參考 6 次）', at: 10_000 })
+  })
+
+  it('flags late mitigation', () => {
+    const [a] = generateAdvice(input({ usage: [usage(7531, 5, 5, 8000, 5)] })) // Rampart
+    expect(a).toMatchObject({ severity: 'medium', title: '減傷：#7531 平均比參考晚 8.0 秒使用' })
   })
 
   it('detects potions by English name when display names are translated', () => {

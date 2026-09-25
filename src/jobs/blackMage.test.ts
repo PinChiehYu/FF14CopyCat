@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getJob } from './index'
+import { abilityCategory } from './roleActions'
 
 describe('blackMage', () => {
   const blm = getJob('BlackMage')!
@@ -18,9 +19,12 @@ describe('blackMage', () => {
     }
   })
 
-  it('marks defensive and movement abilities as utility', () => {
-    expect(blm.utility?.has(157)).toBe(true) // Manaward
-    expect(blm.utility?.has(36988)).toBe(true) // Retrace
-    expect(blm.utility?.has(3573)).toBe(false) // Ley Lines 是輸出技能
+  it('classifies mitigation and movement abilities', () => {
+    expect(abilityCategory(157, blm)).toBe('mitigation') // Manaward
+    expect(abilityCategory(155, blm)).toBe('movement') // Aetherial Manipulation
+    expect(abilityCategory(36988, blm)).toBe('movement') // Retrace
+    expect(abilityCategory(3, blm)).toBe('movement') // Sprint（職能）
+    expect(abilityCategory(7560, blm)).toBe('mitigation') // Addle（職能）
+    expect(abilityCategory(3573, blm)).toBe('normal') // Ley Lines 是輸出技能
   })
 })

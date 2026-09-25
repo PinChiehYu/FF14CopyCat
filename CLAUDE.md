@@ -60,12 +60,12 @@ node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的
 `App.tsx`（貼連結、選戰鬥與玩家；選擇規則在 `compare/autoSelect.ts` 的 `resolveSelection()`，參考日誌以我的 Boss／職業為 `preferred` 自動選擇）→ `compare/Comparison.tsx`（檢查同 Boss／同職業；每邊載入玩家全部事件與敵方施放，共 4 個請求；載入後另查技能繁中名稱）→ `analysis/alignment.ts`（`buildAlignment()` 產生 `mineToRef()`）→ `compare/AdviceList.tsx`（`analysis/advice.ts` 的規則式建議，彙整下列各分析）＋ `compare/Mechanics.tsx`（`analysis/mechanics.ts` 的 Boss 機制差異）＋ `compare/Metrics.tsx`（`analysis/metrics.ts` 的 GCD 概況、少打 GCD 的時段、技能次數與時機）＋ `compare/Positions.tsx`（`analysis/positions.ts` 的站位差異與對稱判斷、俯視圖）＋ `compare/Timeline.tsx`（以參考時間為橫軸的並排時間軸，可標示區段與捲動到指定時間）。玩家施放時間取開始施放（`load.ts` 的 `playerCasts()` 以 `begincast` 取代 `cast`）；普通攻擊（#7、#8）另存 `autoAttacks`，只列入技能使用次數。GCD 推估上限 2.5 秒（`metrics.ts`）。玩家資料抓 `dataType=All`，施放與位置都從中取得（全部事件中也有別人對玩家的施放，要以 `sourceID` 過濾）。`Comparison.tsx` 持有共用的時間游標 `cursor`（參考時間）與時間軸捲動用的 `focus`。所有統計都用裁切到比較範圍的 `mineInRange`／`refInRange`（`clipSide()`），只有時間軸與 Boss 機制差異用完整資料；新增統計時也要用裁切後的資料。
 
 - 對齊演算法的細節見 [docs/DESIGN.md](docs/DESIGN.md)，實測數據與調整經過見 [docs/TECH_NOTES.md](docs/TECH_NOTES.md)；調整門檻（`maxOccurrences`、`dedupeMs` 等）前先用實際日誌驗證，並把結果記到 TECH_NOTES.md。
-- 職業規則放在 `src/jobs/<job>.ts`，實作 `JobModule` 並加入 `jobs/index.ts` 的 `JOBS`；以 FFLogs `subType`（如 `Viper`）查找。
+- 職業規則放在 `src/jobs/<job>.ts`，實作 `JobModule` 並加入 `jobs/index.ts` 的 `JOBS`；以 FFLogs `subType`（如 `Viper`）查找。技能分類（ignored／mitigation／movement／utility）由 `jobs/roleActions.ts` 的 `abilityCategory()` 決定：職能技能內建，職業專屬技能由模組提供；ignored 的技能在比較開始時就移除。介面上的職業名稱一律用 `jobs/names.ts` 的 `jobName()`（官方繁中）。**憑記憶寫的技能 ID 要先用遊戲資料查證**（方法見 TECH_NOTES.md）。
 - React 19 中 `ref` 是保留 prop，元件 prop 不要命名為 `ref`（比較雙方用 `mine` / `reference`）。
 - 本機測試可在 `.env.local` 設 `VITE_API_BASE=https://ff14-copycat-api.ff14-copycat.workers.dev` 直接連已部署的 Worker（`ALLOWED_ORIGINS` 已含 `http://localhost:5173`）。測試用公開報告：`WATKBdHRh7m8PNQt`（fight 10 滅團 / 11 擊殺 Sugar Riot，Viper 玩家 source=34）；**使用者指定的比較基準**（皆為 Howling Blade 擊殺，驗證功能時兩組都要測）：
   - 武士：我的日誌 `https://www.fflogs.com/reports/FXLkqaK32PhQH8Ac?fight=1`（席德，source 6）、高階玩家 `https://www.fflogs.com/reports/pwTF16cgnB9G7fWM?fight=29`（安祖卡，source 13）。
   - 騎士：我的日誌 `https://www.fflogs.com/reports/hqNYDGK9A4pmWVXB?fight=18`（神曲莊園，source 40）、高階玩家 `https://www.fflogs.com/reports/khNfTaMtYwKBd36b?fight=10`（Lavid，source 5）。參考擊殺快 61 秒，可測大幅時間差與坦克技能。
-  - 黑魔法師（驗證用，非使用者指定）：`https://www.fflogs.com/reports/bX97vBapCPwKndL6?fight=3`（春風醒，source 2）vs `https://www.fflogs.com/reports/h6gRJZ2pfDFYMPjX?fight=13`（Nana七，source 28）。
+  - 黑魔道士（驗證用，非使用者指定）：`https://www.fflogs.com/reports/bX97vBapCPwKndL6?fight=3`（春風醒，source 2）vs `https://www.fflogs.com/reports/h6gRJZ2pfDFYMPjX?fight=13`（Nana七，source 28）。
 - 已支援職業：Viper、Samurai、Paladin、BlackMage（`src/jobs/`）。新增或修改職業模組時，用 `begincast` 為起點計算 GCD 間隔驗證分類（方法見 DESIGN.md 職業模組一節，各職業的驗證結果記在 TECH_NOTES.md）。所有測試日誌與已排除的連結也列在 TECH_NOTES.md「測試資料」。
 
 ## 專案目標

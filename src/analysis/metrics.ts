@@ -79,6 +79,8 @@ export interface AbilityUsage {
   matched: number
   /** 配對到的使用中，我（對齊後）比參考晚多少毫秒的平均；負值代表較早。沒有配對時為 null */
   avgDelayMs: number | null
+  /** 參考有使用、但我在前後 30 秒內沒有對應使用的時間（參考時間）；不計算時機的技能為空 */
+  unmatchedRef: number[]
 }
 
 // 兩次使用相距超過此值就不視為「同一次」
@@ -90,6 +92,11 @@ const MAX_MATCH_MS = 30_000
  * @returns 各配對的時間差（mine - ref）
  */
 export function matchUses(mine: number[], ref: number[], maxMs = MAX_MATCH_MS): number[] {
+  return matchPairs(mine, ref, maxMs).map(([i, j]) => mine[i] - ref[j])
+}
+
+/** 同 matchUses，回傳配對的索引 [mine 索引, ref 索引]。 */
+export function matchPairs(mine: number[], ref: number[], maxMs = MAX_MATCH_MS): [number, number][] {
   const n = mine.length
   const m = ref.length
   // best[i][j]：mine[i..] 與 ref[j..] 的最佳結果
@@ -116,19 +123,19 @@ export function matchUses(mine: number[], ref: number[], maxMs = MAX_MATCH_MS): 
     }
   }
 
-  const delays: number[] = []
+  const pairs: [number, number][] = []
   let i = 0
   let j = 0
   while (i < n && j < m) {
     const cell = best[i][j]
     if (cell.take) {
-      delays.push(mine[i] - ref[j])
+      pairs.push([i, j])
       i++
       j++
     } else if (cell.skipMine) i++
     else j++
   }
-  return delays
+  return pairs
 }
 
 /**
@@ -153,13 +160,17 @@ export function abilityUsage(
   const rows: AbilityUsage[] = [...ids].map((abilityId) => {
     const m = mine.get(abilityId) ?? []
     const r = ref.get(abilityId) ?? []
-    const delays = Math.max(m.length, r.length) <= maxUsesForTiming ? matchUses(m, r) : []
+    const timed = Math.max(m.length, r.length) <= maxUsesForTiming
+    const pairs = timed ? matchPairs(m, r) : []
+    const delays = pairs.map(([i, j]) => m[i] - r[j])
+    const matchedRef = new Set(pairs.map(([, j]) => j))
     return {
       abilityId,
       mine: m.length,
       ref: r.length,
       matched: delays.length,
       avgDelayMs: delays.length > 0 ? delays.reduce((a, b) => a + b, 0) / delays.length : null,
+      unmatchedRef: timed ? r.filter((_, j) => !matchedRef.has(j)) : [],
     }
   })
   return rows.sort((a, b) => Math.abs(b.ref - b.mine) - Math.abs(a.ref - a.mine) || b.ref - a.ref)

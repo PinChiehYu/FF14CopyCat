@@ -2,6 +2,7 @@ import type { TimedCast } from '../analysis/alignment'
 import type { PositionSample } from '../analysis/positions'
 import { toFightTime } from '../analysis/timeline'
 import { fetchFightEvents } from '../fflogs/client'
+import { jobName } from '../jobs/names'
 import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
 
 export interface Selection {
@@ -132,13 +133,18 @@ export function clipSide(side: SideData, endMs: number): SideData {
   }
 }
 
+/** 移除不需紀錄的技能（例如坦克的挑釁、退避、坦姿開關），時間軸、技能次數與建議都不顯示。 */
+export function withoutAbilities(side: SideData, drop: (abilityId: number) => boolean): SideData {
+  return { ...side, playerCasts: side.playerCasts.filter((c) => !drop(c.abilityId)) }
+}
+
 /** 兩邊是否可比較；不行時回傳原因。 */
 export function incompatibility(mine: Selection, ref: Selection): string | null {
   if (mine.fight.encounterID !== ref.fight.encounterID) {
     return `兩場戰鬥不是同一個 Boss（${mine.fight.name} / ${ref.fight.name}）`
   }
   if (mine.player.subType !== ref.player.subType) {
-    return `兩位玩家的職業不同（${mine.player.subType} / ${ref.player.subType}），目前只支援同職業比較`
+    return `兩位玩家的職業不同（${jobName(mine.player.subType)} / ${jobName(ref.player.subType)}），目前只支援同職業比較`
   }
   return null
 }

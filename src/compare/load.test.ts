@@ -107,6 +107,6 @@ describe('incompatibility', () => {
 
   it('rejects different encounters or jobs', () => {
     expect(incompatibility(selection(98, 'Viper'), selection(99, 'Viper'))).toMatch('Boss')
-    expect(incompatibility(selection(98, 'Viper'), selection(98, 'Samurai'))).toMatch('職業')
+    expect(incompatibility(selection(98, 'Viper'), selection(98, 'Samurai'))).toMatch('職業不同（毒蛇劍士 / 武士）')
   })
 })

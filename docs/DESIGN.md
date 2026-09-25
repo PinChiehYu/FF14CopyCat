@@ -44,6 +44,7 @@
 
 - **玩家施放**：只取玩家自己（`sourceID`）的施放；施放時間取「開始施放」——有詠唱條的技能以同技能前一個 `begincast`（5 秒內）取代 `cast`，被打斷的詠唱不計。
 - **普通攻擊**（Attack #7、Shot #8）另存 `autoAttacks`：不畫在時間軸、不計入 GCD 與建議，只列入技能使用次數。
+- **不紀錄的技能**（ignored 分類，例如坦克的挑釁、坦姿開關）在比較開始時就從玩家施放中移除（`withoutAbilities()`）。
 - **Boss 施放**：敵方的 `cast` 事件。
 - **位置**：事件中該角色為 source 的 `sourceResources` 或為 target 的 `targetResources`，座標 ÷100 為 yalm；同時間重複取樣去除。Boss 位置取施放最多次的敵人。
 
@@ -75,15 +76,24 @@
 
 ### 職業模組（`src/jobs/`）
 
-- `JobModule`：`subType`（FFLogs 的職業名稱）、中文名稱、`isGcd(abilityId)`、`utility`（防禦／減傷／輔助技能，依攻略使用；建議中與職能技能合併為低優先，不列為「少用」或「較晚使用」）。之後可加入冷卻時間、爆發窗口等規則。
-- 職能技能（所有職業共用）在 `analysis/advice.ts` 的 `ROLE_ACTIONS`：坦克（Rampart、Provoke、Reprisal、Shirk…）、近戰／遠程、法系、治療。
-- 已支援：
-  | 職業 | GCD 定義 | utility |
+- `JobModule`：`subType`（FFLogs 的職業名稱）、中文名稱（`jobs/names.ts`）、`isGcd(abilityId)`，以及職業專屬技能的分類 `ignored`、`mitigation`、`movement`、`utility`。之後可加入冷卻時間、爆發窗口等規則。
+- **技能分類**（`jobs/roleActions.ts` 的 `abilityCategory()`，職能技能內建、職業專屬技能由模組提供）：
+
+  | 分類 | 內容 | 處理 |
   |---|---|---|
-  | Viper（蝰蛇劍士） | 技能 ID 34606–34633 | — |
-  | Samurai（武士） | 明確列表：連擊、居合術、燕返、奧義斬浪等（含已被取代的舊技能） | — |
-  | Paladin（騎士） | 明確列表：連擊、Atonement 系列、Holy Spirit／Circle、Confiteor 與 Blade 系列、Goring Blade、Shield Lob、Clemency | Sentinel／Guardian、Bulwark、Hallowed Ground、Sheltron、Divine Veil、Intervention、Passage of Arms、Cover、Iron Will、Clemency |
-  | BlackMage（黑魔法師） | 明確列表：所有攻擊魔法（含低等級技能）與 Umbral Soul | Manaward、Aetherial Manipulation、Between the Lines、Retrace |
+  | ignored | 坦克的挑釁、退避、坦姿開關（Iron Will、Defiance、Grit、Royal Guard 與其解除） | 從時間軸、技能次數、建議中移除（使用者指定不需紀錄） |
+  | mitigation | 減傷：Rampart、Reprisal、Feint、Addle，以及職業減傷 | **專屬建議**（使用者指定為重要的學習課題） |
+  | movement | 衝刺，以及職業位移技能 | **專屬建議**（同上） |
+  | utility | 其他輔助：True North、Arm's Length、Second Wind、Bloodbath、Lucid Dreaming、Interject 等 | 合併為一則低優先建議 |
+  | normal | 其他（輸出技能） | 一般規則 |
+- **職業名稱**：`jobs/names.ts` 內建所有職業的官方繁中名稱（遊戲 ClassJob 表），介面上的職業一律以繁中顯示（例如 BlackMage → 黑魔道士、Viper → 毒蛇劍士）。
+- 已支援：
+  | 職業 | GCD 定義 | 專屬技能分類 |
+  |---|---|---|
+  | Viper（毒蛇劍士） | 技能 ID 34606–34633 | — |
+  | Samurai（武士） | 明確列表：連擊、居合術、燕返、奧義斬浪等（含已被取代的舊技能） | mitigation：Third Eye、Tengentsu |
+  | Paladin（騎士） | 明確列表：連擊、Atonement 系列、Holy Spirit／Circle、Confiteor 與 Blade 系列、Goring Blade、Shield Lob、Clemency | ignored：Iron Will、Release Iron Will；mitigation：Sentinel／Guardian、Bulwark、Hallowed Ground、Sheltron／Holy Sheltron、Divine Veil、Intervention、Passage of Arms、Cover；utility：Clemency |
+  | BlackMage（黑魔道士） | 明確列表：所有攻擊魔法（含低等級技能）與 Umbral Soul | mitigation：Manaward；movement：Aetherial Manipulation、Between the Lines、Retrace |
 - 新增職業時，以實際日誌計算以 `begincast` 為起點的相鄰 GCD 間隔驗證分類：分布應集中在該職業 GCD 附近，不應出現遠小於 GCD 的間隔（驗證結果記在 TECH_NOTES.md）。
 
 ### ② 通用指標（`src/analysis/metrics.ts`、`src/compare/Metrics.tsx`）
@@ -92,7 +102,7 @@
 
 - **GCD 概況**（需職業模組判斷 GCD）：GCD 數；GCD 間隔＝1.5～2.6 秒相鄰間隔的中位數，**上限 2.5 秒**（GCD 最長 2.5 秒，實測間隔受延遲略長，取樣時多容許 100 毫秒）；空檔總計＝每個間隔超出 GCD＋100 毫秒的部分加總。GCD 慢 10 毫秒以上時提示。
 - **少打 GCD 的時段**：我的相鄰 GCD 間隔超過 max(1.5×GCD, GCD＋1 秒) 時，把該區間換算到參考時間，計算參考在區間內（兩端各留半個 GCD）施放的 GCD 數；大於 0 才列出。雙方都停手的時段自然被排除。點擊可捲動時間軸到該處。
-- **技能使用次數**：各技能（含普通攻擊，標示「普通攻擊」）我 vs 參考的次數與差距。
+- **技能使用次數**：各技能（含普通攻擊）我 vs 參考的次數與差距；標示「普通攻擊」「減傷」「移動」「GCD」。不紀錄的技能（ignored）不列出。
 - **平均時機**：同一技能兩邊的使用依時間順序配對（不可交錯，相距 30 秒內），以動態規劃先求配對數最多、再求時間差總和最小，平均配對的時間差；允許跳過，避免次數不同時後面全部錯位。使用 30 次以上的技能不計算。
 
 ### ③ 站位比較（`src/analysis/positions.ts`、`src/compare/Positions.tsx`）
@@ -124,10 +134,13 @@
 | oGCD 少用 ≥ 2 次 | 參考使用 ≤ 30 次；非職能／防禦技能 | 優先 |
 | oGCD 各少用 1 次 | 合併為一則 | 建議 |
 | 使用了參考沒用的 GCD | ≥ 3 次（例如武士的 Enpi，代表離 Boss 太遠） | 建議 |
-| 技能平均較晚使用 | 配對 ≥ 2 次、平均晚 > 5 秒（含 GCD，例如 Higanbana）；非職能／防禦技能 | 建議 |
+| 技能平均較晚使用 | 配對 ≥ 2 次、平均晚 > 5 秒（含 GCD，例如 Higanbana）；一般技能 | 建議 |
+| **減傷／移動：參考有用、我沒有對應使用** | 參考的使用在我的前後 30 秒內沒有對應（`AbilityUsage.unmatchedRef`）或次數較少；列出參考的使用時間（最多 5 個），「查看」跳到第一個 | 未對應或少用 ≥ 2 次為優先，否則建議 |
+| **減傷／移動：平均較晚使用** | 配對 ≥ 2 次、平均晚 > 5 秒 | 建議 |
 | 站位不同（最多 3 段） | 非對稱、持續 ≥ 5 秒；與停手時段重疊時為優先 | 建議／優先 |
 | 可能是不同攻略 | 標示為對稱的站位差異合併為一則 | 參考 |
-| 職能與防禦技能少用 | 職能技能與職業 `utility` 合併為一則 | 參考 |
+| 輔助技能少用 | utility 分類合併為一則 | 參考 |
+| （不紀錄） | ignored 分類 | — |
 
 - GCD 技能（連擊等）的次數差是少打 GCD 的結果，已由停手與 GCD 速度涵蓋，不列為「少用」。
 - 與機制差異整合：站位差異或停手時段開始前 10 秒內到結束之間有「不同變化」時，建議中註明機制不同（同名不同 ID 附上 ID）；該站位差異降為「參考」等級。
@@ -153,18 +166,22 @@
 - 站位差異門檻 8 yalm、平均時機配對窗口 30 秒、對齊的低頻門檻 8 次等參數，只以比較基準調整過。
 
 ### 可能的後續方向
-- 更多職業模組（目前 Viper、Samurai、Paladin、BlackMage）。
+- 更多職業模組（目前 Viper、Samurai、Paladin、BlackMage）；其他坦克職業的減傷技能尚未分類（坦姿開關已內建為不紀錄）。
 - 職業規則加入冷卻時間與團隊爆發窗口：計算冷卻技的理論最大使用次數、爆發窗口內的技能內容（需要每個職業的冷卻與 Buff 資料）。
 - 建議改由 LLM 產生或潤飾（經 Worker 呼叫，需 API 金鑰與費用）；目前為規則式。
 - 死亡、受到的傷害等資料尚未分析。
 
 ## 設計變更紀錄
 
+### 2026-09-25 技能分類（不紀錄／減傷／移動／輔助）；職業名稱繁中
+- 變更：以 `abilityCategory()` 取代原本的 `utility` 與建議內的職能技能清單；坦克的挑釁、退避、坦姿開關不紀錄；減傷與衝刺等移動技能新增專屬建議，列出參考有用而我沒有對應使用的時間點；介面上的職業名稱改為官方繁中（`jobs/names.ts`），並修正模組中錯誤的職業名稱（黑魔法師 → 黑魔道士、蝰蛇劍士 → 毒蛇劍士）。
+- 原因：使用者指出對坦克而言挑釁、退避、坦姿開關無須紀錄，但減傷與衝刺是很重要的學習課題（原本被合併為低優先的「職能與防禦技能」）；並要求職業名稱也翻成繁中。
+
 ### 2026-09-25 拆分文件
 - 變更：實測資料、資料來源調查、驗證結果、參數調整經過與部署踩過的坑移到 `docs/TECH_NOTES.md`；本文件只描述目前設計與設計變更。
 - 原因：使用者要求把技術紀錄與系統設計分開。
 
-### 2026-09-25 新增黑魔法師職業規則
+### 2026-09-25 新增黑魔道士職業規則
 - 變更：職業模組加入 BlackMage（GCD 分類與防禦／移動技能）。
 - 原因：使用者要求。
 

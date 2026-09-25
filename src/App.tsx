@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
 import { fetchReport } from './fflogs/client'
+import { jobName } from './jobs/names'
 import { Comparison } from './compare/Comparison'
 import type { Selection } from './compare/load'
 import type { Fight, Report } from './fflogs/types'
@@ -95,7 +96,7 @@ function ReportSelector({
           </option>
           {players.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name}（{p.subType}）
+              {p.name}（{jobName(p.subType)}）
             </option>
           ))}
         </select>
@@ -170,7 +171,7 @@ export default function App() {
       {mine && reference && (
         <section className="comparison">
           <h2>
-            {mine.player.name} vs {reference.player.name}（{reference.player.subType}）
+            {mine.player.name} vs {reference.player.name}（{jobName(reference.player.subType)}）
           </h2>
           <Comparison mine={mine} reference={reference} />
         </section>

@@ -1,4 +1,5 @@
 import { playersInFight } from '../fflogs/report'
+import { jobName } from '../jobs/names'
 import type { Actor, Fight, Report } from '../fflogs/types'
 import type { ReportRef } from '../fflogs/url'
 
@@ -59,7 +60,7 @@ export function resolveSelection(
   if (sameJob.length === 1) return { fight, players, player: sameJob[0], note: null }
   const note =
     sameJob.length > 1
-      ? `這場戰鬥有 ${sameJob.length} 位 ${preferred.subType}，請選擇要比較的對象`
-      : `這場戰鬥沒有 ${preferred.subType}`
+      ? `這場戰鬥有 ${sameJob.length} 位${jobName(preferred.subType)}，請選擇要比較的對象`
+      : `這場戰鬥沒有${jobName(preferred.subType)}`
   return { fight, players, player: undefined, note }
 }

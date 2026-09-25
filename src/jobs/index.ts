@@ -10,7 +10,13 @@ export interface JobModule {
   /** 中文名稱 */
   name: string
   isGcd(abilityId: number): boolean
-  /** 防禦、減傷、輔助等依攻略使用的技能；次數與時機不同不代表輸出問題 */
+  /**
+   * 技能分類（見 roleActions.ts 的 AbilityCategory；職能技能已內建，這裡只列職業專屬技能）：
+   * ignored 不紀錄；mitigation 減傷、movement 移動為重要的學習課題；utility 其他輔助技能
+   */
+  ignored?: ReadonlySet<number>
+  mitigation?: ReadonlySet<number>
+  movement?: ReadonlySet<number>
   utility?: ReadonlySet<number>
 }
 

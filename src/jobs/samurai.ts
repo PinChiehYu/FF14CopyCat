@@ -1,7 +1,8 @@
 import type { JobModule } from './index'
+import { jobName } from './names'
 
 // 7.x 武士的 GCD。技能 ID 不連續，逐一列出；未列出的（必殺劍系列、明鏡止水、意氣衝天、
-// 天眼通、黙想、葉隱、殘心、職能技能、藥水）皆為 oGCD。
+// 天眼通、黙想、葉隱、殘心、職能技能、藥水）皆為 oGCD。天眼通是減傷，分類見下方。
 // 已被取代的舊技能（Hakaze、Fuga、Tenka Goken 等）一併列入，以支援較低等級的日誌。
 const GCDS = new Set([
   7477, // Hakaze
@@ -30,8 +31,15 @@ const GCDS = new Set([
   25782, // Kaeshi: Namikiri
 ])
 
+// 減傷：重要的學習課題
+const MITIGATION = new Set([
+  7498, // Third Eye
+  36962, // Tengentsu
+])
+
 export const samurai: JobModule = {
   subType: 'Samurai',
-  name: '武士',
+  name: jobName('Samurai'),
   isGcd: (id) => GCDS.has(id),
+  mitigation: MITIGATION,
 }

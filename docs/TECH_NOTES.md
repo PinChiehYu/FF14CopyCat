@@ -10,7 +10,7 @@
 |---|---|---|---|
 | **武士比較基準**（使用者指定） | `FXLkqaK32PhQH8Ac` #1，席德（source 6），Howling Blade 擊殺 13:50 | `pwTF16cgnB9G7fWM` #29，安祖卡（source 13），13:56 | 驗證功能時必測 |
 | **騎士比較基準**（使用者指定） | `hqNYDGK9A4pmWVXB` #18，神曲莊園（source 40），Howling Blade 擊殺 13:53 | `khNfTaMtYwKBd36b` #10，Lavid（source 5），12:52 | 參考快 61 秒，可測大幅時間差與坦克技能 |
-| 黑魔法師驗證（非使用者指定） | `bX97vBapCPwKndL6` #3，春風醒（source 2），13:40 | `h6gRJZ2pfDFYMPjX` #13，Nana七（source 28），13:01 | |
+| 黑魔道士驗證（非使用者指定） | `bX97vBapCPwKndL6` #3，春風醒（source 2），13:40 | `h6gRJZ2pfDFYMPjX` #13，Nana七（source 28），13:01 | |
 | 同隊滅團 vs 擊殺、冒煙測試 | `WATKBdHRh7m8PNQt` #10（Sugar Riot 滅團，Risen／Viper source 34） | 同報告 #11（擊殺） | 冒煙測試固定使用這份報告 |
 | 不同隊伍的對齊測試 | `pwTF16cgnB9G7fWM` #29 | `bX97vBapCPwKndL6` #3（13:40）、`h6gRJZ2pfDFYMPjX` #13（13:01） | 後者為同一玩家安祖卡 |
 
@@ -57,6 +57,12 @@
 | 42672（Boss） | （空白） | （空白） | （空白） | （空白） |
 
 新內容的名稱在客戶端資料中以 `_rsv_` 佔位、由伺服器提供，資料挖掘拿不到。簡轉繁使用 opencc-js（`opencc-js/cn2t`，`from: 'cn', to: 'tw'`），打包後 Worker 2 MB（gzip 503 KB），免費方案上限 3 MB。
+
+## 職業與技能 ID 查證（2026-09-25）
+
+- **職業繁中名稱**（ClassJob 表 `language=tc`）：騎士、戰士、暗黑騎士、絕槍戰士、白魔道士、學者、占星術師、賢者、武僧、龍騎士、忍者、武士、奪魂者、毒蛇劍士、吟遊詩人、機工士、舞者、黑魔道士、召喚士、赤魔道士、繪靈法師、青魔道士。先前自行翻譯的「黑魔法師」「蝰蛇劍士」與官方不符，已改正。FFLogs 的 subType 等於英文職業名稱去空白（例如 `BlackMage`、`DarkKnight`）。
+- **坦克姿態與職能技能 ID**（以 `sheet/Action?rows=...` 查證）：Provoke 7533、Shirk 7537、Iron Will 28、**Release Iron Will 32065**、Defiance 48、Release Defiance 32066、Grit 3629、Release Grit 32067、Royal Guard 16142、Release Royal Guard 32068、Rampart 7531、Reprisal 7535、Feint 7549、Addle 7560、Sprint 3、Third Eye 7498、Tengentsu 36962。**ID 38 是戰士的 Berserk**，先前騎士模組誤把它當成 Release Iron Will。
+- 查證方法：`https://xivapi-v2.xivcdn.com/api/sheet/Action?rows=<ids>&fields=Name,ClassJob.Abbreviation&language=en`（或 `tc`）。憑記憶寫入的技能 ID 都應先查證。
 
 ## 實測結果
 
@@ -109,7 +115,7 @@
 | 騎士 | 比較基準兩份，560 多個 GCD | 集中 2.45～2.5 秒 | 1 個 1.52 秒（Holy Spirit → Fast Blade） |
 | 黑魔 | 黑魔驗證兩份 | 集中 2.04～2.5 秒 | 各 1 個約 0.6 秒，皆為開場預詠唱 Fire III → High Thunder |
 
-蝰蛇：技能 ID 34606–34633 為 GCD、34634–34647 為 oGCD（依 ID 排列推得）。
+毒蛇劍士：技能 ID 34606–34633 為 GCD、34634–34647 為 oGCD（依 ID 排列推得）。
 
 ## 參數調整與錯誤修正經過
 
@@ -120,6 +126,7 @@
 - **建議清單**：初版把連擊 GCD（Shifu、Jinpu…）的次數差列為「冷卻好就用」、把坦克減傷（Intervention、Reprisal、Provoke…）列為少用，是錯誤建議；改為只比較 oGCD、加入防禦／輔助分類並合併次要項目，武士從 27 則減為 15 則。
 - **GCD 上限**：使用者指出 GCD 最長 2.5 秒；實測間隔受延遲影響略長（2.505 秒），改為取樣到 2.6 秒、推估上限 2.5 秒。
 - **普通攻擊**：改抓全部事件後出現約 300 個 Attack 圖示塞滿 oGCD 列；改為不畫在時間軸但列入技能次數（使用者要求保留次數差）。
+- **減傷與輔助技能分類**：原本把坦克減傷、挑釁、衝刺都歸為低優先的「職能與防禦技能」；使用者指出挑釁、退避、坦姿開關無須紀錄，但減傷與衝刺是重要的學習課題，改為四類分類與專屬建議。騎士比較基準改版後的減傷建議：干預少用 5 次、雪仇少用 3 次、壁壘少用 3 次、衝刺少用 3 次、鐵壁有 2 次時機不同、極致防禦平均晚 9.4 秒；武士：天眼通少用 6 次、衝刺 0 vs 6 次、牽制少用 5 次。
 
 ## 部署與開發踩過的坑
 
@@ -132,3 +139,5 @@
 - **瀏覽器平滑捲動**：同時對頁面（`scrollIntoView` smooth）與內層容器（`scrollTo` smooth）平滑捲動時，瀏覽器會中斷內層捲動；內層改為立即設定 `scrollLeft`。
 - **React 19 `ref` prop**：元件 prop 命名為 `ref` 會被當成保留 prop（lint 報 Cannot access refs during render），改名為 `reference`。
 - **瀏覽器快取**：推送後正式站可能仍顯示舊版，加查詢字串（例如 `?v=<commit>`）或重新整理即可。
+- **技能名稱查詢延遲**：`/abilities` 快取未命中時要向 Boilmaster 鏡像查兩種語言，實測約 8 秒；在瀏覽器驗證繁中名稱時要等比較載入後再多等幾秒，否則會先看到英文名稱。
+- **PowerShell 5.1 寫檔**：`Set-Content -Encoding utf8` 會在檔案開頭加 BOM；改用 Edit／Write 工具或 Node 寫檔。

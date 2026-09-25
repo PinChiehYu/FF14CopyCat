@@ -1,3 +1,4 @@
+import type { AbilityCategory } from '../jobs/roleActions'
 import type { MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
 import { MIRROR_LABELS, type Divergence, type TrackPoint } from './positions'
@@ -26,8 +27,8 @@ export interface AdviceInput {
   /** 英文名稱，供依名稱判斷的規則（例如藥水）使用；未提供時用 abilityName */
   englishName?: (id: number) => string
   isGcd?: (id: number) => boolean
-  /** 職業的防禦／輔助技能（職業模組提供） */
-  isUtility?: (id: number) => boolean
+  /** 技能分類（jobs/roleActions.ts）；未提供時全部視為一般技能 */
+  category?: (id: number) => AbilityCategory
   /** 我的戰鬥時間換算成參考時間 */
   mineToRef: (t: number) => number
   /** 我第一次使用某技能的時間（我的戰鬥時間） */
@@ -57,34 +58,9 @@ function mechanicNote(input: AdviceInput, start: number, end: number): string {
   return `這段之前 Boss 的隨機機制不同（你：${names(m.mine)}；參考：${names(m.ref)}），差異可能是機制造成。`
 }
 
-// 職能技能：依攻略使用，少用通常不影響輸出，只列為低優先
-const ROLE_ACTIONS = new Set([
-  3, // Sprint
-  // 坦克
-  7531, // Rampart
-  7533, // Provoke
-  7535, // Reprisal
-  7537, // Shirk
-  7538, // Interject
-  7540, // Low Blow
-  // 近戰／遠程物理
-  7541, // Second Wind
-  7542, // Bloodbath
-  7546, // True North
-  7548, // Arm's Length
-  7549, // Feint
-  7551, // Head Graze
-  7557, // Peloton
-  7863, // Leg Sweep
-  // 法系
-  7559, // Surecast
-  7560, // Addle
-  7562, // Lucid Dreaming
-  // 治療
-  7568, // Esuna
-  7571, // Rescue
-])
 const POTION_NAME = /Gemdraught|Tincture|Draught|Potion/i
+// 減傷／移動建議中最多列出幾個參考有用、我沒用的時間點
+const MAX_LISTED_TIMES = 5
 
 // 停手時段中，兩人平均距離超過此值（yalm）就提示可能是走位路線不同
 const MOVEMENT_DISTANCE_YALM = 5
@@ -144,15 +120,57 @@ function gcdSpeedAdvice({ gcd, durationMs }: AdviceInput): Advice[] {
   ]
 }
 
-function usageAdvice({ usage, abilityName, englishName, isGcd, isUtility, firstUse, mineToRef }: AdviceInput): Advice[] {
+const CATEGORY_LABELS: Partial<Record<AbilityCategory, string>> = { mitigation: '減傷', movement: '移動' }
+
+/**
+ * 減傷與移動技能：使用者指定為重要的學習課題。列出參考有用、我在前後 30 秒內沒有對應使用的時間點，
+ * 讓使用者對照參考在哪個機制使用。
+ */
+function mitigationAdvice(u: AbilityUsage, name: string, kind: 'mitigation' | 'movement'): Advice | null {
+  const label = CATEGORY_LABELS[kind]
+  const fewer = u.ref - u.mine
+  const missed = u.unmatchedRef
+  if (missed.length > 0 || fewer > 0) {
+    const listed = missed.slice(0, MAX_LISTED_TIMES).map(formatFightTime).join('、')
+    const more = missed.length > MAX_LISTED_TIMES ? ` 等 ${missed.length} 次` : ''
+    return {
+      severity: Math.max(missed.length, fewer) >= 2 ? 'high' : 'medium',
+      title:
+        fewer > 0
+          ? `${label}：${name} 少用 ${fewer} 次（你 ${u.mine} 次、參考 ${u.ref} 次）`
+          : `${label}：${name} 有 ${missed.length} 次使用時機與參考不同`,
+      detail:
+        (missed.length > 0 ? `參考在 ${listed}${more} 使用，你在前後 30 秒內沒有使用。` : '') +
+        `${label}技能的使用時機是重要的學習課題，對照時間軸看參考在哪個機制使用。`,
+      at: missed[0],
+    }
+  }
+  if (u.matched >= 2 && u.avgDelayMs !== null && u.avgDelayMs > LATE_COOLDOWN_MS) {
+    return {
+      severity: 'medium',
+      title: `${label}：${name} 平均比參考晚 ${seconds(u.avgDelayMs)} 秒使用`,
+      detail: `比較了 ${u.matched} 次使用。${label}太晚可能來不及涵蓋機制，對照時間軸看參考的使用時機。`,
+    }
+  }
+  return null
+}
+
+function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUse, mineToRef }: AdviceInput): Advice[] {
   const items: Advice[] = []
   const slightlyFewer: string[] = []
   const roleFewer: string[] = []
 
   for (const u of usage) {
     const name = abilityName(u.abilityId)
-    // 職能技能與職業的防禦／輔助技能都依攻略使用
-    const role = ROLE_ACTIONS.has(u.abilityId) || (isUtility?.(u.abilityId) ?? false)
+    const kind = category?.(u.abilityId) ?? 'normal'
+    if (kind === 'ignored') continue
+    if (kind === 'mitigation' || kind === 'movement') {
+      const advice = mitigationAdvice(u, name, kind)
+      if (advice) items.push(advice)
+      continue
+    }
+    // 其他輔助技能依攻略使用，只合併為低優先
+    const role = kind === 'utility'
     const gcd = isGcd?.(u.abilityId) ?? false
     const fewer = u.ref - u.mine
 
@@ -211,8 +229,8 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, isUtility, firstU
   if (roleFewer.length > 0) {
     items.push({
       severity: 'low',
-      title: '職能與防禦技能使用次數較少',
-      detail: `${roleFewer.join('、')}（你／參考）。這些技能依攻略與減傷分配使用，次數不同不一定是錯誤。`,
+      title: '輔助技能使用次數較少',
+      detail: `${roleFewer.join('、')}（你／參考）。這些技能依攻略需要使用，次數不同不一定是錯誤。`,
     })
   }
   return items
