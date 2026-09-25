@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { mechanicLabel, mergeRepeats } from './mechanics'
+import { mechanicLabel, mergeRepeats, sameNameVariants } from './mechanics'
+
+describe('sameNameVariants', () => {
+  const names: Record<number, string> = { 42788: '搖擺哈娑', 42789: '搖擺哈娑', 37832: '播放A面', 42883: '播放A面' }
+  const name = (id: number) => names[id]
+
+  it('finds names used on both sides with different IDs', () => {
+    expect(sameNameVariants([42789], [42788], name)).toEqual(['搖擺哈娑'])
+    expect(sameNameVariants([37832, 42883], [37832, 42883], name)).toEqual([])
+    expect(sameNameVariants([42789], [37832], name)).toEqual([])
+  })
+
+  it('can leave the ID out of the label', () => {
+    expect(mechanicLabel([42789], [42788], name, { withIds: false })).toBe('搖擺哈娑')
+  })
+})
 
 describe('mergeRepeats', () => {
   const names: Record<number, string> = { 1: '音頻爆炸', 2: '音頻爆炸', 5: '靜音爆炸', 7: '放入B面', 8: '放入A面' }

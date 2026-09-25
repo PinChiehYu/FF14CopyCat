@@ -107,6 +107,8 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 | 黑魔道士驗證 | `bX97vBapCPwKndL6` #3，春風醒（source 2），13:40 | `h6gRJZ2pfDFYMPjX` #13，Nana七（source 28），13:01 | |
 | 暗黑騎士驗證 | `FXLkqaK32PhQH8Ac` #1，倉鼠教徒（source 4） | `pwTF16cgnB9G7fWM` #29，穎嵐（source 71） | 坦姿不紀錄與減傷建議 |
 | 同隊滅團 vs 擊殺、冒煙測試 | `WATKBdHRh7m8PNQt` #10（Sugar Riot 滅團，Risen／毒蛇劍士 source 34） | 同報告 #11（擊殺） | 冒煙測試固定使用這份報告 |
+| **熱舞綠光 UI 驗證**（使用者提供） | `BF76r8yKh4wGaYkm` #1（擊殺 9:02，黑魔道士 死魚眼等 8 人，連結未指定角色） | `b3ph7JxjD4BkVL6Q` #20（擊殺 8:27，黑魔道士 陰暗爬行初華） | Boss 機制差異 13 列：播放A/B面、N連指向、搖擺哈娑同名不同 ID（#42789／#42788）、4拍節奏兩邊差 13 秒各列一次 |
+| 熱舞綠光同隊滅團 vs 擊殺 | `h6gRJZ2pfDFYMPjX` #3（滅團，Nana七 source 28） | 同報告 #4（擊殺） | 「四連指向、定格＆播放」同時 4 個 ID |
 | 不同隊伍的對齊測試 | `pwTF16cgnB9G7fWM` #29 | `bX97vBapCPwKndL6` #3（13:40）、`h6gRJZ2pfDFYMPjX` #13（13:01） | 後者為同一玩家安祖卡 |
 
 已排除的連結：`bX97vBapCPwKndL6` #3 沒有武士參戰（報告中的武士 瓏系莉亞 未參與任何一場戰鬥）；`h6gRJZ2pfDFYMPjX` #4 是 Dancing Green，與 Howling Blade 不同 Boss。

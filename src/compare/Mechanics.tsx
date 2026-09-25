@@ -1,4 +1,4 @@
-import { mechanicLabel, mergeRepeats, type MechanicDifference } from '../analysis/mechanics'
+import { mechanicLabel, mergeRepeats, sameNameVariants, type MechanicDifference } from '../analysis/mechanics'
 import { formatFightTime } from '../analysis/timeline'
 
 const KIND_LABELS: Record<MechanicDifference['kind'], string> = {
@@ -19,11 +19,26 @@ export function Mechanics({
   if (differences.length === 0) {
     return <p className="hint">兩場戰鬥的 Boss 機制（低頻技能）在對齊後相同，沒有隨機變化的差異。</p>
   }
-  const label = (ids: number[], others: number[]) => (ids.length === 0 ? '—' : mechanicLabel(ids, others, abilityName))
-  // 合併成一個名稱的多個 ID 放在滑鼠提示
-  const idsTitle = (ids: number[]) => (ids.length > 1 ? ids.map((id) => `#${id}`).join(' ') : undefined)
-  // 同一招連續結算的多個時間點合併成一列
+  // 名稱只列一次、不附技能 ID；ID 放在滑鼠提示
+  const label = (ids: number[]) => (ids.length === 0 ? '—' : mechanicLabel(ids, [], abilityName, { withIds: false }))
+  // 同一招連續結算的多個時間點合併成一列（顯示第一個時間點）
   const rows = mergeRepeats(differences, abilityName)
+
+  const cell = (ids: number[], variants: string[]) => {
+    const idList = ids.map((id) => `#${id}`).join(' ')
+    // 兩邊名稱相同但技能 ID 不同：畫面看起來一樣，以虛線底線提示滑鼠停留查看
+    const title =
+      variants.length > 0
+        ? `${variants.join('、')}：名稱相同但技能 ID 不同，通常是方向或位置不同的版本（${idList}）`
+        : ids.length > 1
+          ? idList
+          : undefined
+    return (
+      <td title={title} className={variants.length > 0 ? 'id-variant' : undefined}>
+        {label(ids)}
+      </td>
+    )
+  }
 
   return (
     <>
@@ -42,22 +57,21 @@ export function Mechanics({
           </tr>
         </thead>
         <tbody>
-          {rows.map((d) => (
-            <tr key={d.t}>
-              <th>
-                <button type="button" onClick={() => onJump(d.t)}>
-                  {formatFightTime(d.t)}
-                </button>
-                {d.count > 1 && <span className="hint-inline">～{formatFightTime(d.last)}</span>}
-              </th>
-              <td>
-                {KIND_LABELS[d.kind]}
-                {d.count > 1 && <span className="hint-inline">（連續 {d.count} 次）</span>}
-              </td>
-              <td title={idsTitle(d.mine)}>{label(d.mine, d.ref)}</td>
-              <td title={idsTitle(d.ref)}>{label(d.ref, d.mine)}</td>
-            </tr>
-          ))}
+          {rows.map((d) => {
+            const variants = sameNameVariants(d.mine, d.ref, abilityName)
+            return (
+              <tr key={d.t}>
+                <th>
+                  <button type="button" onClick={() => onJump(d.t)}>
+                    {formatFightTime(d.t)}
+                  </button>
+                </th>
+                <td>{KIND_LABELS[d.kind]}</td>
+                {cell(d.mine, variants)}
+                {cell(d.ref, variants)}
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </>
