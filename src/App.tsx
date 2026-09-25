@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
-import { fetchTranslatedReport } from './fflogs/client'
+import { fetchFightNames, fetchReport, translateReport } from './fflogs/client'
 import { jobName } from './jobs/names'
 import { Comparison } from './compare/Comparison'
 import type { Selection } from './compare/load'
@@ -30,7 +30,7 @@ function useReport(code: string | null): LoadState {
   useEffect(() => {
     if (!code) return
     const controller = new AbortController()
-    fetchTranslatedReport(code, controller.signal)
+    fetchReport(code, controller.signal)
       .then((report) => setResult({ code, report }))
       .catch((err: unknown) => {
         if (!controller.signal.aborted) setResult({ code, error: err instanceof Error ? err.message : String(err) })
@@ -38,9 +38,25 @@ function useReport(code: string | null): LoadState {
     return () => controller.abort()
   }, [code])
 
+  // Boss 繁中名稱另外查詢，查到前先顯示英文，不阻擋選擇與比較
+  const [npcNames, setNpcNames] = useState<{ code: string; names: Map<string, string> } | null>(null)
+  const loaded = result?.code === code ? result.report : undefined
+  useEffect(() => {
+    if (!loaded || !code) return
+    const controller = new AbortController()
+    fetchFightNames(loaded, controller.signal)
+      .then((names) => setNpcNames({ code, names }))
+      .catch(() => {}) // 查不到就沿用英文
+    return () => controller.abort()
+  }, [loaded, code])
+  const report = useMemo(
+    () => (loaded && npcNames?.code === code ? translateReport(loaded, npcNames.names) : loaded),
+    [loaded, npcNames, code],
+  )
+
   if (!code) return { status: 'idle' }
   if (result?.code !== code) return { status: 'loading' }
-  if (result.report) return { status: 'ready', report: result.report }
+  if (report) return { status: 'ready', report }
   return { status: 'error', message: result.error ?? '未知錯誤' }
 }
 

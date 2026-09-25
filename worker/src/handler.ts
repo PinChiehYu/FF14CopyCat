@@ -144,12 +144,9 @@ function npcNameParams(params: URLSearchParams): string[] {
 
 async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds: number }> {
   if (url.pathname.replace(/\/$/, '') === '/npc-names') {
-    const names = npcNameParams(url.searchParams)
-    try {
-      return { data: await npcNames(names), cacheSeconds: NAME_CACHE_SECONDS }
-    } catch (err) {
-      throw new HttpError(502, `NPC name lookup failed: ${err instanceof Error ? err.message : err}`)
-    }
+    const { names, complete } = await npcNames(npcNameParams(url.searchParams))
+    // 有名稱查詢失敗時只短暫快取，之後可再重查
+    return { data: names, cacheSeconds: complete ? NAME_CACHE_SECONDS : 60 }
   }
   if (url.pathname.replace(/\/$/, '') === '/abilities') {
     try {

@@ -52,20 +52,20 @@ export async function fetchNpcNames(names: string[], signal?: AbortSignal): Prom
   return result
 }
 
-/** 載入報告，並把戰鬥名稱（Boss）換成繁中；翻譯失敗時沿用英文。 */
-export async function fetchTranslatedReport(code: string, signal?: AbortSignal): Promise<Report> {
-  const report = await fetchReport(code, signal)
-  const names = await fetchNpcNames(
+/** 查詢報告中所有戰鬥名稱（Boss）的繁中名稱。 */
+export function fetchFightNames(report: Report, signal?: AbortSignal): Promise<Map<string, string>> {
+  return fetchNpcNames(
     report.fights.flatMap((f) => fightNameParts(f.name)),
     signal,
-  ).catch((err: unknown) => {
-    if (signal?.aborted) throw err
-    return new Map<string, string>()
-  })
+  )
+}
+
+/** 把報告的戰鬥名稱換成繁中，英文保留在 englishName。 */
+export function translateReport(report: Report, npcNames: Map<string, string>): Report {
   return {
     ...report,
     fights: report.fights.map((f) => {
-      const zh = translateFightName(f.name, names)
+      const zh = translateFightName(f.name, npcNames)
       return zh === f.name ? f : { ...f, name: zh, englishName: f.name }
     }),
   }

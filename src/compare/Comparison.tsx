@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { buildAlignment } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
 import { mechanicDifferences } from '../analysis/mechanics'
@@ -28,16 +28,22 @@ function selectionKey(s: Selection): string {
 function useSides(mine: Selection, reference: Selection) {
   const [result, setResult] = useState<{ key: string; sides?: [SideData, SideData]; error?: string } | null>(null)
   const key = `${selectionKey(mine)}|${selectionKey(reference)}`
+  // 只在選擇的戰鬥或角色改變時重新載入；Boss 繁中名稱晚到會換掉 Selection 物件，但資料不變
+  const latest = useRef({ mine, reference })
+  useLayoutEffect(() => {
+    latest.current = { mine, reference }
+  })
 
   useEffect(() => {
     const controller = new AbortController()
+    const { mine, reference } = latest.current
     Promise.all([loadSide(mine, controller.signal), loadSide(reference, controller.signal)])
       .then((sides) => setResult({ key, sides }))
       .catch((err: unknown) => {
         if (!controller.signal.aborted) setResult({ key, error: err instanceof Error ? err.message : String(err) })
       })
     return () => controller.abort()
-  }, [mine, reference, key])
+  }, [key])
 
   return result?.key === key ? result : null
 }

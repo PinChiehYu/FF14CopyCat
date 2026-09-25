@@ -183,6 +183,21 @@ describe('handleRequest', () => {
     expect(await res.json()).toEqual({ 'Howling Blade': { name: '呼嘯之劍', source: 'tc' } })
   })
 
+  it('falls back to English when the name lookup fails, caching only briefly', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('timeout')
+      }),
+    )
+    const put = vi.fn(async (_req: Request, _res: Response) => {})
+    const cache = { match: async () => undefined, put }
+    const res = await handleRequest(get('/npc-names?name=Howling%20Blade'), env, ctx, cache)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({})
+    expect(put.mock.calls[0][1].headers.get('Cache-Control')).toBe('public, max-age=60')
+  })
+
   it('validates npc names', async () => {
     const fetchMock = mockFflogs({})
     for (const path of ['/npc-names', '/npc-names?name=a%22%20OR%201', `/npc-names?${'name=x&'.repeat(1)}${Array.from({ length: 21 }, (_, i) => `name=n${i}`).join('&')}`]) {
