@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { jobName, jobRole } from '../jobs/names'
 import { buildAlignment } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
 import { mechanicDifferences } from '../analysis/mechanics'
@@ -64,8 +65,83 @@ function useAbilityNames(mine: SideData, reference: SideData): Map<number, Abili
   return names
 }
 
-function killLabel(side: SideData): string {
-  return side.selection.fight.kill ? '（擊殺）' : '（滅團）'
+function SummaryTable({
+  mine,
+  reference,
+  mineEnd,
+  refEnd,
+}: {
+  mine: SideData
+  reference: SideData
+  /** 各自時間下的比較範圍結束點 */
+  mineEnd: number
+  refEnd: number
+}) {
+  const sides = [
+    { key: 'mine', label: '我', side: mine, end: mineEnd },
+    { key: 'ref', label: '參考', side: reference, end: refEnd },
+  ]
+  const rows: { label: string; cell: (s: SideData, end: number) => ReactNode }[] = [
+    {
+      label: '玩家',
+      cell: ({ selection: { player } }) => (
+        <>
+          <strong>{player.name}</strong>{' '}
+          <span className={`badge job ${jobRole(player.subType)}`}>{jobName(player.subType)}</span>
+        </>
+      ),
+    },
+    {
+      label: '戰鬥',
+      cell: ({ selection: { fight } }) => (
+        <span title={fight.englishName}>
+          #{fight.id} {fight.name}
+        </span>
+      ),
+    },
+    {
+      label: '結果',
+      cell: ({ selection: { fight } }) => (
+        <span className={`badge ${fight.kill ? 'kill' : 'wipe'}`}>{fight.kill ? '擊殺' : '滅團'}</span>
+      ),
+    },
+    { label: '戰鬥長度', cell: (s) => formatFightTime(s.duration) },
+    {
+      label: '比較範圍',
+      cell: (s, end) => (
+        <>
+          0:00～{formatFightTime(end)}
+          {s.duration - end >= 1000 && (
+            <span className="hint-inline">（之後 {((s.duration - end) / 1000).toFixed(1)} 秒不列入統計）</span>
+          )}
+        </>
+      ),
+    },
+  ]
+  return (
+    <table className="summary-table">
+      <thead>
+        <tr>
+          <th />
+          {sides.map((s) => (
+            <th key={s.key} className={s.key}>
+              {s.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.label}>
+            <th>{row.label}</th>
+            {sides.map((s) => (
+              <td key={s.key}>{row.cell(s.side, s.end)}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
 }
 
 function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; reference: SideData }) {
@@ -89,7 +165,6 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
 
   // 比較範圍：兩場戰鬥都還在進行的時段（參考時間 0～較短一方結束）。
   // 較長一方超出的部分沒有比較對象，不列入任何統計；時間軸仍完整顯示但標示為範圍外。
-  const duration = Math.max(reference.duration, alignment.mineToRef(mine.duration))
   const compareEnd = Math.min(reference.duration, alignment.mineToRef(mine.duration))
   const mineInRange = useMemo(
     () => clipSide(mine, Math.min(mine.duration, alignment.refToMine(compareEnd))),
@@ -175,26 +250,13 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
 
   return (
     <>
-      <dl className="summary">
-        <dt>戰鬥長度</dt>
-        <dd>
-          我 {formatFightTime(mine.duration)}
-          {killLabel(mine)}／參考 {formatFightTime(reference.duration)}
-          {killLabel(reference)}
-        </dd>
-        <dt>比較範圍</dt>
-        <dd>
-          參考 0:00～{formatFightTime(compareEnd)}（我的 0:00～{formatFightTime(mineInRange.duration)}）
-          {duration - compareEnd >= 1000 &&
-            `；${reference.duration > compareEnd ? '參考' : '我'}之後的 ${((duration - compareEnd) / 1000).toFixed(1)} 秒沒有比較對象，不列入統計`}
-        </dd>
-        <dt>對齊錨點</dt>
-        <dd>
-          {alignment.anchors.length} 個
-          {drifts.length > 0 &&
-            `；參考相對於我的時間差 ${Math.min(...drifts).toFixed(1)} ～ ${Math.max(...drifts).toFixed(1)} 秒`}
-        </dd>
-      </dl>
+      <SummaryTable mine={mine} reference={reference} mineEnd={mineInRange.duration} refEnd={compareEnd} />
+      <p className="hint">
+        時間軸以 Boss 技能對齊：錨點 {alignment.anchors.length} 個
+        {drifts.length > 0 &&
+          `，參考相對於我的時間差 ${Math.min(...drifts).toFixed(1)} ～ ${Math.max(...drifts).toFixed(1)} 秒`}
+        。兩場都在進行的時段才列入統計。
+      </p>
       {alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
       <h3>建議</h3>
@@ -242,9 +304,18 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
 
 function ComparisonLoader({ mine, reference }: { mine: Selection; reference: Selection }) {
   const result = useSides(mine, reference)
+  // 事件只依選擇的 ID 載入一次；顯示用的名稱（Boss 繁中名稱可能晚到）取目前的選擇
+  const sides = useMemo(
+    () =>
+      result?.sides && ([
+        { ...result.sides[0], selection: mine },
+        { ...result.sides[1], selection: reference },
+      ] as const),
+    [result, mine, reference],
+  )
   if (!result) return <p>載入戰鬥事件中…</p>
-  if (result.error || !result.sides) return <p className="error">{result.error}</p>
-  return <Loaded mine={result.sides[0]} reference={result.sides[1]} />
+  if (result.error || !sides) return <p className="error">{result.error}</p>
+  return <Loaded mine={sides[0]} reference={sides[1]} />
 }
 
 export function Comparison({ mine, reference }: { mine: Selection; reference: Selection }) {

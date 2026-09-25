@@ -198,9 +198,7 @@ export default function App() {
 
       {mine && reference && (
         <section className="comparison">
-          <h2>
-            {mine.player.name} vs {reference.player.name}（{jobName(reference.player.subType)}）
-          </h2>
+          <h2>比較結果</h2>
           <Comparison mine={mine} reference={reference} />
         </section>
       )}

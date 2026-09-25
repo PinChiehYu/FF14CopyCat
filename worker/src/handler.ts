@@ -70,6 +70,8 @@ async function getToken(env: Env): Promise<string> {
     },
     body: 'grant_type=client_credentials',
   })
+  // 權杖端點也有請求上限；Worker 重新部署後每個新 isolate 都要重新取得權杖
+  if (res.status === 429) throw new HttpError(503, 'FFLogs token rate limit reached, try again later')
   if (!res.ok) throw new HttpError(502, `FFLogs token request failed: ${res.status}`)
 
   const body = (await res.json()) as { access_token: string; expires_in: number }

@@ -319,19 +319,43 @@ button:disabled {
   font-size: 0.9em;
 }
 
-.summary {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  margin: 0 0 12px;
+.summary-table {
+  width: 100%;
+  max-width: 720px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
 }
 
-.summary dt {
+.summary-table th,
+.summary-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.summary-table thead th {
+  font-size: 0.9em;
+  border-bottom-width: 2px;
+}
+
+.summary-table thead th.mine {
+  color: var(--mine);
+}
+
+.summary-table thead th.ref {
+  color: var(--ref);
+}
+
+.summary-table tbody th {
+  width: 6em;
+  font-weight: normal;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
-.summary dd {
-  margin: 0;
+.hint-inline {
+  font-size: 0.85em;
+  color: var(--text-muted);
 }
 
 .timeline-toolbar {

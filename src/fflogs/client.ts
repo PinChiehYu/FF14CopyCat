@@ -12,6 +12,10 @@ export class ApiError extends Error {
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { signal })
   if (!res.ok) {
+    // 429：本站的每 IP 限制；503：FFLogs 的請求上限
+    if (res.status === 429 || res.status === 503) {
+      throw new ApiError(res.status, '請求過多，暫時無法取得資料，請稍候一分鐘再試')
+    }
     const body = (await res.json().catch(() => null)) as { error?: string } | null
     throw new ApiError(res.status, body?.error ?? `API 錯誤：${res.status}`)
   }

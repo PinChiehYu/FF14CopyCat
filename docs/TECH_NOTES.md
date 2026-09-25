@@ -244,6 +244,8 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - **瀏覽器平滑捲動**：同時對頁面（`scrollIntoView` smooth）與內層容器（`scrollTo` smooth）平滑捲動時，瀏覽器會中斷內層捲動；內層改為立即設定 `scrollLeft`。
 - **React 19 `ref` prop**：元件 prop 命名為 `ref` 會被當成保留 prop（lint 報 Cannot access refs during render），改名為 `reference`。
 - **瀏覽器快取**：推送後正式站可能仍顯示舊版，加查詢字串（例如 `?v=<commit>`）或重新整理即可。
+- **FFLogs 權杖端點 429**（2026-09-26）：短時間內多次部署 Worker 並測試後，`/oauth/token` 回 429，所有報告查詢失敗約數分鐘後自行恢復。權杖只快取在 isolate 記憶體，每次部署或新 isolate 都會重新取權杖。Worker 現在把權杖的 429 轉成 503，前端對 429／503 顯示「請求過多…請稍候一分鐘再試」。若再發生頻繁，可考慮把權杖放進 `caches.default` 或 KV 跨 isolate 共用。
+- **摘要顯示的名稱**：`useSides()` 只依 ID 載入事件，`SideData.selection` 是載入當時的選擇（Boss 名稱可能還是英文）；`ComparisonLoader` 會把目前的選擇合併回 `SideData` 再交給 `Loaded`。
 - **技能名稱查詢延遲**：`/abilities` 快取未命中時約 8 秒；在瀏覽器驗證繁中名稱時要等比較載入後再多等幾秒。
 - **PowerShell 5.1 寫檔**：`Set-Content -Encoding utf8` 會在檔案開頭加 BOM；改用 Edit／Write 工具或 Node 寫檔。
 
