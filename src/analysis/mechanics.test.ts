@@ -41,9 +41,11 @@ describe('mechanicLabel', () => {
     expect(mechanicLabel([1, 2, 3, 4, 20], [1, 2, 3], name)).toBe('四連指向、定格＆播放、月焚')
   })
 
-  it('keeps the ID for single-ID variants with the same name on the other side', () => {
+  it('keeps the IDs for variants with the same name on the other side', () => {
     expect(mechanicLabel([10], [11], name)).toBe('英雄之擊 #10')
     expect(mechanicLabel([11], [10], name)).toBe('英雄之擊 #11')
+    // 連續結算合併後一邊有多個 ID
+    expect(mechanicLabel([10, 12], [11], (id) => (id === 12 ? '英雄之擊' : name(id)))).toBe('英雄之擊 #10/#12')
   })
 })
 import type { TimedCast } from './alignment'

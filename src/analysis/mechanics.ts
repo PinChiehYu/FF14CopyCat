@@ -24,7 +24,7 @@ export interface MechanicOptions {
 
 /**
  * 機制差異一側的技能名稱。同一次攻擊常由多個同名技能 ID 組成（例如多個判定），同名只列一次；
- * 兩邊同名但 ID 不同（例如左右兩種版本）且這一側只有單一 ID 時附上 ID 才分得出來。
+ * 兩邊同名但 ID 不同（例如左右兩種版本）時附上 ID 才分得出來。
  */
 export function mechanicLabel(ids: number[], others: number[], abilityName: (id: number) => string): string {
   const byName = new Map<string, number[]>()
@@ -33,7 +33,7 @@ export function mechanicLabel(ids: number[], others: number[], abilityName: (id:
     .map(([name, own]) => {
       const theirs = others.filter((o) => abilityName(o) === name)
       const differs = theirs.some((o) => !own.includes(o))
-      return differs && own.length === 1 ? `${name} #${own[0]}` : name
+      return differs ? `${name} ${own.map((id) => `#${id}`).join('/')}` : name
     })
     .join('、')
 }
