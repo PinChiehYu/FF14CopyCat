@@ -80,6 +80,23 @@ describe('handleRequest', () => {
     })
   })
 
+  it('returns auto-attack damage taken per player', async () => {
+    const fetchMock = mockFflogs({
+      data: {
+        reportData: {
+          report: {
+            table: { data: { entries: [{ id: 40, total: 2130458, name: 'x' }, { id: 38, total: 3638563 }] } },
+          },
+        },
+      },
+    })
+    const res = await handleRequest(get('/reports/abc/auto-attacks-taken?fight=18'), env, ctx, null)
+    expect(await res.json()).toEqual({ 40: 2130458, 38: 3638563 })
+    const [, init] = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/api/v2/client'))!
+    expect(JSON.parse(String(init!.body)).variables).toEqual({ code: 'abc', fightIDs: [18] })
+    expect((await handleRequest(get('/reports/abc/auto-attacks-taken'), env, ctx, null)).status).toBe(400)
+  })
+
   it('rejects invalid parameters without calling FFLogs', async () => {
     const fetchMock = mockFflogs({})
     const cases = [

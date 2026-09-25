@@ -26,6 +26,19 @@ export function fetchReport(code: string, signal?: AbortSignal): Promise<Report>
   return get(`/reports/${encodeURIComponent(code)}`, signal)
 }
 
+/** 每位玩家承受的敵方普通攻擊總傷害（角色 ID → 傷害），用來判斷誰在坦 Boss。 */
+export async function fetchAutoAttacksTaken(code: string, fightId: number, signal?: AbortSignal): Promise<Map<number, number>> {
+  const result: Record<string, unknown> = await get(
+    `/reports/${encodeURIComponent(code)}/auto-attacks-taken?fight=${fightId}`,
+    signal,
+  )
+  return new Map(
+    Object.entries(result)
+      .filter((e): e is [string, number] => typeof e[1] === 'number')
+      .map(([id, total]) => [Number(id), total]),
+  )
+}
+
 // Worker 單次最多查詢的 NPC 名稱數
 const NPC_BATCH = 20
 

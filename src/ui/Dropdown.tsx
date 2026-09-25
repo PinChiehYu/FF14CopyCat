@@ -16,6 +16,7 @@ export function Dropdown<T>({
   placeholder = '請選擇',
   disabled = false,
   disabledTitle,
+  lockLabel = '已鎖定',
   onChange,
 }: {
   label: string
@@ -26,6 +27,8 @@ export function Dropdown<T>({
   disabled?: boolean
   /** 鎖定時滑鼠停留的說明 */
   disabledTitle?: string
+  /** 鎖定時右側的標示；null 不顯示 */
+  lockLabel?: string | null
   onChange: (value: T) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -100,7 +103,7 @@ export function Dropdown<T>({
           {selected ? selected.content : <span className="dropdown-placeholder">{placeholder}</span>}
         </span>
         {disabled ? (
-          <span className="dropdown-lock">已鎖定</span>
+          lockLabel && <span className="dropdown-lock">{lockLabel}</span>
         ) : (
           <span className="dropdown-arrow" aria-hidden="true" />
         )}

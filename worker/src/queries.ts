@@ -40,6 +40,22 @@ export const REPORT_QUERY = /* GraphQL */ `
   }
 `
 
+// 敵方普通攻擊（名稱為 attack）對每位玩家造成的傷害，用來判斷誰在坦 Boss（MT）
+export const AUTO_ATTACKS_TAKEN_QUERY = /* GraphQL */ `
+  query AutoAttacksTaken($code: String!, $fightIDs: [Int]) {
+    reportData {
+      report(code: $code) {
+        table(
+          fightIDs: $fightIDs
+          dataType: DamageTaken
+          hostilityType: Friendlies
+          filterExpression: "ability.name = 'attack'"
+        )
+      }
+    }
+  }
+`
+
 export const EVENTS_QUERY = /* GraphQL */ `
   query Events(
     $code: String!

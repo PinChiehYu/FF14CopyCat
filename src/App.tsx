@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
-import { fetchFightNames, fetchReport, translateReport } from './fflogs/client'
+import { fetchAutoAttacksTaken, fetchFightNames, fetchReport, translateReport } from './fflogs/client'
 import { playersInFight } from './fflogs/report'
-import { jobName, jobRole, sortByPartySlot } from './jobs/names'
+import { isStandardParty, jobName, jobRole, sortByPartySlot } from './jobs/names'
 import { Comparison } from './compare/Comparison'
 import type { Selection } from './compare/load'
 import type { Actor, Fight, Report } from './fflogs/types'
@@ -93,6 +93,24 @@ function playerOption(player: Actor, slot: string | null): DropdownOption<number
   }
 }
 
+/**
+ * 標準隊伍（2 坦）時查詢每位玩家承受的 Boss 普通攻擊傷害，用來判斷 MT／ST。
+ * 查詢中或失敗時回傳 undefined（坦克不標位置）。
+ */
+function useTankLoad(code: string, fight: Fight | undefined, players: Actor[]): Map<number, number> | undefined {
+  const [result, setResult] = useState<{ key: string; load: Map<number, number> } | null>(null)
+  const key = fight && isStandardParty(players) ? `${code}/${fight.id}` : null
+  useEffect(() => {
+    if (!key || !fight) return
+    const controller = new AbortController()
+    fetchAutoAttacksTaken(code, fight.id, controller.signal)
+      .then((load) => setResult({ key, load }))
+      .catch(() => {}) // 查不到就不標 MT／ST
+    return () => controller.abort()
+  }, [key, code, fight])
+  return result && result.key === key ? result.load : undefined
+}
+
 function ReportSelector({
   report,
   urlRef,
@@ -107,9 +125,13 @@ function ReportSelector({
   const [overrides, setOverrides] = useState<Overrides>({ fightId: null, playerId: null })
   const { fight, players, player, note, locked } = resolveSelection(report, urlRef, overrides, preferred)
   // 依隊伍位置排序；位置以整場隊伍判斷（參考日誌的選單只列同職業，但位置仍依全隊）
-  const party = fight ? sortByPartySlot(playersInFight(report, fight)) : []
+  const everyone = fight ? playersInFight(report, fight) : []
+  const tankLoad = useTankLoad(report.code, fight, everyone)
+  const party = sortByPartySlot(everyone, tankLoad)
   const listed = new Set(players.map((p) => p.id))
   const playerOptions = party.filter(({ player: p }) => listed.has(p.id)).map(({ player: p, slot }) => playerOption(p, slot))
+  // 參考日誌沒有同職業的玩家：選單直接顯示原因並停用，不另外加說明列
+  const noMatch = players.length === 0 && note !== null
 
   useEffect(() => {
     onChange(fight && player ? { report, fight, player } : null)
@@ -130,12 +152,13 @@ function ReportSelector({
         label="角色"
         options={playerOptions}
         value={player?.id ?? null}
-        placeholder="請選擇角色"
-        disabled={locked}
-        disabledTitle="這場戰鬥只有這位與你同職業的玩家"
+        // 需要使用者注意的說明（沒有同職業、有多位同職業）直接顯示在選單上，避免多一列
+        placeholder={note ?? '請選擇角色'}
+        disabled={locked || noMatch}
+        disabledTitle={noMatch ? (note ?? undefined) : '這場戰鬥只有這位與你同職業的玩家'}
+        lockLabel={noMatch ? null : '已鎖定'}
         onChange={(playerId) => setOverrides((o) => ({ ...o, playerId }))}
       />
-      {note && !player && <p className="hint">{note}</p>}
     </div>
   )
 }

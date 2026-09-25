@@ -28,6 +28,7 @@
 | `GET /reports/:code/events?fight&start&end[&source][&dataType][&hostility]` | 一頁事件（`includeResources: true`、`limit: 10000`），前端 `fetchFightEvents()` 依 `nextPageTimestamp` 翻頁 | 10 分鐘 |
 | `GET /abilities?ids=1,2,3` | 技能繁中名稱（見「技能繁中名稱」） | 1 天 |
 | `GET /npc-names?name=A&name=B` | Boss（NPC）繁中名稱（見「Boss 繁中名稱」） | 1 天 |
+| `GET /reports/:code/auto-attacks-taken?fight=` | 每位玩家承受的敵方普通攻擊總傷害 `{ 角色 ID: 傷害 }`，判斷 MT／ST（見「MT／ST 判斷」） | 10 分鐘 |
 
 - 保護：`ALLOWED_ORIGINS`（`wrangler.toml`）檢查 Origin 並回 CORS 標頭；Cloudflare Rate Limiting 綁定 `RATE_LIMITER`（每 IP 60 次／分）；成功回應以不含 Origin 的網址為鍵放入 `caches.default`。
 - client credentials 權杖在同一 isolate 內快取重用。所有訪客共用一組 FFLogs API 配額。
@@ -97,6 +98,14 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 名稱晚到會換掉 `Selection` 物件，`Comparison.tsx` 的 `useSides()` 只依選擇的鍵（報告／戰鬥／角色 ID）重新載入，避免重抓事件。
 - 第一版在報告載入時等待翻譯才顯示，名稱未快取時約 7 秒（騎士基準報告 4 個名稱），正式站上曾停在「載入報告中」，因此改為不阻擋。
 - 實測：Howling Blade→呼嘯之劍、Dancing Green→熱舞綠光、Sugar Riot→糖彩狂潮、Brute Abombinator→野蠻憎惡、Valigarmanda→艷翼蛇鳥、living liquid→有生命活水、Cruise Chaser→巡航驅逐者、Queen Eternal→永恆女王；Striking Dummy 查不到（保留英文）。
+
+## MT／ST 判斷（`AUTO_ATTACKS_TAKEN_QUERY`）
+
+- GraphQL `report.table(fightIDs, dataType: DamageTaken, hostilityType: Friendlies, filterExpression: "ability.name = 'attack'")`；過濾運算式不分大小寫，會比對到 Boss 的「Attack」。回傳的 `data.entries` 以受傷的玩家為單位（`id`、`total`、`abilities`），Worker 只取 `{ id: total }`。
+- Boss 普通攻擊不是固定 ID：Howling Blade 的「Attack」有 42228、42226、42222、42225 等多個 ID（不同型態），所以用名稱過濾而不是 ID。實測只有兩位坦克出現在結果中。
+- 騎士基準 hqNYDGK9A4pmWVXB #18：戰士 醉仙月月 3,638,563、騎士 神曲莊園 2,130,458 → 戰士為 MT。
+- 前端 `useTankLoad()`（`App.tsx`）只在標準隊伍（2 坦 2 補 4 輸出，`isStandardParty()`）時查詢，每份報告每場戰鬥一次；`sortByPartySlot(players, tankLoad)` 坦克依承傷排序，資料到之前坦克不標位置，查詢失敗也不標。
+- 部署後第一次請求新端點曾回 404「Not found」，重新部署後正常，推測是新版本尚未完全生效。
 
 ## 測試資料
 
@@ -261,6 +270,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 ## 技術變更紀錄
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
+
+### 2026-09-26 MT／ST 查詢端點；隊伍位置排序
+- 變更：Worker 新增 `/reports/:code/auto-attacks-taken`（`table` 查詢，DamageTaken＋名稱過濾）；`jobs/names.ts` 新增 `sortByPartySlot()`、`isStandardParty()`；`Dropdown` 新增 `lockLabel`。Worker 已部署。
+- 原因：角色選單依隊伍位置排序並依實際坦 Boss 判斷 MT／ST（見 DESIGN.md）。
 
 ### 2026-09-26 共用分頁元件；職能分類
 - 變更：新增 `src/ui/Tabs.tsx`（role=tablist，左右鍵切換，選中的分頁消失時回到第一個），用於建議與技能使用次數；`Dropdown` 新增 `disabled`；`jobs/names.ts` 新增 `jobRole()`（tank／healer／dps）；`resolveSelection()` 回傳 `locked`，有 `preferred` 時 `players` 只含同職業玩家。

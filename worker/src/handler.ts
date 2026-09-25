@@ -1,6 +1,6 @@
 import { abilityNames, gameRow } from './abilityNames'
 import { npcNames } from './npcNames'
-import { EVENTS_QUERY, REPORT_QUERY } from './queries'
+import { AUTO_ATTACKS_TAKEN_QUERY, EVENTS_QUERY, REPORT_QUERY } from './queries'
 
 export interface Env {
   FFLOGS_CLIENT_ID: string
@@ -162,7 +162,7 @@ async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds:
 }
 
 async function reportRoute(url: URL, env: Env): Promise<unknown> {
-  const match = /^\/reports\/([^/]+)(\/events)?\/?$/.exec(url.pathname)
+  const match = /^\/reports\/([^/]+)(\/events|\/auto-attacks-taken)?\/?$/.exec(url.pathname)
   if (!match) throw new HttpError(404, 'Not found')
 
   const code = decodeURIComponent(match[1])
@@ -171,6 +171,15 @@ async function reportRoute(url: URL, env: Env): Promise<unknown> {
   if (!match[2]) return queryReport(env, REPORT_QUERY, { code })
 
   const params = url.searchParams
+  if (match[2] === '/auto-attacks-taken') {
+    const report = (await queryReport(env, AUTO_ATTACKS_TAKEN_QUERY, {
+      code,
+      fightIDs: [requiredInt(params, 'fight')],
+    })) as { table: { data?: { entries?: { id: number; total: number }[] } } }
+    // 只回傳每位玩家承受的普通攻擊總傷害 { 角色 ID: 傷害 }，省掉表格其餘欄位
+    return Object.fromEntries((report.table.data?.entries ?? []).map((e) => [e.id, e.total]))
+  }
+
   const report = (await queryReport(env, EVENTS_QUERY, {
     code,
     fightIDs: [requiredInt(params, 'fight')],

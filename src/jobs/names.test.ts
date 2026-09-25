@@ -20,9 +20,32 @@ describe('jobName', () => {
   })
 })
 
-const p = (name: string, subType: string) => ({ name, subType })
+let nextId = 1
+const p = (name: string, subType: string) => ({ id: nextId++, name, subType })
 
 describe('sortByPartySlot', () => {
+  it('labels the tank who took more boss auto-attacks MT', () => {
+    const party = [
+      p('pld', 'Paladin'),
+      p('war', 'Warrior'),
+      p('whm', 'WhiteMage'),
+      p('sch', 'Scholar'),
+      p('sam', 'Samurai'),
+      p('vpr', 'Viper'),
+      p('brd', 'Bard'),
+      p('blm', 'BlackMage'),
+    ]
+    const [pld, war] = party
+    const load = new Map([
+      [pld.id, 2_130_458],
+      [war.id, 3_638_563],
+    ])
+    const slots = sortByPartySlot(party, load).map(({ player, slot }) => `${slot}:${player.name}`)
+    expect(slots.slice(0, 2)).toEqual(['MT:war', 'ST:pld'])
+    // 還沒有資料時坦克不標位置，其餘照常
+    expect(sortByPartySlot(party).map(({ slot }) => slot)).toEqual([null, null, 'H1', 'H2', 'D1', 'D2', 'D3', 'D4'])
+  })
+
   it('orders a standard party MT/ST/H1/H2/D1-D4', () => {
     const party = [
       p('a', 'BlackMage'),
@@ -34,8 +57,8 @@ describe('sortByPartySlot', () => {
       p('g', 'Paladin'),
       p('h', 'Dragoon'),
     ]
-    expect(sortByPartySlot(party).map(({ player, slot }) => `${slot}:${player.subType}`)).toEqual([
-      'MT:DarkKnight', // 同組依職業繁中名稱排序（暗黑騎士 < 騎士）
+    expect(sortByPartySlot(party, new Map()).map(({ player, slot }) => `${slot}:${player.subType}`)).toEqual([
+      'MT:DarkKnight', // 沒有承傷差異時依職業繁中名稱排序（暗黑騎士 < 騎士）
       'ST:Paladin',
       'H1:WhiteMage',
       'H2:Scholar',

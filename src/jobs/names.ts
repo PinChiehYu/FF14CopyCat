@@ -65,21 +65,39 @@ const GROUP_ORDER: SlotGroup[] = ['tank', 'pure', 'barrier', 'melee', 'ranged', 
 // 標準 8 人隊的位置名稱，依排序後的順序分配
 const SLOTS = ['MT', 'ST', 'H1', 'H2', 'D1', 'D2', 'D3', 'D4']
 
-/**
- * 依隊伍位置排序（坦克 → 純治療 → 護盾治療 → 近戰 → 遠程物理 → 魔法），並在標準的 2 坦 2 補 4 輸出隊伍中
- * 標上 MT／ST／H1／H2／D1～D4。MT／ST 只是依選單順序，並不代表實際誰坦 Boss。組成不標準時不標位置。
- */
-export function sortByPartySlot<T extends { subType: string; name: string }>(players: T[]): { player: T; slot: string | null }[] {
-  const rank = (p: T) => GROUP_ORDER.indexOf(SLOT_GROUP[p.subType] ?? 'caster')
-  const sorted = [...players].sort(
-    (a, b) => rank(a) - rank(b) || jobName(a.subType).localeCompare(jobName(b.subType)) || a.name.localeCompare(b.name),
-  )
-  const roles = sorted.map((p) => jobRole(p.subType))
-  const standard =
-    sorted.length === 8 &&
+/** 標準的 2 坦 2 補 4 輸出隊伍（才標隊伍位置）。 */
+export function isStandardParty(players: { subType: string }[]): boolean {
+  const roles = players.map((p) => jobRole(p.subType))
+  return (
+    players.length === 8 &&
     roles.filter((r) => r === 'tank').length === 2 &&
     roles.filter((r) => r === 'healer').length === 2
-  return sorted.map((player, i) => ({ player, slot: standard ? SLOTS[i] : null }))
+  )
+}
+
+/**
+ * 依隊伍位置排序（坦克 → 純治療 → 護盾治療 → 近戰 → 遠程物理 → 魔法），並在標準隊伍中標上 MT／ST／H1／H2／D1～D4。
+ * MT／ST 依實際坦 Boss 的情況：tankLoad（承受的 Boss 普通攻擊傷害）較多者為 MT；還沒有資料時坦克不標位置。
+ * 組成不標準時不標位置。
+ */
+export function sortByPartySlot<T extends { id: number; subType: string; name: string }>(
+  players: T[],
+  tankLoad?: Map<number, number>,
+): { player: T; slot: string | null }[] {
+  const rank = (p: T) => GROUP_ORDER.indexOf(SLOT_GROUP[p.subType] ?? 'caster')
+  const load = (p: T) => (jobRole(p.subType) === 'tank' ? (tankLoad?.get(p.id) ?? 0) : 0)
+  const sorted = [...players].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      load(b) - load(a) ||
+      jobName(a.subType).localeCompare(jobName(b.subType)) ||
+      a.name.localeCompare(b.name),
+  )
+  const standard = isStandardParty(sorted)
+  return sorted.map((player, i) => ({
+    player,
+    slot: !standard || (jobRole(player.subType) === 'tank' && !tankLoad) ? null : SLOTS[i],
+  }))
 }
 
 /** FFLogs 的 subType（例如 'BlackMage'）轉為繁中職業名稱；未知的職業沿用原名。 */

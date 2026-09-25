@@ -40,6 +40,9 @@ node scripts/gen-job-data.mjs        # 從遊戲資料重新產生 src/jobs/gene
   - PowerShell 印中文前要設 `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`，否則亂碼。
   - 探索 FFLogs 資料時，用 scratchpad 的 Node 腳本直接打已部署的 Worker（加 `Origin: https://pinchiehyu.github.io` 標頭）。
   - 瀏覽器面板在視窗被遮住時截圖會失敗；改用 `javascript_tool` 讀 DOM 驗證，輸入連結用 `form_input`。
+  - 在正式站驗證時瀏覽器可能用到快取的舊 `index.html`，網址加 `?v=<commit>` 強制載入新版。
+  - deploy 步驟若因 GitHub Pages 502 失敗（建置正常），推一個空 commit 重新觸發即可；失敗原因用 `/actions/runs/<id>/jobs` 與 `/check-runs/<job id>/annotations` 查。
+  - 短時間多次部署 Worker 可能讓 FFLogs 權杖端點回 429（數分鐘後恢復），部署後驗證若遇到先等一下。
   - GitHub CLI（`gh`）沒有安裝；查 workflow 狀態用公開 API：`https://api.github.com/repos/PinChiehYu/FF14CopyCat/actions/runs`。
   - `wrangler` 已在這台機器以使用者的 Cloudflare 帳號登入；Worker Secrets 由使用者在 Cloudflare 儀表板設定，不要要求使用者把 secret 貼到對話中。
 - `tsc -b` 同時檢查前端（`tsconfig.app.json`）與 Worker（`worker/tsconfig.json`，WebWorker lib，不含 DOM）；Vitest 會一併執行 `worker/` 下的測試。
@@ -52,6 +55,7 @@ node scripts/gen-job-data.mjs        # 從遊戲資料重新產生 src/jobs/gene
   - `GET /reports/:code` → 報告、fights、masterData.actors、masterData.abilities
   - `GET /reports/:code/events?fight&start&end[&source][&dataType][&hostility]` → 一頁事件（`includeResources: true`）；前端 `fetchFightEvents()` 依 `nextPageTimestamp` 翻頁
   - `GET /abilities?ids=...` → 技能與道具的繁中名稱（`worker/src/abilityNames.ts`，查 Boilmaster 鏡像 `xivapi-v2.xivcdn.com` 的 `tc`，佔位或空白時以 `chs` 經 opencc-js 轉繁；FFLogs 道具 ID＝`0x2000000`＋道具 ID，HQ 再加 1,000,000，查 Item 表）。前端顯示名稱為繁中、英文在 `Ability.englishName`；**依名稱判斷的規則要用英文名稱**
+  - `GET /reports/:code/auto-attacks-taken?fight` → 每位玩家承受的敵方普通攻擊總傷害 `{ id: total }`（`table` 查詢以 `ability.name = 'attack'` 過濾），前端 `useTankLoad()` 用來判斷 MT／ST（角色選單排序與位置標示在 `jobs/names.ts` 的 `sortByPartySlot()`）
   - `GET /npc-names?name=A&name=B` → Boss 繁中名稱（`worker/src/npcNames.ts`，以英文名稱搜尋 BNpcName；NPC 的 gameID 對不到名稱表）。前端 `useReport()`（`App.tsx`）先以英文顯示報告，名稱查到後以 `translateReport()` 把 `Fight.name` 換成繁中、英文在 `Fight.englishName`（不阻擋選擇；`Comparison` 只依選擇的 ID 重新載入）
   - 新增資料需求時：在 `queries.ts` 加查詢、在 `handler.ts` 的 `route()` 加端點與參數驗證、在 `src/fflogs/types.ts` 加型別。改了查詢欄位要同步更新 `types.ts`。
 - Worker 行為：`ALLOWED_ORIGINS`（`wrangler.toml`）檢查 Origin 並回 CORS 標頭；Cloudflare Rate Limiting 綁定 `RATE_LIMITER`（每 IP 60 次/分）；成功回應以不含 Origin 的 URL 為鍵放進 `caches.default` 10 分鐘。`handler.ts` 不依賴 Workers 型別，快取與 ctx 以參數注入，方便在 Node 的 Vitest 中測試。
