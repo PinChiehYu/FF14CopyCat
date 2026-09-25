@@ -42,7 +42,7 @@
 
 ## 資料前處理（`src/compare/load.ts`）
 
-- **玩家施放**：只取玩家自己（`sourceID`）的施放；施放時間取「開始施放」——有詠唱條的技能以同技能前一個 `begincast`（5 秒內）取代 `cast`，被打斷的詠唱不計。
+- **玩家施放**：只取玩家自己（`sourceID`）的施放；施放時間取「開始施放」——有詠唱條的技能以同技能前一個 `begincast`（5 秒內）取代 `cast`，被打斷的詠唱不計。任何施放完成時清除尚未完成的 `begincast`（代表那些詠唱已被取消），避免之後瞬發同一技能時配對到過期的開始時間。
 - **普通攻擊**（Attack #7、Shot #8）另存 `autoAttacks`：不畫在時間軸、不計入 GCD 與建議，只列入技能使用次數。
 - **不紀錄的技能**（ignored 分類，例如坦克的挑釁、坦姿開關）在比較開始時就從玩家施放中移除（`withoutAbilities()`）。
 - **Boss 施放**：敵方的 `cast` 事件。
@@ -76,7 +76,11 @@
 
 ### 職業模組（`src/jobs/`）
 
-- `JobModule`：`subType`（FFLogs 的職業名稱）、中文名稱（`jobs/names.ts`）、`isGcd(abilityId)`，以及職業專屬技能的分類 `ignored`、`mitigation`、`movement`、`utility`。之後可加入冷卻時間、爆發窗口等規則。
+- `JobModule`：`subType`（FFLogs 的職業名稱）、中文名稱（`jobs/names.ts`）、`isGcd(abilityId)`，以及職業專屬技能的分類 `ignored`、`mitigation`、`movement`、`utility`。
+- **所有 21 個戰鬥職業都有基本規則**，由遊戲資料產生（`scripts/gen-job-data.mjs` → `src/jobs/generated.ts`，`jobs/index.ts` 據此建立模組）：
+  - **GCD**：Action 表中 `CooldownGroup` 或 `AdditionalCooldownGroup` 為 58（公共冷卻）的非 PvP 玩家技能，全職業共用一個集合。含有自己冷卻但會觸發公共冷卻的技能（例如 Meditate、Vicewinder），以及 GCD 較短的技能（舞者舞步、忍者結印、賢者 Eukrasia、機工 Blazing Shot 等）。
+  - **職業專屬分類**：腳本中以 7.x 英文技能名稱列出各職業的減傷、移動、不紀錄、輔助技能，執行時查表取得 ID，名稱找不到就報錯。
+  - 遊戲改版新增技能後重新執行腳本。之後各職業的詳細分析（類似 xivanalysis，例如冷卻與爆發窗口）可在 `jobs/` 下另建檔案擴充基本模組。
 - **技能分類**（`jobs/roleActions.ts` 的 `abilityCategory()`，職能技能內建、職業專屬技能由模組提供）：
 
   | 分類 | 內容 | 處理 |
@@ -87,13 +91,32 @@
   | utility | 其他輔助：True North、Arm's Length、Second Wind、Bloodbath、Lucid Dreaming、Interject 等 | 合併為一則低優先建議 |
   | normal | 其他（輸出技能） | 一般規則 |
 - **職業名稱**：`jobs/names.ts` 內建所有職業的官方繁中名稱（遊戲 ClassJob 表），介面上的職業一律以繁中顯示（例如 BlackMage → 黑魔道士、Viper → 毒蛇劍士）。
-- 已支援：
-  | 職業 | GCD 定義 | 專屬技能分類 |
-  |---|---|---|
-  | Viper（毒蛇劍士） | 技能 ID 34606–34633 | — |
-  | Samurai（武士） | 明確列表：連擊、居合術、燕返、奧義斬浪等（含已被取代的舊技能） | mitigation：Third Eye、Tengentsu |
-  | Paladin（騎士） | 明確列表：連擊、Atonement 系列、Holy Spirit／Circle、Confiteor 與 Blade 系列、Goring Blade、Shield Lob、Clemency | ignored：Iron Will、Release Iron Will；mitigation：Sentinel／Guardian、Bulwark、Hallowed Ground、Sheltron／Holy Sheltron、Divine Veil、Intervention、Passage of Arms、Cover；utility：Clemency |
-  | BlackMage（黑魔道士） | 明確列表：所有攻擊魔法（含低等級技能）與 Umbral Soul | mitigation：Manaward；movement：Aetherial Manipulation、Between the Lines、Retrace |
+- 職業專屬分類（完整清單見 `scripts/gen-job-data.mjs`）：
+  | 職業 | mitigation（減傷） | movement（移動） | 其他 |
+  |---|---|---|---|
+  | 騎士 | Sentinel／Guardian、Bulwark、Hallowed Ground、Sheltron／Holy Sheltron、Divine Veil、Intervention、Passage of Arms、Cover | — | ignored：Iron Will 與解除；utility：Clemency |
+  | 戰士 | Vengeance／Damnation、Raw Intuition／Bloodwhetting、Nascent Flash、Thrill of Battle、Holmgang、Shake It Off | — | utility：Equilibrium |
+  | 暗黑騎士 | Shadow Wall／Shadowed Vigil、Dark Mind、The Blackest Night、Oblation、Living Dead、Dark Missionary | Shadowstride | |
+  | 絕槍戰士 | Nebula／Great Nebula、Camouflage、Aurora、Superbolide、Heart of Light、Heart of Stone／Corundum | Trajectory | |
+  | 白魔道士 | Temperance、Divine Caress、Aquaveil、Divine Benison | Aetherial Shift | |
+  | 學者 | Sacred Soil、Expedient、Fey Illumination、Deployment Tactics | — | |
+  | 占星術師 | Collective Unconscious、Neutral Sect、Exaltation、Sun Sign | — | |
+  | 賢者 | Kerachole、Holos、Panhaima、Haima、Taurochole | Icarus | |
+  | 武僧 | Riddle of Earth、Mantra | Thunderclap | |
+  | 龍騎士 | — | Elusive Jump、Winged Glide | |
+  | 忍者 | Shade Shift | Shukuchi | |
+  | 武士 | Third Eye、Tengentsu | — | |
+  | 奪魂者 | Arcane Crest | Hell's Ingress／Egress、Regress | |
+  | 毒蛇劍士 | — | Slither | |
+  | 吟遊詩人 | Troubadour、Nature's Minne | Repelling Shot | |
+  | 機工士 | Tactician、Dismantle | — | |
+  | 舞者 | Shield Samba、Improvisation、Curing Waltz | En Avant | |
+  | 黑魔道士 | Manaward | Aetherial Manipulation、Between the Lines、Retrace | |
+  | 召喚士 | Radiant Aegis | — | |
+  | 赤魔道士 | Magick Barrier | — | |
+  | 繪靈法師 | Tempera Coat、Tempera Grassa | Smudge | |
+
+  職能技能（`jobs/roleActions.ts`）：ignored＝Provoke、Shirk、各坦克姿態與解除；mitigation＝Rampart、Reprisal、Feint、Addle；movement＝Sprint、Peloton；utility＝其餘職能技能。
 - 新增職業時，以實際日誌計算以 `begincast` 為起點的相鄰 GCD 間隔驗證分類：分布應集中在該職業 GCD 附近，不應出現遠小於 GCD 的間隔（驗證結果記在 TECH_NOTES.md）。
 
 ### ② 通用指標（`src/analysis/metrics.ts`、`src/compare/Metrics.tsx`）
@@ -166,12 +189,16 @@
 - 站位差異門檻 8 yalm、平均時機配對窗口 30 秒、對齊的低頻門檻 8 次等參數，只以比較基準調整過。
 
 ### 可能的後續方向
-- 更多職業模組（目前 Viper、Samurai、Paladin、BlackMage）；其他坦克職業的減傷技能尚未分類（坦姿開關已內建為不紀錄）。
+- 各職業的詳細分析（類似 xivanalysis）：目前所有職業只有基本規則（GCD、減傷、移動分類）。奪魂者尚未以實際日誌驗證。
 - 職業規則加入冷卻時間與團隊爆發窗口：計算冷卻技的理論最大使用次數、爆發窗口內的技能內容（需要每個職業的冷卻與 Buff 資料）。
 - 建議改由 LLM 產生或潤飾（經 Worker 呼叫，需 API 金鑰與費用）；目前為規則式。
 - 死亡、受到的傷害等資料尚未分析。
 
 ## 設計變更紀錄
+
+### 2026-09-25 所有職業的基本規則（由遊戲資料產生）
+- 變更：新增 `scripts/gen-job-data.mjs` 從 Action 表產生 `src/jobs/generated.ts`（GCD 集合與 21 個職業的技能分類），取代手寫的四個職業模組；Peloton 改為移動；施放完成時清除過期的 `begincast`。
+- 原因：使用者要求所有職業先有初步實作，詳細分析之後再做。以遊戲資料判斷 GCD 比手寫清單完整且不易出錯（手寫時曾把 Meditate 判為 oGCD、把 ID 38 誤當成 Release Iron Will）；以真實日誌驗證所有職業時發現取消詠唱後會配對到過期的 begincast。
 
 ### 2026-09-25 技能分類（不紀錄／減傷／移動／輔助）；職業名稱繁中
 - 變更：以 `abilityCategory()` 取代原本的 `utility` 與建議內的職能技能清單；坦克的挑釁、退避、坦姿開關不紀錄；減傷與衝刺等移動技能新增專屬建議，列出參考有用而我沒有對應使用的時間點；介面上的職業名稱改為官方繁中（`jobs/names.ts`），並修正模組中錯誤的職業名稱（黑魔法師 → 黑魔道士、蝰蛇劍士 → 毒蛇劍士）。

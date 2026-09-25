@@ -45,6 +45,19 @@ describe('playerCasts', () => {
     ])
   })
 
+  it('drops begincasts cancelled by a later cast', () => {
+    // 詠唱 Fall Malefic 被移動取消 → 瞬發 Combust → 之後瞬發（例如即刻詠唱）Fall Malefic
+    const events = [
+      ev(10_000, 'begincast', 1),
+      ev(10_500, 'cast', 2),
+      ev(12_000, 'cast', 1),
+    ]
+    expect(playerCasts(events, fight)).toEqual([
+      { t: 9500, abilityId: 2 },
+      { t: 11_000, abilityId: 1 }, // 不是過期的 begincast（9000）
+    ])
+  })
+
   it('separates auto-attacks from other casts', () => {
     const events = [
       { timestamp: 2000, type: 'cast', abilityGameID: 7, sourceID: 6 }, // Attack

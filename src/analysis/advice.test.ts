@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { paladin } from '../jobs/paladin'
+import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
+
+const paladin = getJob('Paladin')!
 import { generateAdvice, type AdviceInput } from './advice'
 import type { AbilityUsage } from './metrics'
 import type { TrackPoint } from './positions'

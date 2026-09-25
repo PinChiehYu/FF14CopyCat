@@ -32,6 +32,7 @@ const ROLE_MITIGATION = new Set([
 
 const ROLE_MOVEMENT = new Set([
   3, // Sprint
+  7557, // Peloton（遠程物理的全隊移動速度提升）
 ])
 
 const ROLE_UTILITY = new Set([
@@ -42,7 +43,6 @@ const ROLE_UTILITY = new Set([
   7546, // True North
   7548, // Arm's Length
   7551, // Head Graze
-  7557, // Peloton
   7863, // Leg Sweep
   7559, // Surecast
   7562, // Lucid Dreaming

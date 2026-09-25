@@ -90,7 +90,9 @@ export function playerCasts(events: FFLogsEvent[], fight: Fight, actorId?: numbe
       pending.set(e.abilityGameID, t)
     } else if (e.type === 'cast') {
       const begin = pending.get(e.abilityGameID)
-      pending.delete(e.abilityGameID)
+      // 任何施放完成都代表先前未完成的詠唱已被取消（例如移動中斷）；
+      // 不清掉的話，之後瞬發同一技能會配對到過期的 begincast，算出負的間隔
+      pending.clear()
       casts.push({ t: begin !== undefined && t - begin <= MAX_CAST_BAR_MS ? begin : t, abilityId: e.abilityGameID })
     }
   }
