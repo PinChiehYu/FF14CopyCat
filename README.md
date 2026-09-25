@@ -19,7 +19,9 @@
 
 已支援職業規則：蝰蛇劍士、武士、騎士、黑魔法師（其他職業仍可比較，但不區分 GCD／oGCD）。
 
-設計細節與變更紀錄見 [docs/DESIGN.md](docs/DESIGN.md)。
+文件：
+- [docs/DESIGN.md](docs/DESIGN.md)：系統設計（架構、分析方法與規則、待辦事項、設計變更紀錄）。
+- [docs/TECH_NOTES.md](docs/TECH_NOTES.md)：技術紀錄（測試資料、FFLogs 資料特性、資料來源調查、實測結果、踩過的坑）。
 
 ## 架構
 
