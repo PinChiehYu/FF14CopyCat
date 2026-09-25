@@ -9,8 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 使用者常在工作進行中補充需求或更換測試資料；收到後在同一輪處理，並在回報中說明。
 - **每次推送新程式碼後都要確認新版已建置並通過測試**：push 到 `main` 會觸發 `.github/workflows/deploy.yml`（lint → test → build → deploy → 冒煙測試）。推送後追蹤該次 workflow 直到完成，失敗就查原因修正；並以下方的比較基準日誌在正式站實際操作驗證這次的變更。改了 `worker/` 則先 `npm run worker:deploy` 再推送前端。
 - **文件分兩份，各自維護**，與實作放在同一個 commit：
-  - **[docs/DESIGN.md](docs/DESIGN.md)（系統設計）**：系統**目前如何運作**——架構、API、資料流、各分析的方法／參數／規則、職業模組介面、待辦與未決事項。設計有調整時更新對應段落，並在「設計變更紀錄」新增一筆（日期、變更內容、原因）。設計調整包含：架構／部署方式、資料流與 API 端點、外部服務、分析方法與演算法、已與使用者議定的規格或優先順序。純 bug 修正或重構不需記錄。
-  - **[docs/TECH_NOTES.md](docs/TECH_NOTES.md)（技術紀錄）**：開發中**得到的知識**——測試資料、FFLogs 資料特性、外部資料來源調查、實測數據、職業模組驗證結果、參數調整與錯誤修正經過、部署與開發踩過的坑。做了資料探索、以日誌驗證、或修正錯誤判斷時就補上。
+  - **[docs/DESIGN.md](docs/DESIGN.md)（網頁使用流程與設計）**：使用者看到與操作的一切——使用流程、比較結果頁各區塊的內容與互動、判定規則（比較範圍、GCD、少打 GCD、站位差異、機制差異）、技能分類與名稱呈現、建議規則、待辦與未決事項。使用流程或規則有調整時更新對應段落，並在「設計變更紀錄」新增一筆（日期、變更內容、原因）。不寫程式碼細節。
+  - **[docs/TECH_NOTES.md](docs/TECH_NOTES.md)（網站技術紀錄）**：github.io 網站的技術實作——架構與部署、Worker API、資料處理與演算法實作、職業資料產生、技能名稱實作、測試資料、FFLogs 資料特性、外部資料來源調查、實測與驗證數據、參數調整與錯誤修正經過、部署與開發踩過的坑、技術上的已知限制。架構或實作有調整時在「技術變更紀錄」新增一筆；做了資料探索、以日誌驗證或修正錯誤判斷時補上紀錄。
+  - 純 bug 修正或重構不需寫變更紀錄，但有值得記住的原因（例如資料特性）時記到 TECH_NOTES.md。
   - 本檔（CLAUDE.md）的架構描述也要同步更新。
 
 ## Commands
@@ -60,14 +61,14 @@ node scripts/gen-job-data.mjs        # 從遊戲資料重新產生 src/jobs/gene
 
 `App.tsx`（貼連結、選戰鬥與玩家；選擇規則在 `compare/autoSelect.ts` 的 `resolveSelection()`，參考日誌以我的 Boss／職業為 `preferred` 自動選擇）→ `compare/Comparison.tsx`（檢查同 Boss／同職業；每邊載入玩家全部事件與敵方施放，共 4 個請求；載入後另查技能繁中名稱）→ `analysis/alignment.ts`（`buildAlignment()` 產生 `mineToRef()`）→ `compare/AdviceList.tsx`（`analysis/advice.ts` 的規則式建議，彙整下列各分析）＋ `compare/Mechanics.tsx`（`analysis/mechanics.ts` 的 Boss 機制差異）＋ `compare/Metrics.tsx`（`analysis/metrics.ts` 的 GCD 概況、少打 GCD 的時段、技能次數與時機）＋ `compare/Positions.tsx`（`analysis/positions.ts` 的站位差異與對稱判斷、俯視圖）＋ `compare/Timeline.tsx`（以參考時間為橫軸的並排時間軸，可標示區段與捲動到指定時間）。玩家施放時間取開始施放（`load.ts` 的 `playerCasts()` 以 `begincast` 取代 `cast`）；普通攻擊（#7、#8）另存 `autoAttacks`，只列入技能使用次數。GCD 推估上限 2.5 秒（`metrics.ts`）。玩家資料抓 `dataType=All`，施放與位置都從中取得（全部事件中也有別人對玩家的施放，要以 `sourceID` 過濾）。`Comparison.tsx` 持有共用的時間游標 `cursor`（參考時間）與時間軸捲動用的 `focus`。所有統計都用裁切到比較範圍的 `mineInRange`／`refInRange`（`clipSide()`），只有時間軸與 Boss 機制差異用完整資料；新增統計時也要用裁切後的資料。
 
-- 對齊演算法的細節見 [docs/DESIGN.md](docs/DESIGN.md)，實測數據與調整經過見 [docs/TECH_NOTES.md](docs/TECH_NOTES.md)；調整門檻（`maxOccurrences`、`dedupeMs` 等）前先用實際日誌驗證，並把結果記到 TECH_NOTES.md。
+- 演算法實作、實測數據與調整經過見 [docs/TECH_NOTES.md](docs/TECH_NOTES.md)，使用者看到的判定規則見 [docs/DESIGN.md](docs/DESIGN.md)；調整門檻（`maxOccurrences`、`dedupeMs` 等）前先用實際日誌驗證，並把結果記到 TECH_NOTES.md，規則有變時同步更新 DESIGN.md。
 - 職業規則：所有 21 個戰鬥職業的基本模組由 `jobs/index.ts` 依 `jobs/generated.ts` 建立（**generated.ts 不要手改**，改 `scripts/gen-job-data.mjs` 的技能名稱後重新執行）；以 FFLogs `subType`（如 `Viper`）查找。之後的職業詳細分析可在 `src/jobs/` 另建檔案擴充。技能分類（ignored／mitigation／movement／utility）由 `jobs/roleActions.ts` 的 `abilityCategory()` 決定：職能技能內建，職業專屬技能由模組提供；ignored 的技能在比較開始時就移除。介面上的職業名稱一律用 `jobs/names.ts` 的 `jobName()`（官方繁中）。**憑記憶寫的技能 ID 要先用遊戲資料查證**（方法見 TECH_NOTES.md）。
 - React 19 中 `ref` 是保留 prop，元件 prop 不要命名為 `ref`（比較雙方用 `mine` / `reference`）。
 - 本機測試可在 `.env.local` 設 `VITE_API_BASE=https://ff14-copycat-api.ff14-copycat.workers.dev` 直接連已部署的 Worker（`ALLOWED_ORIGINS` 已含 `http://localhost:5173`）。測試用公開報告：`WATKBdHRh7m8PNQt`（fight 10 滅團 / 11 擊殺 Sugar Riot，Viper 玩家 source=34）；**使用者指定的比較基準**（皆為 Howling Blade 擊殺，驗證功能時兩組都要測）：
   - 武士：我的日誌 `https://www.fflogs.com/reports/FXLkqaK32PhQH8Ac?fight=1`（席德，source 6）、高階玩家 `https://www.fflogs.com/reports/pwTF16cgnB9G7fWM?fight=29`（安祖卡，source 13）。
   - 騎士：我的日誌 `https://www.fflogs.com/reports/hqNYDGK9A4pmWVXB?fight=18`（神曲莊園，source 40）、高階玩家 `https://www.fflogs.com/reports/khNfTaMtYwKBd36b?fight=10`（Lavid，source 5）。參考擊殺快 61 秒，可測大幅時間差與坦克技能。
   - 黑魔道士（驗證用，非使用者指定）：`https://www.fflogs.com/reports/bX97vBapCPwKndL6?fight=3`（春風醒，source 2）vs `https://www.fflogs.com/reports/h6gRJZ2pfDFYMPjX?fight=13`（Nana七，source 28）。
-- 所有戰鬥職業都有基本規則（GCD 由遊戲資料的公共冷卻群組判斷）。修改分類或 GCD 判斷後，用 `begincast` 為起點計算 GCD 間隔驗證（方法見 DESIGN.md 職業模組一節，驗證結果記在 TECH_NOTES.md；舞者、忍者、賢者等有較短的 GCD，短間隔不一定是錯誤）。所有測試日誌與已排除的連結也列在 TECH_NOTES.md「測試資料」。
+- 所有戰鬥職業都有基本規則（GCD 由遊戲資料的公共冷卻群組判斷）。修改分類或 GCD 判斷後，用 `begincast` 為起點計算 GCD 間隔驗證（方法與結果見 TECH_NOTES.md「職業資料」「實測結果」；舞者、忍者、賢者等有較短的 GCD，短間隔不一定是錯誤）。所有測試日誌與已排除的連結也列在 TECH_NOTES.md「測試資料」。
 
 ## 專案目標
 
@@ -91,4 +92,4 @@ node scripts/gen-job-data.mjs        # 從遊戲資料重新產生 src/jobs/gene
 - **時間軸對齊**：兩份日誌的擊殺時間、轉場時間不同，單純用絕對時間比較會失準；已實作以 Boss 低頻技能為錨點的分段對齊（`analysis/alignment.ts`）。
 - **Boss 隨機機制**：同一機制的隨機變化常使用不同技能 ID（甚至同名不同 ID，例如 Hero's Blow #42079／#42081），站位差異可能是機制造成，見 `analysis/mechanics.ts`。
 - **分析邏輯與職業相關**：職業別的規則（GCD 定義、防禦技，之後的冷卻與爆發窗口）放在 `src/jobs/` 的模組，而非寫死在比較流程中。xivanalysis 為開源專案（GitHub: `xivanalysis/xivanalysis`），可作為職業規則與分析模組設計的參考。
-- 目前進度、未決事項與後續方向見 [docs/DESIGN.md](docs/DESIGN.md) 的「待辦與未決事項」；FFLogs 資料的更多細節（事件量、施放事件、普通攻擊、道具 ID、圖示網址、隨機機制實例）見 [docs/TECH_NOTES.md](docs/TECH_NOTES.md)。
+- 目前進度、未決事項與後續方向見 [docs/DESIGN.md](docs/DESIGN.md) 的「待辦與未決事項」（技術上的限制見 TECH_NOTES.md）；FFLogs 資料的更多細節（事件量、施放事件、普通攻擊、道具 ID、圖示網址、隨機機制實例）見 [docs/TECH_NOTES.md](docs/TECH_NOTES.md)。

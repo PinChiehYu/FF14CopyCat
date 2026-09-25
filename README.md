@@ -20,8 +20,8 @@
 所有戰鬥職業都有基本規則（GCD／oGCD 分類、減傷與移動技能），由遊戲資料產生；各職業的詳細分析之後再加入。減傷與衝刺等移動技能有專屬建議；坦克的挑釁、退避、坦姿開關不列入比較。
 
 文件：
-- [docs/DESIGN.md](docs/DESIGN.md)：系統設計（架構、分析方法與規則、待辦事項、設計變更紀錄）。
-- [docs/TECH_NOTES.md](docs/TECH_NOTES.md)：技術紀錄（測試資料、FFLogs 資料特性、資料來源調查、實測結果、踩過的坑）。
+- [docs/DESIGN.md](docs/DESIGN.md)：網頁使用流程與設計（各區塊的內容與操作、判定規則、建議規則、待辦事項、設計變更紀錄）。
+- [docs/TECH_NOTES.md](docs/TECH_NOTES.md)：網站技術紀錄（架構與部署、Worker API、資料處理與演算法、測試資料、FFLogs 資料特性、驗證數據、踩過的坑、技術變更紀錄）。
 
 ## 架構
 
