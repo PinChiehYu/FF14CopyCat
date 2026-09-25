@@ -2,7 +2,9 @@
 
 export interface Fight {
   id: number
+  /** Boss 名稱；前端載入報告後換成繁中，英文保留在 englishName */
   name: string
+  englishName?: string
   encounterID: number
   difficulty: number | null
   kill: boolean | null

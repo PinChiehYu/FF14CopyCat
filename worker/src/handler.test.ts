@@ -166,6 +166,31 @@ describe('handleRequest', () => {
     expect(itemUrl.searchParams.get('rows')).toBe('45995')
   })
 
+  it('translates boss names by searching the NPC name sheet', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/search')) {
+        const found = url.searchParams.get('query') === 'Singular="Howling Blade"'
+        return Response.json({ results: found ? [{ row_id: 13843 }] : [] })
+      }
+      // /sheet/BNpcName/13843
+      return Response.json({ fields: { Singular: url.searchParams.get('language') === 'tc' ? '呼嘯之劍' : '' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await handleRequest(get('/npc-names?name=Howling%20Blade&name=Unknown%20Boss'), env, ctx, null)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ 'Howling Blade': { name: '呼嘯之劍', source: 'tc' } })
+  })
+
+  it('validates npc names', async () => {
+    const fetchMock = mockFflogs({})
+    for (const path of ['/npc-names', '/npc-names?name=a%22%20OR%201', `/npc-names?${'name=x&'.repeat(1)}${Array.from({ length: 21 }, (_, i) => `name=n${i}`).join('&')}`]) {
+      expect((await handleRequest(get(path), env, ctx, null)).status, path).toBe(400)
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('validates ability ids', async () => {
     const fetchMock = mockFflogs({})
     // 5000000 既不在技能也不在道具的 ID 範圍

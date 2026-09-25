@@ -22,6 +22,55 @@ export function fetchReport(code: string, signal?: AbortSignal): Promise<Report>
   return get(`/reports/${encodeURIComponent(code)}`, signal)
 }
 
+// Worker 單次最多查詢的 NPC 名稱數
+const NPC_BATCH = 20
+
+// 與 Worker 的驗證一致：只查一般的英文名稱
+const NPC_NAME = /^[A-Za-z0-9 '\-.,:!&]{1,80}$/
+
+/** 戰鬥名稱可能由多個 NPC 組成，例如 `living liquid / liquid hand / ...`。 */
+export function fightNameParts(name: string): string[] {
+  return name.split('/').map((p) => p.trim())
+}
+
+/** 把戰鬥名稱逐段換成繁中；查不到的段落保留英文。 */
+export function translateFightName(name: string, npcNames: Map<string, string>): string {
+  return fightNameParts(name)
+    .map((p) => npcNames.get(p) ?? p)
+    .join(' / ')
+}
+
+/** 查詢 Boss（NPC）英文名稱對應的繁中名稱；沒有中文名稱的不在結果中。 */
+export async function fetchNpcNames(names: string[], signal?: AbortSignal): Promise<Map<string, string>> {
+  const unique = [...new Set(names)].filter((n) => NPC_NAME.test(n) && /[A-Za-z]/.test(n))
+  const result = new Map<string, string>()
+  for (let i = 0; i < unique.length; i += NPC_BATCH) {
+    const params = new URLSearchParams(unique.slice(i, i + NPC_BATCH).map((n) => ['name', n]))
+    const batch: Record<string, { name: string }> = await get(`/npc-names?${params}`, signal)
+    for (const [en, { name }] of Object.entries(batch)) result.set(en, name)
+  }
+  return result
+}
+
+/** 載入報告，並把戰鬥名稱（Boss）換成繁中；翻譯失敗時沿用英文。 */
+export async function fetchTranslatedReport(code: string, signal?: AbortSignal): Promise<Report> {
+  const report = await fetchReport(code, signal)
+  const names = await fetchNpcNames(
+    report.fights.flatMap((f) => fightNameParts(f.name)),
+    signal,
+  ).catch((err: unknown) => {
+    if (signal?.aborted) throw err
+    return new Map<string, string>()
+  })
+  return {
+    ...report,
+    fights: report.fights.map((f) => {
+      const zh = translateFightName(f.name, names)
+      return zh === f.name ? f : { ...f, name: zh, englishName: f.name }
+    }),
+  }
+}
+
 export interface EventQuery {
   sourceId?: number
   dataType?: EventDataType

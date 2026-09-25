@@ -27,6 +27,7 @@
 | `GET /reports/:code` | 報告標題、fights、masterData.actors、masterData.abilities（技能名稱與圖示） | 10 分鐘 |
 | `GET /reports/:code/events?fight&start&end[&source][&dataType][&hostility]` | 一頁事件（`includeResources: true`、`limit: 10000`），前端 `fetchFightEvents()` 依 `nextPageTimestamp` 翻頁 | 10 分鐘 |
 | `GET /abilities?ids=1,2,3` | 技能繁中名稱（見「技能繁中名稱」） | 1 天 |
+| `GET /npc-names?name=A&name=B` | Boss（NPC）繁中名稱（見「Boss 繁中名稱」） | 1 天 |
 
 - 保護：`ALLOWED_ORIGINS`（`wrangler.toml`）檢查 Origin 並回 CORS 標頭；Cloudflare Rate Limiting 綁定 `RATE_LIMITER`（每 IP 60 次／分）；成功回應以不含 Origin 的網址為鍵放入 `caches.default`。
 - client credentials 權杖在同一 isolate 內快取重用。所有訪客共用一組 FFLogs API 配額。
@@ -85,6 +86,14 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - Worker `GET /abilities?ids=`：依 ID 範圍決定查哪張表（`gameRow()`）——小於 1,000,000 為 Action 表；`0x2000000 + 道具 ID`（HQ 再加 1,000,000）為 Item 表。向 Boilmaster 鏡像批次（每批 100 個）查 `language=tc`；結果為 `_rsv_…` 佔位或空白者再查 `language=chs`，以 opencc-js（`opencc-js/cn2t`，`from: 'cn', to: 'tw'`，只轉字元與台灣異體字、不改用詞）轉繁。HQ 道具名稱加「（HQ）」。回傳 `{ FFLogs ID: { name, source: 'tc' | 'chs' } }`，都沒有的不回傳。最多 500 個 ID，不在兩種範圍內的 ID 回 400。
 - 前端（`fetchAbilityNames()`、`Comparison.tsx` 的 `useAbilityNames()`）：以繁中取代 `Ability.name`，英文保留在 `Ability.englishName`。
 - Worker 打包後 2 MB（gzip 503 KB），大部分是簡轉繁詞典；免費方案上限 3 MB。快取未命中時查詢約需 8 秒。
+
+## Boss 繁中名稱（`worker/src/npcNames.ts`）
+
+- FFLogs 的 `fight.name` 與 NPC 角色名稱都是英文；NPC 的 `gameID`（例如 Howling Blade 為 18215）是 BNpcBase，**不是** BNpcName 表的列（查 BNpcName/18215 得 404）。
+- 因此以英文名稱搜尋：`/api/search?sheets=BNpcName&query=Singular="<name>"&language=en&limit=1`，取第一列再以 `/api/sheet/BNpcName/<row>?fields=Singular&language=tc` 取繁中；沒有時查 `chs` 以 opencc 轉繁。搜尋區分大小寫，找不到時再以全小寫重查（遊戲中部分 NPC 名稱為小寫，例如 living liquid）。
+- Worker `GET /npc-names`：`name` 參數最多 20 個，只允許 `[A-Za-z0-9 '\-.,:!&]`（避免注入搜尋語法），否則 400。回傳 `{ 英文: { name, source } }`，查不到的不回傳。
+- 前端 `fetchTranslatedReport()`（`src/fflogs/client.ts`）在載入報告後查詢，把 `Fight.name` 換成繁中、英文放在 `Fight.englishName`；戰鬥名稱以 `/` 拆段逐段翻譯（FFLogs 對多 NPC 的戰鬥用 `a / b / ...` 命名），不合規則的段落（如 `...`）不送出。查詢失敗時沿用英文。
+- 實測：Howling Blade→呼嘯之劍、Dancing Green→熱舞綠光、Sugar Riot→糖彩狂潮、Brute Abombinator→野蠻憎惡、Valigarmanda→艷翼蛇鳥、living liquid→有生命活水、Cruise Chaser→巡航驅逐者、Queen Eternal→永恆女王；Striking Dummy 查不到（保留英文）。
 
 ## 測試資料
 
@@ -245,6 +254,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 ## 技術變更紀錄
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
+
+### 2026-09-26 Boss 名稱查詢；自訂下拉選單
+- 變更：Worker 新增 `/npc-names`（BNpcName 以英文搜尋）；前端載入報告後翻譯戰鬥名稱；新增 `src/ui/Dropdown.tsx` 取代戰鬥與角色的原生 `<select>`。Worker 已部署。
+- 原因：NPC 的 gameID 對不到名稱表，只能以英文名稱搜尋；原生 `<select>` 的選項無法排版徽章。
 
 ### 2026-09-26 道具名稱查詢
 - 變更：Worker `/abilities` 依 ID 範圍改查 Item 表（`gameRow()`），前端也送出道具範圍的 ID；Worker 已部署。

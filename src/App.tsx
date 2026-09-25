@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
-import { fetchReport } from './fflogs/client'
+import { fetchTranslatedReport } from './fflogs/client'
 import { jobName } from './jobs/names'
 import { Comparison } from './compare/Comparison'
 import type { Selection } from './compare/load'
-import type { Fight, Report } from './fflogs/types'
+import type { Actor, Fight, Report } from './fflogs/types'
 import { parseReportUrl, type ReportRef } from './fflogs/url'
+import { Dropdown, type DropdownOption } from './ui/Dropdown'
 
 function useDebounced<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value)
@@ -29,7 +30,7 @@ function useReport(code: string | null): LoadState {
   useEffect(() => {
     if (!code) return
     const controller = new AbortController()
-    fetchReport(code, controller.signal)
+    fetchTranslatedReport(code, controller.signal)
       .then((report) => setResult({ code, report }))
       .catch((err: unknown) => {
         if (!controller.signal.aborted) setResult({ code, error: err instanceof Error ? err.message : String(err) })
@@ -43,9 +44,32 @@ function useReport(code: string | null): LoadState {
   return { status: 'error', message: result.error ?? '未知錯誤' }
 }
 
-function fightLabel(fight: Fight): string {
-  const outcome = fight.kill ? '擊殺' : fight.kill === false ? '滅團' : ''
-  return `#${fight.id} ${fight.name} ${outcome} (${formatFightTime(fight.endTime - fight.startTime)})`
+function fightOption(fight: Fight): DropdownOption<number> {
+  const outcome = fight.kill ? '擊殺' : fight.kill === false ? '滅團' : null
+  return {
+    value: fight.id,
+    title: fight.englishName,
+    content: (
+      <span className="option-row">
+        <span className="option-id">#{fight.id}</span>
+        <span className="option-main">{fight.name}</span>
+        {outcome && <span className={`badge ${fight.kill ? 'kill' : 'wipe'}`}>{outcome}</span>}
+        <span className="option-meta">{formatFightTime(fight.endTime - fight.startTime)}</span>
+      </span>
+    ),
+  }
+}
+
+function playerOption(player: Actor): DropdownOption<number> {
+  return {
+    value: player.id,
+    content: (
+      <span className="option-row">
+        <span className="option-main">{player.name}</span>
+        <span className="badge job">{jobName(player.subType)}</span>
+      </span>
+    ),
+  }
 }
 
 function ReportSelector({
@@ -70,37 +94,20 @@ function ReportSelector({
 
   return (
     <div className="selectors">
-      <p className="report-title">{report.title}</p>
-      <label>
-        戰鬥
-        <select
-          value={fight?.id ?? ''}
-          // 換戰鬥時角色回到自動選擇
-          onChange={(e) => setOverrides({ fightId: Number(e.target.value), playerId: null })}
-        >
-          {report.fights.map((f) => (
-            <option key={f.id} value={f.id}>
-              {fightLabel(f)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        角色
-        <select
-          value={player?.id ?? ''}
-          onChange={(e) => setOverrides((o) => ({ ...o, playerId: Number(e.target.value) }))}
-        >
-          <option value="" disabled>
-            請選擇角色
-          </option>
-          {players.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}（{jobName(p.subType)}）
-            </option>
-          ))}
-        </select>
-      </label>
+      <Dropdown
+        label="戰鬥"
+        options={report.fights.map(fightOption)}
+        value={fight?.id ?? null}
+        // 換戰鬥時角色回到自動選擇
+        onChange={(fightId) => setOverrides({ fightId, playerId: null })}
+      />
+      <Dropdown
+        label="角色"
+        options={players.map(playerOption)}
+        value={player?.id ?? null}
+        placeholder="請選擇角色"
+        onChange={(playerId) => setOverrides((o) => ({ ...o, playerId }))}
+      />
       {note && !player && <p className="hint">{note}</p>}
     </div>
   )

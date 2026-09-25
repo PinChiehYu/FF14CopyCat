@@ -1,4 +1,5 @@
 import { abilityNames, gameRow } from './abilityNames'
+import { npcNames } from './npcNames'
 import { EVENTS_QUERY, REPORT_QUERY } from './queries'
 
 export interface Env {
@@ -23,6 +24,9 @@ const CACHE_SECONDS = 600
 // 技能名稱只隨遊戲版本改變，快取一天
 const NAME_CACHE_SECONDS = 86_400
 const MAX_ABILITY_IDS = 500
+const MAX_NPC_NAMES = 20
+// Boss 英文名稱：字母、數字、空白與常見標點
+const NPC_NAME = /^[A-Za-z0-9 '\-.,:!&]{1,80}$/
 
 const REPORT_CODE = /^(?:a:)?[A-Za-z0-9]{1,32}$/
 const INTEGER = /^\d+$/
@@ -128,7 +132,25 @@ function abilityIds(params: URLSearchParams): number[] {
   return [...new Set(ids)]
 }
 
+/** `name=A&name=B`：Boss 的英文名稱，最多 MAX_NPC_NAMES 個。 */
+function npcNameParams(params: URLSearchParams): string[] {
+  const names = [...new Set(params.getAll('name'))]
+  if (names.length === 0) throw new HttpError(400, 'Missing name')
+  if (names.length > MAX_NPC_NAMES) throw new HttpError(400, 'Too many names')
+  // 只允許一般的名稱字元，避免注入搜尋語法
+  if (names.some((n) => !NPC_NAME.test(n))) throw new HttpError(400, 'Invalid name')
+  return names
+}
+
 async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds: number }> {
+  if (url.pathname.replace(/\/$/, '') === '/npc-names') {
+    const names = npcNameParams(url.searchParams)
+    try {
+      return { data: await npcNames(names), cacheSeconds: NAME_CACHE_SECONDS }
+    } catch (err) {
+      throw new HttpError(502, `NPC name lookup failed: ${err instanceof Error ? err.message : err}`)
+    }
+  }
   if (url.pathname.replace(/\/$/, '') === '/abilities') {
     try {
       return { data: await abilityNames(abilityIds(url.searchParams)), cacheSeconds: NAME_CACHE_SECONDS }

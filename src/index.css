@@ -9,6 +9,8 @@
   --ref: #2b7bd6;
   --mine: #d9731a;
   --anchor: #7a3bd6;
+  --kill: #2e7d32;
+  --wipe: #c62828;
 
   font: 16px/1.5 system-ui, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
   color-scheme: light dark;
@@ -28,6 +30,8 @@
     --ref: #6aa8f0;
     --mine: #f0a35e;
     --anchor: #c084fc;
+    --kill: #6fcf8e;
+    --wipe: #ef9a9a;
   }
 }
 
@@ -71,8 +75,7 @@ h1 {
   margin-bottom: 8px;
 }
 
-.log-input input,
-.log-input select {
+.log-input input {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -92,13 +95,151 @@ h1 {
   margin-top: 16px;
 }
 
-.selectors label {
-  margin-bottom: 0;
+.dropdown {
+  position: relative;
 }
 
-.report-title {
-  margin: 0;
+.dropdown-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.dropdown-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dropdown-button:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+
+.dropdown-button:focus-visible,
+.dropdown-button.open {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.dropdown-value {
+  flex: 1;
+  min-width: 0;
+}
+
+.dropdown-placeholder {
   color: var(--text-muted);
+}
+
+.dropdown-arrow {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0 2px 4px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+
+.dropdown-button.open .dropdown-arrow {
+  margin-bottom: -4px;
+  transform: rotate(-135deg);
+}
+
+.dropdown-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+}
+
+.dropdown-list li {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dropdown-list li.active {
+  background: var(--surface);
+}
+
+.dropdown-list li.selected {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.option-id {
+  flex: none;
+  min-width: 2.5em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.option-main {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.option-meta {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.badge.kill {
+  color: var(--kill);
+  background: color-mix(in srgb, var(--kill) 14%, transparent);
+}
+
+.badge.wipe {
+  color: var(--wipe);
+  background: color-mix(in srgb, var(--wipe) 14%, transparent);
+}
+
+.badge.job {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .comparison {
