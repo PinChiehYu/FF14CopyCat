@@ -70,10 +70,10 @@ function fightOption(fight: Fight): DropdownOption<number> {
       <span className="option-row fight-option">
         <span className="option-id">#{fight.id}</span>
         <span className="option-main">{fight.name}</span>
+        <span className="option-meta">{formatFightTime(fight.endTime - fight.startTime)}</span>
         <span className="option-badge">
           {outcome && <span className={`badge ${fight.kill ? 'kill' : 'wipe'}`}>{outcome}</span>}
         </span>
-        <span className="option-meta">{formatFightTime(fight.endTime - fight.startTime)}</span>
       </span>
     ),
   }

@@ -271,15 +271,15 @@ h1 {
   background: color-mix(in srgb, var(--dps) 14%, transparent);
 }
 
-/* 戰鬥選項：編號、名稱、結果、長度各自固定欄寬 */
+/* 戰鬥選項：編號、名稱、長度、結果各自固定欄寬 */
 .fight-option {
   display: grid;
-  grid-template-columns: 3em minmax(0, 1fr) 3.5em 4.8em;
+  grid-template-columns: 3em minmax(0, 1fr) 4.8em 3.8em;
 }
 
 .option-badge {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
 }
 
 .fight-option .option-meta {
