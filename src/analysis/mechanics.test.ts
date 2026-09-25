@@ -45,7 +45,7 @@ describe('mechanicLabel', () => {
     expect(mechanicLabel([10], [11], name)).toBe('英雄之擊 #10')
     expect(mechanicLabel([11], [10], name)).toBe('英雄之擊 #11')
     // 連續結算合併後一邊有多個 ID
-    expect(mechanicLabel([10, 12], [11], (id) => (id === 12 ? '英雄之擊' : name(id)))).toBe('英雄之擊 #10/#12')
+    expect(mechanicLabel([11, 12], [11, 10], (id) => (id === 12 ? '英雄之擊' : name(id)))).toBe('英雄之擊 #12')
   })
 })
 import type { TimedCast } from './alignment'

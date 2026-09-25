@@ -33,7 +33,8 @@ export function mechanicLabel(ids: number[], others: number[], abilityName: (id:
     .map(([name, own]) => {
       const theirs = others.filter((o) => abilityName(o) === name)
       const differs = theirs.some((o) => !own.includes(o))
-      return differs ? `${name} ${own.map((id) => `#${id}`).join('/')}` : name
+      // 只列一個對方沒有的 ID 作為區分，完整 ID 由畫面的滑鼠提示呈現
+      return differs ? `${name} #${own.find((id) => !theirs.includes(id)) ?? own[0]}` : name
     })
     .join('、')
 }
