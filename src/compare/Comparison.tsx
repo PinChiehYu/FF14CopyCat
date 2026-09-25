@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { jobName, jobRole } from '../jobs/names'
 import { buildAlignment } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
 import { mechanicDifferences } from '../analysis/mechanics'
@@ -81,31 +80,8 @@ function SummaryTable({
     { key: 'mine', label: '我', side: mine, end: mineEnd },
     { key: 'ref', label: '參考', side: reference, end: refEnd },
   ]
+  // 玩家、戰鬥、結果與長度已在上方的選單顯示，這裡只列比較才有的資訊
   const rows: { label: string; cell: (s: SideData, end: number) => ReactNode }[] = [
-    {
-      label: '玩家',
-      cell: ({ selection: { player } }) => (
-        <>
-          <strong>{player.name}</strong>{' '}
-          <span className={`badge job ${jobRole(player.subType)}`}>{jobName(player.subType)}</span>
-        </>
-      ),
-    },
-    {
-      label: '戰鬥',
-      cell: ({ selection: { fight } }) => (
-        <span title={fight.englishName}>
-          #{fight.id} {fight.name}
-        </span>
-      ),
-    },
-    {
-      label: '結果',
-      cell: ({ selection: { fight } }) => (
-        <span className={`badge ${fight.kill ? 'kill' : 'wipe'}`}>{fight.kill ? '擊殺' : '滅團'}</span>
-      ),
-    },
-    { label: '戰鬥長度', cell: (s) => formatFightTime(s.duration) },
     {
       label: '比較範圍',
       cell: (s, end) => (
