@@ -36,12 +36,13 @@ export interface AbilityName {
 
 // Worker 單次最多查詢的技能數
 const NAME_BATCH = 500
-// Action 表的 ID 範圍；FFLogs 以更大的 ID 表示道具（藥水等），沒有對應的技能名稱
-const MAX_ACTION_ID = 1_000_000
+// Worker 可查的 ID：遊戲技能（Action 表，< 1,000,000）與道具（FFLogs 以 0x2000000 + 道具 ID 表示，HQ 再加 1,000,000）
+const ITEM_OFFSET = 0x2000000
+const isNameable = (id: number) => (id > 0 && id < 1_000_000) || (id > ITEM_OFFSET && id < ITEM_OFFSET + 2_000_000)
 
-/** 查詢技能的繁中名稱（經 Worker 代查）；沒有中文名稱的技能不在結果中。 */
+/** 查詢技能與道具（例如爆發藥）的繁中名稱（經 Worker 代查）；沒有中文名稱的不在結果中。 */
 export async function fetchAbilityNames(ids: number[], signal?: AbortSignal): Promise<Map<number, AbilityName>> {
-  const unique = [...new Set(ids)].filter((id) => id > 0 && id <= MAX_ACTION_ID).sort((a, b) => a - b)
+  const unique = [...new Set(ids)].filter(isNameable).sort((a, b) => a - b)
   const names = new Map<number, AbilityName>()
   for (let i = 0; i < unique.length; i += NAME_BATCH) {
     const batch = unique.slice(i, i + NAME_BATCH)

@@ -1,4 +1,4 @@
-import { abilityNames } from './abilityNames'
+import { abilityNames, gameRow } from './abilityNames'
 import { EVENTS_QUERY, REPORT_QUERY } from './queries'
 
 export interface Env {
@@ -23,8 +23,6 @@ const CACHE_SECONDS = 600
 // 技能名稱只隨遊戲版本改變，快取一天
 const NAME_CACHE_SECONDS = 86_400
 const MAX_ABILITY_IDS = 500
-// Action 表的 ID 範圍；FFLogs 以更大的 ID 表示道具（例如藥水 34600427），不在 Action 表
-const MAX_ACTION_ID = 1_000_000
 
 const REPORT_CODE = /^(?:a:)?[A-Za-z0-9]{1,32}$/
 const INTEGER = /^\d+$/
@@ -117,14 +115,14 @@ function optionalEnum(params: URLSearchParams, name: string, allowed: Set<string
   return value
 }
 
-/** `ids=1,2,3`：遊戲技能 ID（Action 表），最多 MAX_ABILITY_IDS 個。 */
+/** `ids=1,2,3`：FFLogs 的技能 ID（遊戲技能或道具），最多 MAX_ABILITY_IDS 個。 */
 function abilityIds(params: URLSearchParams): number[] {
   const raw = params.get('ids')
   if (!raw) throw new HttpError(400, 'Missing ids')
   const parts = raw.split(',')
   if (parts.length > MAX_ABILITY_IDS) throw new HttpError(400, 'Too many ids')
   const ids = parts.map((p) => {
-    if (!INTEGER.test(p) || Number(p) > MAX_ACTION_ID) throw new HttpError(400, 'Invalid ids')
+    if (!INTEGER.test(p) || gameRow(Number(p)) === null) throw new HttpError(400, 'Invalid ids')
     return Number(p)
   })
   return [...new Set(ids)]

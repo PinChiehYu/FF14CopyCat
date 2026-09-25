@@ -51,7 +51,7 @@ node scripts/gen-job-data.mjs        # 從遊戲資料重新產生 src/jobs/gene
 - **代理只開放固定的 REST 端點**，GraphQL 查詢寫死在 `worker/src/queries.ts`，前端不能送任意查詢：
   - `GET /reports/:code` → 報告、fights、masterData.actors、masterData.abilities
   - `GET /reports/:code/events?fight&start&end[&source][&dataType][&hostility]` → 一頁事件（`includeResources: true`）；前端 `fetchFightEvents()` 依 `nextPageTimestamp` 翻頁
-  - `GET /abilities?ids=...` → 技能繁中名稱（`worker/src/abilityNames.ts`，查 Boilmaster 鏡像 `xivapi-v2.xivcdn.com` 的 `tc`，佔位或空白時以 `chs` 經 opencc-js 轉繁）。前端顯示名稱為繁中、英文在 `Ability.englishName`；**依名稱判斷的規則要用英文名稱**
+  - `GET /abilities?ids=...` → 技能與道具的繁中名稱（`worker/src/abilityNames.ts`，查 Boilmaster 鏡像 `xivapi-v2.xivcdn.com` 的 `tc`，佔位或空白時以 `chs` 經 opencc-js 轉繁；FFLogs 道具 ID＝`0x2000000`＋道具 ID，HQ 再加 1,000,000，查 Item 表）。前端顯示名稱為繁中、英文在 `Ability.englishName`；**依名稱判斷的規則要用英文名稱**
   - 新增資料需求時：在 `queries.ts` 加查詢、在 `handler.ts` 的 `route()` 加端點與參數驗證、在 `src/fflogs/types.ts` 加型別。改了查詢欄位要同步更新 `types.ts`。
 - Worker 行為：`ALLOWED_ORIGINS`（`wrangler.toml`）檢查 Origin 並回 CORS 標頭；Cloudflare Rate Limiting 綁定 `RATE_LIMITER`（每 IP 60 次/分）；成功回應以不含 Origin 的 URL 為鍵放進 `caches.default` 10 分鐘。`handler.ts` 不依賴 Workers 型別，快取與 ctx 以參數注入，方便在 Node 的 Vitest 中測試。
 - 所有訪客共用同一組 FFLogs API 配額（points/hour），新增查詢時要考慮快取與請求次數；前端的報告查詢已對輸入做 debounce。

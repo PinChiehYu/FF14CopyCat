@@ -81,7 +81,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技能繁中名稱（`worker/src/abilityNames.ts`）
 
-- Worker `GET /abilities?ids=`：向 Boilmaster 鏡像批次（每批 100 個）查 `language=tc`；結果為 `_rsv_…` 佔位或空白者再查 `language=chs`，以 opencc-js（`opencc-js/cn2t`，`from: 'cn', to: 'tw'`，只轉字元與台灣異體字、不改用詞）轉繁。回傳 `{ id: { name, source: 'tc' | 'chs' } }`，兩者都沒有的不回傳。最多 500 個 ID、ID ≤ 1,000,000（道具不在 Action 表）。
+- Worker `GET /abilities?ids=`：依 ID 範圍決定查哪張表（`gameRow()`）——小於 1,000,000 為 Action 表；`0x2000000 + 道具 ID`（HQ 再加 1,000,000）為 Item 表。向 Boilmaster 鏡像批次（每批 100 個）查 `language=tc`；結果為 `_rsv_…` 佔位或空白者再查 `language=chs`，以 opencc-js（`opencc-js/cn2t`，`from: 'cn', to: 'tw'`，只轉字元與台灣異體字、不改用詞）轉繁。HQ 道具名稱加「（HQ）」。回傳 `{ FFLogs ID: { name, source: 'tc' | 'chs' } }`，都沒有的不回傳。最多 500 個 ID，不在兩種範圍內的 ID 回 400。
 - 前端（`fetchAbilityNames()`、`Comparison.tsx` 的 `useAbilityNames()`）：以繁中取代 `Ability.name`，英文保留在 `Ability.englishName`。
 - Worker 打包後 2 MB（gzip 503 KB），大部分是簡轉繁詞典；免費方案上限 3 MB。快取未命中時查詢約需 8 秒。
 
@@ -114,7 +114,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - **位置**：`sourceResources`／`targetResources` 的 `x`、`y`（1/100 yalm，場地中心約 (10000, 10000)）、`facing`；需要 `includeResources: true`。
 - **施放事件**：有詠唱條的技能先有 `begincast`、詠唱結束才有 `cast`；被打斷的只有 `begincast`。開場預詠唱（例如黑魔的 Fire III）沒有 `begincast`。
 - **普通攻擊**：`dataType=All` 中每場約 300 次 `cast`（Attack #7；遠程為 Shot #8），`dataType=Casts` 中沒有。
-- **技能與道具 ID**：技能即遊戲的 Action ID；道具以大 ID 表示（藥水 Grade 3 Gemdraught of Strength = 34600427、Intelligence = 34600430）。
+- **技能與道具 ID**：技能即遊戲的 Action ID；使用道具以 **`0x2000000`（33,554,432）＋道具 ID** 表示，HQ 道具再加 1,000,000。例：34600427 = 33,554,432 + 1,000,000 + 45995（Grade 3 Gemdraught of Strength，繁中「3級剛力之寶藥」）、34600428 → 45996（巧力）、34600430 → 45998（智力）。以 Item 表 `language=en／tc／chs` 驗證過（2026-09-26）。
 - **圖示**：`masterData.abilities[].icon`（如 `003000-003729.png`），網址 `https://assets.rpglogs.com/img/ff/abilities/<icon>`（`/icons/` 路徑會 403）。
 - **Boss**：施放最多次的敵人為主 Boss（Howling Blade 有多個同名 actor）。部分 Boss 技能沒有名稱（42672 顯示為 `unknown_a6b0`）。
 - **隨機機制**：同一機制的隨機變化使用不同技能 ID，甚至同名不同 ID。Howling Blade：Windfang／Stonefang、Eminent Reign／Revolutionary Reign、Wolves' Reign（#41880/#43369 vs #42927/#43370 等）、Hero's Blow（#42079/#42080 vs #42081/#42082）、Sand Surge（#43138 vs #43520）。
@@ -243,6 +243,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 ## 技術變更紀錄
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
+
+### 2026-09-26 道具名稱查詢
+- 變更：Worker `/abilities` 依 ID 範圍改查 Item 表（`gameRow()`），前端也送出道具範圍的 ID；Worker 已部署。
+- 原因：爆發藥等道具的 FFLogs ID 為 `0x2000000 + 道具 ID`（HQ 加 1,000,000），可對應到 Item 表的官方繁中名稱。
 
 ### 2026-09-25 所有職業的規則由遊戲資料產生
 - 變更：新增 `scripts/gen-job-data.mjs` 產生 `src/jobs/generated.ts`（GCD 集合與 21 個職業的技能分類），取代手寫的四個職業模組；Peloton 改為移動；施放完成時清除過期的 `begincast`。

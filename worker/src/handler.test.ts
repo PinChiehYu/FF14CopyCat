@@ -146,9 +146,30 @@ describe('handleRequest', () => {
     expect(chsUrl.searchParams.get('rows')).toBe('7487,42672')
   })
 
+  it('looks up item names (potions) in the Item sheet and marks HQ', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      const rows = url.pathname.endsWith('/Item')
+        ? [{ row_id: 45995, fields: { Name: '3級剛力之寶藥' } }]
+        : [{ row_id: 7490, fields: { Name: '必殺劍·震天' } }]
+      return Response.json({ rows })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    // 34600427 = 0x2000000 + 1,000,000（HQ）+ 道具 45995
+    const res = await handleRequest(get('/abilities?ids=7490,34600427'), env, ctx, null)
+    expect(await res.json()).toEqual({
+      7490: { name: '必殺劍·震天', source: 'tc' },
+      34600427: { name: '3級剛力之寶藥（HQ）', source: 'tc' },
+    })
+    const itemUrl = fetchMock.mock.calls.map(([u]) => new URL(String(u))).find((u) => u.pathname.endsWith('/Item'))!
+    expect(itemUrl.searchParams.get('rows')).toBe('45995')
+  })
+
   it('validates ability ids', async () => {
     const fetchMock = mockFflogs({})
-    for (const path of ['/abilities', '/abilities?ids=1,x', '/abilities?ids=34600427']) {
+    // 5000000 既不在技能也不在道具的 ID 範圍
+    for (const path of ['/abilities', '/abilities?ids=1,x', '/abilities?ids=5000000']) {
       expect((await handleRequest(get(path), env, ctx, null)).status, path).toBe(400)
     }
     expect(fetchMock).not.toHaveBeenCalled()
