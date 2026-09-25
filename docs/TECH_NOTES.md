@@ -144,6 +144,31 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - **隨機機制**：同一機制的隨機變化使用不同技能 ID，甚至同名不同 ID。Howling Blade：Windfang／Stonefang、Eminent Reign／Revolutionary Reign、Wolves' Reign（#41880/#43369 vs #42927/#43370 等）、Hero's Blow（#42079/#42080 vs #42081/#42082）、Sand Surge（#43138 vs #43520）。
 - **語系**：FFLogs 有 `cn.`、`ja.` 等子網域，**沒有 `tw.fflogs.com`**；API 的 `translate` 只翻成英文。
 
+## 開打前的資料（2026-09-26 調查）
+
+以四組基準日誌實測（scratchpad 腳本 `prepull.mjs`、`prepull-auras.mjs`）：
+
+- **帶 `fightIDs` 的事件查詢不會回傳 0:00 前的事件**：把 `startTime` 往前推 30 秒，結果與從 `fight.startTime` 開始相同（武士 FXLkqaK32PhQH8Ac #1 前 3 秒都是 18 筆，第一筆是 0:00 的 `combatantinfo`）。
+- **`combatantinfo`（0:00）的 `auras`** 列出開打當下身上的效果，`ability` 為**狀態 ID＋1,000,000**（例如 1001233 = 狀態 1233 明鏡止水），`source` 為施放者：
+  - 武士 席德：Meikyo Shisui、Tendo、True North（自己）、Well Fed，以及治療給的 Eukrasian Prognosis、Horoscope Helios、Helios Conjunction。
+  - 武士 安祖卡：Meikyo Shisui、Tendo、True North、Dance Partner（舞者）、Eukrasian Prognosis。
+  - 騎士 神曲莊園：Iron Will（坦姿）、Well Fed、Eukrasian Prognosis；騎士 Lavid：Galvanize、Peloton。
+  - 黑魔 春風醒：Preferred World Bonus（source 0）、Well Fed、Galvanize、Peloton。
+  - 已經消失的效果（例如開打前用掉的爆發藥以外的短效果）不會出現。
+- **開打前詠唱的技能**：只有 0:00 後的 `cast`、沒有 `begincast`（Lavid Holy Spirit 0.36 秒、春風醒 Fire III 1.25 秒）；`playerCasts()` 因此以 `cast` 時間畫出。
+- 尚未驗證：不帶 `fightIDs`、只給報告時間範圍（`fight.startTime - 30000` 到 `fight.startTime`）的事件查詢是否有開打前的施放。需要 Worker 新增端點才能測。
+- 狀態 ID 對應技能：要查遊戲 Status 表（名稱）；對應回 Action 需另建表（多數同名，例如 Meikyo Shisui 技能 7499／狀態 1233）。
+
+## xivanalysis 規則移植評估（2026-09-26）
+
+- 授權：**MIT**（可參考與移植，保留出處即可）。預設分支 `dawntrail`；職業模組在 `src/parser/jobs/<job>/modules/`，共用模組在 `src/parser/core/modules/`。
+- 共用模組（可對應到本站的共用分析）：GlobalCooldown／AlwaysBeCasting（已有類似的 GCD 概況）、CooldownDowntime（冷卻漂移）、RaidBuffs、Tincture（爆發藥窗口）、Positionals（身位）、DoTs、Procs、Combos、Defensives、Swiftcast、Gauge、ActionWindow（`windows`／`evaluators`：Buff 窗口內的 GCD 數與技能限制）。
+- 職業模組範例（武士 `sam/modules`）：AoeChecker、Buffs、Combos、Defensives、Fuka、Hagakure、Higanbana、Meikyo、OGCDDowntime、Positionals、ReadyProcs、Sen、Shoha、Tincture、Kenki。
+  - `Meikyo.tsx` 繼承 `BuffWindow`：每次明鏡止水應打 3 個 GCD（少打為中等，嚴重不足為重大），且期間只能用月光、花車、雪風、滿月、櫻花等；戰鬥結束時的窗口放寬計算。使用施放事件與 Buff 施加／移除事件。
+- 本站可用的資料：玩家事件已抓 `dataType=All`，包含 `applybuff`／`removebuff`（身上的效果）、`damage`（可判斷身位 `hitType`／方向相關欄位需再確認）、`resources`；Boss 事件另有。多數規則**不需要新的 FFLogs 請求**。
+- 移植方式：不直接引用 xivanalysis 的框架（依賴其事件管線與資料表），而是在 `src/jobs/` 以本站的 `TimedCast` 與 Buff 事件重寫規則；技能／狀態 ID 以遊戲資料查證。先做共用的 Buff 窗口與冷卻漂移，再逐職業加規則。
+- 比較方式：兩邊各自套規則得到窗口結果，再依對齊後時間配對；時間軸標示窗口與不合格處。
+
 ## 外部資料來源調查：技能繁中名稱（2026-09-25）
 
 | 來源 | 結果 |
