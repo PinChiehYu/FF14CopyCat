@@ -144,10 +144,15 @@ h1 {
   min-width: 0;
 }
 
+/* 鎖定時不淡化（瀏覽器預設會把 disabled 的文字變灰），只改游標並顯示「已鎖定」 */
 .dropdown-button:disabled {
   cursor: default;
-  background: var(--surface);
-  border-style: dashed;
+  color: var(--text);
+  opacity: 1;
+}
+
+.dropdown-button:disabled:hover {
+  border-color: var(--border);
 }
 
 .dropdown-lock {
