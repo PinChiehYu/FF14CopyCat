@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
 import { fetchFightNames, fetchReport, translateReport } from './fflogs/client'
-import { jobName, jobRole } from './jobs/names'
+import { playersInFight } from './fflogs/report'
+import { jobName, jobRole, sortByPartySlot } from './jobs/names'
 import { Comparison } from './compare/Comparison'
 import type { Selection } from './compare/load'
 import type { Actor, Fight, Report } from './fflogs/types'
@@ -79,11 +80,12 @@ function fightOption(fight: Fight): DropdownOption<number> {
   }
 }
 
-function playerOption(player: Actor): DropdownOption<number> {
+function playerOption(player: Actor, slot: string | null): DropdownOption<number> {
   return {
     value: player.id,
     content: (
       <span className="option-row">
+        {slot && <span className="option-slot">{slot}</span>}
         <span className="option-main">{player.name}</span>
         <span className={`badge job ${jobRole(player.subType)}`}>{jobName(player.subType)}</span>
       </span>
@@ -104,6 +106,10 @@ function ReportSelector({
 }) {
   const [overrides, setOverrides] = useState<Overrides>({ fightId: null, playerId: null })
   const { fight, players, player, note, locked } = resolveSelection(report, urlRef, overrides, preferred)
+  // 依隊伍位置排序；位置以整場隊伍判斷（參考日誌的選單只列同職業，但位置仍依全隊）
+  const party = fight ? sortByPartySlot(playersInFight(report, fight)) : []
+  const listed = new Set(players.map((p) => p.id))
+  const playerOptions = party.filter(({ player: p }) => listed.has(p.id)).map(({ player: p, slot }) => playerOption(p, slot))
 
   useEffect(() => {
     onChange(fight && player ? { report, fight, player } : null)
@@ -122,7 +128,7 @@ function ReportSelector({
       />
       <Dropdown
         label="角色"
-        options={players.map(playerOption)}
+        options={playerOptions}
         value={player?.id ?? null}
         placeholder="請選擇角色"
         disabled={locked}
