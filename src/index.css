@@ -720,6 +720,18 @@ button:disabled {
   cursor: pointer;
 }
 
+/* 「搜尋」與「搜尋中…」同寬，按下時控制列不跳動 */
+.finder-search {
+  min-width: 6.5em;
+}
+
+/* 搜尋中：保留上一次的結果並淡化，不換成其他內容（避免面板高度跳動） */
+.finder-result.stale {
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
 /* 結果摘要當作選單標籤：只佔一行，完整說明放在滑鼠提示 */
 .finder-summary {
   font-size: 0.85em;

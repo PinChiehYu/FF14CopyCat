@@ -24,8 +24,10 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   const [maxPr, setMaxPr] = useState(100)
   const [sameMechanics, setSameMechanics] = useState(false)
   const [result, setResult] = useState<
-    { status: 'idle' } | { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; count: number; rows: TcRanking[] }
+    { status: 'idle' } | { status: 'error'; message: string } | { status: 'ready'; count: number; rows: TcRanking[] }
   >({ status: 'idle' })
+  // 搜尋中保留上一次的結果（不換成「搜尋中」文字），避免面板高度跳動造成閃爍
+  const [loading, setLoading] = useState(false)
   const [mechanics, setMechanics] = useState<Map<string, MechanicState>>(new Map())
   // 已從選單選為參考的紀錄
   const [picked, setPicked] = useState<string | null>(null)
@@ -60,9 +62,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
 
   const search = async () => {
     if (!mine) return
-    setResult({ status: 'loading' })
-    setMechanics(new Map())
-    setPicked(null)
+    setLoading(true)
     try {
       const { count, rankings } = await fetchTcRankings({
         encounter: mine.fight.encounterID,
@@ -74,6 +74,11 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       setResult({ status: 'ready', count, rows: rankings.slice(0, MAX_LISTED) })
     } catch (err) {
       setResult({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      // 結果換掉時才清掉舊的機制比對與選擇
+      setMechanics(new Map())
+      setPicked(null)
+      setLoading(false)
     }
   }
 
@@ -160,11 +165,11 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
               <input type="checkbox" checked={sameMechanics} onChange={(e) => setSameMechanics(e.target.checked)} />
               機制相同
             </label>
-            <button type="button" onClick={search} disabled={result.status === 'loading'}>
-              搜尋
+            <button type="button" className="finder-search" onClick={search} disabled={loading}>
+              {loading ? '搜尋中…' : '搜尋'}
             </button>
           </div>
-          {result.status === 'loading' && <p className="hint">搜尋中…</p>}
+          <div className={loading ? 'finder-result stale' : 'finder-result'} aria-busy={loading}>
           {result.status === 'error' && <p className="error">{result.message}</p>}
           {result.status === 'ready' &&
             (rows.length === 0 ? (
@@ -194,6 +199,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
                 }}
               />
             ))}
+          </div>
         </div>
       )}
     </div>
