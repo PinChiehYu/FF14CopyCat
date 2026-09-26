@@ -59,7 +59,8 @@ export interface WindowRule {
   /** 規則出處（xivanalysis 模組） */
   source: string
   /**
-   * 適用的遊戲版本（from 含、before 不含）；同一個 key 可有多個版本的規則，依列出的順序取第一個適用的
+   * 適用的遊戲版本（國際服版本號，與 xivanalysis 相同；from 含、before 不含）；同一個 key 可有多個版本的規則，依列出的順序取第一個適用的。
+   * 繁中服的版本由 patch.ts 對應到國際服版本（例如繁中服 7.2 → 7.3）
    * （xivanalysis 以 parser.patch 分支的規則，例如絕槍的終結之心 7.4 起每個窗口都要求）
    */
   patches?: { from?: string; before?: string }

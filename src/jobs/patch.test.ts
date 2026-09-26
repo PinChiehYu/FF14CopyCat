@@ -1,28 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { comparePatch, inPatchRange, patchAt, patchLabel } from './patch'
+import { comparePatch, inPatchRange, patchAt } from './patch'
 import { pairedWindowRules, windowRules } from './windows'
 
 const at = (iso: string) => Date.parse(iso)
 
 describe('patchAt', () => {
-  it('uses the Traditional Chinese schedule', () => {
-    // 基準日誌：2026-08 的繁中服為 7.2 內容、7.3 的職業技能
-    expect(patchAt(at('2026-08-19T12:00:00Z'))).toEqual({ content: '7.2', jobs: '7.3' })
-    expect(patchAt(at('2026-09-25T12:00:00Z'))).toEqual({ content: '7.25', jobs: '7.3' })
-    expect(patchAt(at('2026-05-01T12:00:00Z'))).toEqual({ content: '7.1', jobs: '7.1' })
-    expect(patchAt(at('2026-01-01T12:00:00Z')).content).toBe('7.0')
+  it('uses the Traditional Chinese schedule, mapping TC 7.2 to the global 7.3 rules', () => {
+    // 基準日誌：2026-08 的繁中服為 7.2，技能等同國際服 7.3
+    expect(patchAt(at('2026-08-19T12:00:00Z'))).toEqual({ key: '7.2', rules: '7.3' })
+    expect(patchAt(at('2026-09-25T12:00:00Z'))).toEqual({ key: '7.25', rules: '7.3' })
+    expect(patchAt(at('2026-05-01T12:00:00Z'))).toEqual({ key: '7.1', rules: '7.1' })
+    expect(patchAt(at('2026-01-01T12:00:00Z')).key).toBe('7.0')
     // 改版當天台灣時間 00:00 起
-    expect(patchAt(at('2026-07-27T15:59:00Z')).content).toBe('7.1')
-    expect(patchAt(at('2026-07-27T16:00:00Z')).content).toBe('7.2')
+    expect(patchAt(at('2026-07-27T15:59:00Z')).key).toBe('7.1')
+    expect(patchAt(at('2026-07-27T16:00:00Z')).key).toBe('7.2')
   })
 
-  it('labels the job patch when it differs from the content patch', () => {
-    expect(patchLabel({ content: '7.2', jobs: '7.3' })).toBe('7.2（技能 7.3）')
-    expect(patchLabel({ content: '7.1', jobs: '7.1' })).toBe('7.1')
-  })
-
-  it('does not use the 7.2 Starry Muse rules for current TC logs (7.3 job changes)', () => {
-    const starry = windowRules('Pictomancer', patchAt(at('2026-08-19T12:00:00Z')).jobs)[0]
+  it('does not use the 7.2 Starry Muse rules for current TC logs', () => {
+    const starry = windowRules('Pictomancer', patchAt(at('2026-08-19T12:00:00Z')).rules)[0]
     expect(starry.limitedActions).toBeDefined()
   })
 

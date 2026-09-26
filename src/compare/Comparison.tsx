@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { evaluateWindows, inapplicableSummary, timelineWindow } from '../analysis/windows'
 import { pairedWindowRules, ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows'
-import { patchAt, patchLabel, type GamePatch } from '../jobs/patch'
+import { patchAt, type GamePatch } from '../jobs/patch'
 import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
@@ -188,13 +188,13 @@ function SummaryTable({
       label: '版本',
       cell: (s) => {
         const p = s === mine ? patches.mine : patches.ref
-        const differs = patchLabel(patches.mine) !== patchLabel(patches.ref)
+        const differs = patches.mine.key !== patches.ref.key
         return (
           <span
             className={differs ? 'patch-differs' : undefined}
-            title="依戰鬥日期對照繁中服的版本上線日期（FFLogs 的報告沒有記錄遊戲版本）；技能窗口依職業技能的版本評分"
+            title="依戰鬥日期對照繁中服的版本上線日期（FFLogs 的報告沒有記錄遊戲版本）"
           >
-            {patchLabel(p)}
+            {p.key}
           </span>
         )
       },
@@ -351,9 +351,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     const evaluate = (rule: WindowRule, side: SideData, gcdMs: number | null) =>
       evaluateWindows(rule, side.buffs, side.playerCasts, job.isGcd, abilityName, gcdMs, side.duration)
     // 兩邊各自依日誌的遊戲版本選用規則（例如絕槍的終結之心 7.4 起每個窗口都要求）
-    // 規則依職業技能的版本選用（繁中服 7.2 的內容搭配 7.3 的技能調整）
-    return pairedWindowRules(job.subType, patches.mine.jobs, patches.ref.jobs).map(({ mine: m, ref: r }) => {
-      const reason = (p: GamePatch) => `技能 ${p.jobs} 版本沒有這條規則`
+    // 規則依對應的國際服版本選用（xivanalysis 依國際服版本撰寫；繁中服 7.2 的技能等同國際服 7.3）
+    return pairedWindowRules(job.subType, patches.mine.rules, patches.ref.rules).map(({ mine: m, ref: r }) => {
+      const reason = (p: GamePatch) => `${p.key} 版本沒有這條規則`
       return {
         mine: m ? evaluate(m, mineInRange, gcd?.mine.gcdMs ?? null) : inapplicableSummary(r!, reason(patches.mine)),
         ref: r ? evaluate(r, refInRange, gcd?.ref.gcdMs ?? null) : inapplicableSummary(m!, reason(patches.ref)),
