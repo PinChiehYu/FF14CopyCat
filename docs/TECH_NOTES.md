@@ -355,6 +355,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技術變更紀錄
 
+### 2026-09-27 連結保存在本頁網址
+- 變更：新增 `src/pageQuery.ts`（`readLogParam()`／`writeLogParam()`，以 `history.replaceState` 更新 `?mine=`、`?ref=`，不增加瀏覽紀錄）與 `fflogs/url.ts` 的 `reportUrl()`；`LogPicker` 以網址參數為初始值，輸入時寫回，選好戰鬥與角色時改寫為 `reportUrl(code, fight, source)`（只改網址，不改輸入框，避免 `ReportSelector` 的 key 改變而重設手動選擇）。
+- 原因：重新整理後保留輸入的連結（見 DESIGN.md）。
+
 ### 2026-09-27 其餘職業的技能窗口規則
 - 變更：規則移到 `jobs/windowRules.ts`（18 個職業）；`WindowRule` 新增 `action`、`allOf`、`stacks`、`gcdAdjust`、`limitedActions`、`openerMs`，`ExpectedActions` 新增 `openerCount`、`onlyIf`；新增 `enemyDebuffWindows()`；`evaluateWindows()` 新增 GCD 間隔與戰鬥長度參數；`ruleIds()` 供查詢名稱。
 - 原因：移植 xivanalysis 其餘職業的窗口規則（見「技能窗口」）。

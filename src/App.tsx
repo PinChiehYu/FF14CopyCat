@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
 import { fetchAutoAttacksTaken, fetchFightNames, fetchReport, translateReport } from './fflogs/client'
@@ -7,7 +7,8 @@ import { isStandardParty, jobName, jobRole, sortByPartySlot } from './jobs/names
 import { Comparison } from './compare/Comparison'
 import type { Selection } from './compare/load'
 import type { Actor, Fight, Report } from './fflogs/types'
-import { parseReportUrl, type ReportRef } from './fflogs/url'
+import { parseReportUrl, reportUrl, type ReportRef } from './fflogs/url'
+import { readLogParam, writeLogParam, type LogKey } from './pageQuery'
 import { Dropdown, type DropdownOption } from './ui/Dropdown'
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -170,14 +171,18 @@ function ReportSelector({
 
 function LogPicker({
   label,
+  storageKey,
   preferred,
   onChange,
 }: {
   label: string
+  /** 保存在本頁網址的參數名稱 */
+  storageKey: LogKey
   preferred?: Preference
   onChange: (selection: Selection | null) => void
 }) {
-  const [url, setUrl] = useState('')
+  // 重新整理後從本頁網址還原輸入的連結
+  const [url, setUrl] = useState(() => readLogParam(storageKey))
   const ref = url.trim() ? parseReportUrl(url) : null
   const code = useDebounced(ref?.reportCode ?? null, 400)
   const state = useReport(code)
@@ -185,6 +190,17 @@ function LogPicker({
   useEffect(() => {
     if (state.status !== 'ready') onChange(null)
   }, [state.status, onChange])
+
+  // 選好戰鬥與角色後，網址保存的連結換成帶有這場戰鬥與角色的連結，還原時不用重選
+  const onSelect = useCallback(
+    (selection: Selection | null) => {
+      if (selection) {
+        writeLogParam(storageKey, reportUrl(selection.report.code, selection.fight.id, selection.player.id))
+      }
+      onChange(selection)
+    },
+    [storageKey, onChange],
+  )
 
   return (
     <section className="log-input">
@@ -194,7 +210,10 @@ function LogPicker({
           type="url"
           placeholder="https://www.fflogs.com/reports/..."
           value={url}
-          onChange={(e) => setUrl(e.target.value)}
+          onChange={(e) => {
+            setUrl(e.target.value)
+            writeLogParam(storageKey, e.target.value)
+          }}
         />
       </label>
       {url.trim() && !ref && <p className="error">無法辨識的 FFLogs 報告連結</p>}
@@ -207,7 +226,7 @@ function LogPicker({
           report={state.report}
           urlRef={ref}
           preferred={preferred}
-          onChange={onChange}
+          onChange={onSelect}
         />
       )}
     </section>
@@ -228,8 +247,8 @@ export default function App() {
       <p className="subtitle">比較你與高階玩家的 FFLogs 日誌，找出技能循環與站位的差異。</p>
 
       <div className="logs">
-        <LogPicker label="我的日誌" onChange={setMine} />
-        <LogPicker label="參考日誌（高階玩家）" preferred={preferred} onChange={setReference} />
+        <LogPicker label="我的日誌" storageKey="mine" onChange={setMine} />
+        <LogPicker label="參考日誌（高階玩家）" storageKey="ref" preferred={preferred} onChange={setReference} />
       </div>
 
       {mine && reference && (

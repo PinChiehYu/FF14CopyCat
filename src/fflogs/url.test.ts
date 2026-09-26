@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { parseReportUrl } from './url'
+import { parseReportUrl, reportUrl } from './url'
+
+describe('reportUrl', () => {
+  it('builds a link that parses back to the same fight and source', () => {
+    const url = reportUrl('FXLkqaK32PhQH8Ac', 1, 6)
+    expect(url).toBe('https://www.fflogs.com/reports/FXLkqaK32PhQH8Ac?fight=1&source=6')
+    expect(parseReportUrl(url)).toEqual({ reportCode: 'FXLkqaK32PhQH8Ac', fight: 1, sourceId: 6 })
+  })
+})
 
 describe('parseReportUrl', () => {
   it('parses report code, fight and source from the hash', () => {
