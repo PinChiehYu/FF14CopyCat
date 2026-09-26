@@ -17,16 +17,17 @@ describe('groupUsage', () => {
   const paladin = getJob('Paladin')!
   const category = (id: number) => abilityCategory(id, paladin)
 
-  it('orders groups GCD, non-GCD, auto-attack, mitigation, movement and keeps row order', () => {
+  it('orders groups GCD, non-GCD, auto-attack, party and self mitigation, movement and keeps row order', () => {
     const usage = [
       row(3), // Sprint → 移動
       row(20), // Fight or Flight → 非 GCD
       row(7), // Attack → 普通攻擊
-      row(7531), // Rampart → 減傷
+      row(7531), // Rampart → 自身減傷
+      row(7535), // Reprisal → 團隊減傷
       row(9), // Fast Blade → GCD
       row(34600427), // 藥水 → 非 GCD
       row(15), // Riot Blade → GCD
-      row(36920), // Guardian → 減傷
+      row(36920), // Guardian → 自身減傷
       row(7546), // True North（輔助）→ 非 GCD
     ]
     const groups = groupUsage(usage, category, paladin.isGcd)
@@ -34,7 +35,8 @@ describe('groupUsage', () => {
       ['GCD', [9, 15]],
       ['非 GCD', [20, 34600427, 7546]],
       ['普通攻擊', [7]],
-      ['減傷', [7531, 36920]],
+      ['團隊減傷', [7535]],
+      ['自身減傷', [7531, 36920]],
       ['移動', [3]],
     ])
   })

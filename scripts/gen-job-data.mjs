@@ -35,41 +35,47 @@ const JOBS = {
 }
 
 // 職業專屬技能分類（7.x 英文名稱）。職能技能（Rampart、Sprint 等）在 src/jobs/roleActions.ts。
-// ignored：不需紀錄；mitigation：減傷；movement：移動；utility：其他輔助
+// ignored：不需紀錄；mitigation：自身減傷（只保護自己）；partyMitigation：團隊減傷（可給隊友或降低敵人傷害：目標減傷、支援減傷）；
+// movement：移動；utility：其他輔助
 const CATEGORIES = {
   Paladin: {
     ignored: ['Iron Will', 'Release Iron Will'],
-    mitigation: ['Sentinel', 'Guardian', 'Bulwark', 'Hallowed Ground', 'Sheltron', 'Holy Sheltron', 'Divine Veil', 'Intervention', 'Passage of Arms', 'Cover'],
+    mitigation: ['Sentinel', 'Guardian', 'Bulwark', 'Hallowed Ground', 'Sheltron', 'Holy Sheltron'],
+    partyMitigation: ['Divine Veil', 'Intervention', 'Passage of Arms', 'Cover'],
     utility: ['Clemency'],
   },
   Warrior: {
-    mitigation: ['Vengeance', 'Damnation', 'Raw Intuition', 'Bloodwhetting', 'Nascent Flash', 'Thrill of Battle', 'Holmgang', 'Shake It Off'],
+    mitigation: ['Vengeance', 'Damnation', 'Raw Intuition', 'Bloodwhetting', 'Thrill of Battle', 'Holmgang'],
+    partyMitigation: ['Nascent Flash', 'Shake It Off'],
     utility: ['Equilibrium'],
   },
   DarkKnight: {
-    mitigation: ['Shadow Wall', 'Shadowed Vigil', 'Dark Mind', 'The Blackest Night', 'Oblation', 'Living Dead', 'Dark Missionary'],
+    mitigation: ['Shadow Wall', 'Shadowed Vigil', 'Dark Mind', 'Living Dead'],
+    partyMitigation: ['The Blackest Night', 'Oblation', 'Dark Missionary'],
     movement: ['Shadowstride'],
   },
   Gunbreaker: {
-    mitigation: ['Nebula', 'Great Nebula', 'Camouflage', 'Aurora', 'Superbolide', 'Heart of Light', 'Heart of Stone', 'Heart of Corundum'],
+    mitigation: ['Nebula', 'Great Nebula', 'Camouflage', 'Superbolide'],
+    partyMitigation: ['Aurora', 'Heart of Light', 'Heart of Stone', 'Heart of Corundum'],
     movement: ['Trajectory'],
   },
   WhiteMage: {
-    mitigation: ['Temperance', 'Divine Caress', 'Aquaveil', 'Divine Benison'],
+    partyMitigation: ['Temperance', 'Divine Caress', 'Aquaveil', 'Divine Benison'],
     movement: ['Aetherial Shift'],
   },
   Scholar: {
-    mitigation: ['Sacred Soil', 'Expedient', 'Fey Illumination', 'Deployment Tactics'],
+    partyMitigation: ['Sacred Soil', 'Expedient', 'Fey Illumination', 'Deployment Tactics'],
   },
   Astrologian: {
-    mitigation: ['Collective Unconscious', 'Neutral Sect', 'Exaltation', 'Sun Sign'],
+    partyMitigation: ['Collective Unconscious', 'Neutral Sect', 'Exaltation', 'Sun Sign'],
   },
   Sage: {
-    mitigation: ['Kerachole', 'Holos', 'Panhaima', 'Haima', 'Taurochole'],
+    partyMitigation: ['Kerachole', 'Holos', 'Panhaima', 'Haima', 'Taurochole'],
     movement: ['Icarus'],
   },
   Monk: {
-    mitigation: ['Riddle of Earth', 'Mantra'],
+    mitigation: ['Riddle of Earth'],
+    partyMitigation: ['Mantra'],
     movement: ['Thunderclap'],
   },
   Dragoon: {
@@ -90,14 +96,14 @@ const CATEGORIES = {
     movement: ['Slither'],
   },
   Bard: {
-    mitigation: ['Troubadour', "Nature's Minne"],
+    partyMitigation: ['Troubadour', "Nature's Minne"],
     movement: ['Repelling Shot'],
   },
   Machinist: {
-    mitigation: ['Tactician', 'Dismantle'],
+    partyMitigation: ['Tactician', 'Dismantle'],
   },
   Dancer: {
-    mitigation: ['Shield Samba', 'Improvisation', 'Curing Waltz'],
+    partyMitigation: ['Shield Samba', 'Improvisation', 'Curing Waltz'],
     movement: ['En Avant'],
   },
   BlackMage: {
@@ -108,10 +114,11 @@ const CATEGORIES = {
     mitigation: ['Radiant Aegis'],
   },
   RedMage: {
-    mitigation: ['Magick Barrier'],
+    partyMitigation: ['Magick Barrier'],
   },
   Pictomancer: {
-    mitigation: ['Tempera Coat', 'Tempera Grassa'],
+    mitigation: ['Tempera Coat'],
+    partyMitigation: ['Tempera Grassa'],
     movement: ['Smudge'],
   },
 }
@@ -173,6 +180,7 @@ export const GCD_IDS: ReadonlySet<number> = new Set(${JSON.stringify(gcd)})
 export interface GeneratedCategories {
   ignored?: ReadonlySet<number>
   mitigation?: ReadonlySet<number>
+  partyMitigation?: ReadonlySet<number>
   movement?: ReadonlySet<number>
   utility?: ReadonlySet<number>
 }

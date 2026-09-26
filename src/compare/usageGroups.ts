@@ -2,7 +2,7 @@ import type { AbilityUsage } from '../analysis/metrics'
 import type { AbilityCategory } from '../jobs/roleActions'
 import { AUTO_ATTACKS } from './load'
 
-export type UsageGroupKey = 'gcd' | 'ogcd' | 'auto' | 'mitigation' | 'movement'
+export type UsageGroupKey = 'gcd' | 'ogcd' | 'auto' | 'partyMitigation' | 'mitigation' | 'movement'
 
 export interface UsageGroup {
   key: UsageGroupKey
@@ -10,12 +10,13 @@ export interface UsageGroup {
   rows: AbilityUsage[]
 }
 
-// 顯示順序：GCD → 非 GCD → 普通攻擊 → 減傷 → 移動
+// 顯示順序：GCD → 非 GCD → 普通攻擊 → 團隊減傷 → 自身減傷 → 移動
 const GROUPS: { key: UsageGroupKey; label: string }[] = [
   { key: 'gcd', label: 'GCD' },
   { key: 'ogcd', label: '非 GCD' },
   { key: 'auto', label: '普通攻擊' },
-  { key: 'mitigation', label: '減傷' },
+  { key: 'partyMitigation', label: '團隊減傷' },
+  { key: 'mitigation', label: '自身減傷' },
   { key: 'movement', label: '移動' },
 ]
 
@@ -27,6 +28,7 @@ export function usageGroupOf(
 ): UsageGroupKey {
   if (AUTO_ATTACKS.has(abilityId)) return 'auto'
   const kind = category(abilityId)
+  if (kind === 'partyMitigation') return 'partyMitigation'
   if (kind === 'mitigation') return 'mitigation'
   if (kind === 'movement') return 'movement'
   return isGcd?.(abilityId) ? 'gcd' : 'ogcd'

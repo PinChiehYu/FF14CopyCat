@@ -1009,6 +1009,7 @@ h3 {
   --tab-color: var(--text-muted);
 }
 
+.tab.partyMitigation,
 .tab.mitigation,
 .tab.movement {
   --tab-color: var(--ref);

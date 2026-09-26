@@ -157,13 +157,24 @@ function gcdSpeedAdvice({ gcd, durationMs }: AdviceInput): Advice[] {
   ]
 }
 
-const CATEGORY_LABELS: Partial<Record<AbilityCategory, string>> = { mitigation: '減傷', movement: '移動' }
+type CooldownKind = 'mitigation' | 'partyMitigation' | 'movement'
+
+const CATEGORY_LABELS: Record<CooldownKind, string> = { mitigation: '自身減傷', partyMitigation: '團隊減傷', movement: '移動' }
+
+// 「優先」只留影響輸出的項目（死亡、停手、爆發等）：減傷與移動最多到「建議」；
+// 自身減傷只要保住自己即可，列為「參考」；團隊減傷影響隊友生存，列為「建議」
+const COOLDOWN_SEVERITY: Record<CooldownKind, Severity> = { mitigation: 'low', partyMitigation: 'medium', movement: 'medium' }
+
+const COOLDOWN_NOTES: Record<CooldownKind, string> = {
+  mitigation: '自身減傷只要能保住自己即可，時機不一定要與參考相同。',
+  partyMitigation: '團隊減傷影響隊友的生存，是重要的學習課題，對照時間軸看參考在哪個機制使用。',
+  movement: '移動技能的使用時機是重要的學習課題，對照時間軸看參考在哪個機制使用。',
+}
 
 /**
- * 減傷與移動技能：使用者指定為重要的學習課題。列出參考有用、我在前後 30 秒內沒有對應使用的時間點，
- * 讓使用者對照參考在哪個機制使用。
+ * 減傷與移動技能：列出參考有用、我在前後 30 秒內沒有對應使用的時間點，讓使用者對照參考在哪個機制使用。
  */
-function mitigationAdvice(u: AbilityUsage, name: string, kind: 'mitigation' | 'movement'): Advice | null {
+function mitigationAdvice(u: AbilityUsage, name: string, kind: CooldownKind): Advice | null {
   const label = CATEGORY_LABELS[kind]
   const fewer = u.ref - u.mine
   const missed = u.unmatchedRef
@@ -171,20 +182,19 @@ function mitigationAdvice(u: AbilityUsage, name: string, kind: 'mitigation' | 'm
     const listed = missed.slice(0, MAX_LISTED_TIMES).map(formatFightTime).join('、')
     const more = missed.length > MAX_LISTED_TIMES ? ` 等 ${missed.length} 次` : ''
     return {
-      severity: Math.max(missed.length, fewer) >= 2 ? 'high' : 'medium',
+      severity: COOLDOWN_SEVERITY[kind],
       title:
         fewer > 0
           ? `${label}：${name} 少用 ${fewer} 次（你 ${u.mine} 次、參考 ${u.ref} 次）`
           : `${label}：${name} 有 ${missed.length} 次使用時機與參考不同`,
       detail:
-        (missed.length > 0 ? `參考在 ${listed}${more} 使用，你在前後 30 秒內沒有使用。` : '') +
-        `${label}技能的使用時機是重要的學習課題，對照時間軸看參考在哪個機制使用。`,
+        (missed.length > 0 ? `參考在 ${listed}${more} 使用，你在前後 30 秒內沒有使用。` : '') + COOLDOWN_NOTES[kind],
       at: missed[0],
     }
   }
   if (u.matched >= 2 && u.avgDelayMs !== null && u.avgDelayMs > LATE_COOLDOWN_MS) {
     return {
-      severity: 'medium',
+      severity: COOLDOWN_SEVERITY[kind],
       title: `${label}：${name} 平均比參考晚 ${seconds(u.avgDelayMs)} 秒使用`,
       detail: `比較了 ${u.matched} 次使用。${label}太晚可能來不及涵蓋機制，對照時間軸看參考的使用時機。`,
     }
@@ -201,7 +211,7 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUs
     const name = abilityName(u.abilityId)
     const kind = category?.(u.abilityId) ?? 'normal'
     if (kind === 'ignored') continue
-    if (kind === 'mitigation' || kind === 'movement') {
+    if (kind === 'mitigation' || kind === 'partyMitigation' || kind === 'movement') {
       const advice = mitigationAdvice(u, name, kind)
       if (advice) items.push(advice)
       continue
@@ -288,8 +298,8 @@ function positionAdvice(input: AdviceInput): Advice[] {
     const names = [...new Set(d.mechanics.map((m) => abilityName(m.abilityId)))].slice(0, 2).join('、')
     const byVariant = mechanicNear(mechanics, d.start, d.end) !== undefined
     return {
-      // 機制本身隨機不同時，站位不同是合理的，降為參考
-      severity: byVariant ? 'low' : overlapsLost(d) ? 'high' : 'medium',
+      // 機制本身隨機不同時，站位不同是合理的，降為參考；少打的 GCD 已由停手建議列為優先，站位本身最多到「建議」
+      severity: byVariant ? 'low' : 'medium',
       title: `${formatFightTime(d.mechanics[0].t)} 機制「${names}」結算時站位與參考不同（最遠 ${d.maxDistance.toFixed(1)} yalm）`,
       detail:
         `差異從 ${formatFightTime(d.start)} 持續 ${seconds(d.end - d.start)} 秒。${lostNote(d)}` +

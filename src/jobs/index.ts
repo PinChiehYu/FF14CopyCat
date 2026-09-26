@@ -10,10 +10,11 @@ export interface JobModule {
   isGcd(abilityId: number): boolean
   /**
    * 技能分類（見 roleActions.ts 的 AbilityCategory；職能技能已內建，這裡只列職業專屬技能）：
-   * ignored 不紀錄；mitigation 減傷、movement 移動為重要的學習課題；utility 其他輔助
+   * ignored 不紀錄；mitigation 自身減傷、partyMitigation 團隊減傷、movement 移動為重要的學習課題；utility 其他輔助
    */
   ignored?: ReadonlySet<number>
   mitigation?: ReadonlySet<number>
+  partyMitigation?: ReadonlySet<number>
   movement?: ReadonlySet<number>
   utility?: ReadonlySet<number>
 }

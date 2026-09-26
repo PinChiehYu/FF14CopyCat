@@ -52,7 +52,7 @@ describe('abilityCategory', () => {
 
   it('classifies role actions for any job', () => {
     expect(abilityCategory(7531, job('Warrior'))).toBe('mitigation') // Rampart
-    expect(abilityCategory(7549, job('Monk'))).toBe('mitigation') // Feint
+    expect(abilityCategory(7549, job('Monk'))).toBe('partyMitigation') // Feint
     expect(abilityCategory(3, job('Sage'))).toBe('movement') // Sprint
     expect(abilityCategory(7546, job('Samurai'))).toBe('utility') // True North
     expect(abilityCategory(7531)).toBe('mitigation') // 沒有職業模組時也適用
@@ -60,6 +60,8 @@ describe('abilityCategory', () => {
 
   it('classifies job mitigation and movement from generated data', () => {
     expect(abilityCategory(36920, job('Paladin'))).toBe('mitigation') // Guardian
+    expect(abilityCategory(7385, job('Paladin'))).toBe('partyMitigation') // Passage of Arms
+    expect(abilityCategory(188, job('Scholar'))).toBe('partyMitigation') // Sacred Soil
     expect(abilityCategory(3541, job('Paladin'))).toBe('utility') // Clemency
     expect(abilityCategory(36962, job('Samurai'))).toBe('mitigation') // Tengentsu
     expect(abilityCategory(157, job('BlackMage'))).toBe('mitigation') // Manaward

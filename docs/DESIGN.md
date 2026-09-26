@@ -154,36 +154,37 @@
 | 分類 | 內容 | 呈現 |
 |---|---|---|
 | 不紀錄 | 坦克的挑釁、退避、坦姿開關（Iron Will、Defiance、Grit、Royal Guard 與其解除） | 時間軸、技能次數、建議都不顯示 |
-| **減傷** | 職能技能 Rampart、Reprisal、Feint、Addle，以及各職業減傷 | 技能次數的「減傷」分組；**專屬建議**（重要的學習課題） |
-| **移動** | 衝刺、Peloton，以及各職業位移技能 | 技能次數的「移動」分組；**專屬建議**（重要的學習課題） |
+| **團隊減傷** | 可給隊友或降低敵人傷害的減傷（目標減傷、支援減傷）：職能技能 Reprisal、Feint、Addle，以及下表「團隊減傷」欄 | 技能次數的「團隊減傷」分頁；專屬建議，影響隊友生存，列為「建議」 |
+| **自身減傷** | 只保護自己的減傷：職能技能 Rampart，以及下表「自身減傷」欄 | 技能次數的「自身減傷」分頁；專屬建議，保住自己即可，列為「參考」 |
+| **移動** | 衝刺、Peloton，以及各職業位移技能 | 技能次數的「移動」分組；專屬建議，列為「建議」 |
 | 輔助 | 其他職能技能：True North、Arm's Length、Second Wind、Bloodbath、Lucid Dreaming、Interject 等 | 合併為一則低優先建議 |
 | 一般 | 其他（輸出技能） | 一般規則 |
 
-各職業的減傷與移動技能：
+各職業的減傷與移動技能（可指定隊友為目標的減傷，例如至黑之夜、獻奉、刃之心，都算團隊減傷）：
 
-| 職業 | 減傷 | 移動 | 其他 |
-|---|---|---|---|
-| 騎士 | Sentinel／Guardian、Bulwark、Hallowed Ground、Sheltron／Holy Sheltron、Divine Veil、Intervention、Passage of Arms、Cover | — | 不紀錄：Iron Will 與解除；輔助：Clemency |
-| 戰士 | Vengeance／Damnation、Raw Intuition／Bloodwhetting、Nascent Flash、Thrill of Battle、Holmgang、Shake It Off | — | 輔助：Equilibrium |
-| 暗黑騎士 | Shadow Wall／Shadowed Vigil、Dark Mind、The Blackest Night、Oblation、Living Dead、Dark Missionary | Shadowstride | |
-| 絕槍戰士 | Nebula／Great Nebula、Camouflage、Aurora、Superbolide、Heart of Light、Heart of Stone／Corundum | Trajectory | |
-| 白魔道士 | Temperance、Divine Caress、Aquaveil、Divine Benison | Aetherial Shift | |
-| 學者 | Sacred Soil、Expedient、Fey Illumination、Deployment Tactics | — | |
-| 占星術師 | Collective Unconscious、Neutral Sect、Exaltation、Sun Sign | — | |
-| 賢者 | Kerachole、Holos、Panhaima、Haima、Taurochole | Icarus | |
-| 武僧 | Riddle of Earth、Mantra | Thunderclap | |
-| 龍騎士 | — | Elusive Jump、Winged Glide | |
-| 忍者 | Shade Shift | Shukuchi | |
-| 武士 | Third Eye、Tengentsu | — | |
-| 奪魂者 | Arcane Crest | Hell's Ingress／Egress、Regress | |
-| 毒蛇劍士 | — | Slither | |
-| 吟遊詩人 | Troubadour、Nature's Minne | Repelling Shot | |
-| 機工士 | Tactician、Dismantle | — | |
-| 舞者 | Shield Samba、Improvisation、Curing Waltz | En Avant | |
-| 黑魔道士 | Manaward | Aetherial Manipulation、Between the Lines、Retrace | |
-| 召喚士 | Radiant Aegis | — | |
-| 赤魔道士 | Magick Barrier | — | |
-| 繪靈法師 | Tempera Coat、Tempera Grassa | Smudge | |
+| 職業 | 團隊減傷 | 自身減傷 | 移動 | 其他 |
+|---|---|---|---|---|
+| 騎士 | Divine Veil、Intervention、Passage of Arms、Cover | Sentinel／Guardian、Bulwark、Hallowed Ground、Sheltron／Holy Sheltron | — | 不紀錄：Iron Will 與解除；輔助：Clemency |
+| 戰士 | Nascent Flash、Shake It Off | Vengeance／Damnation、Raw Intuition／Bloodwhetting、Thrill of Battle、Holmgang | — | 輔助：Equilibrium |
+| 暗黑騎士 | The Blackest Night、Oblation、Dark Missionary | Shadow Wall／Shadowed Vigil、Dark Mind、Living Dead | Shadowstride | |
+| 絕槍戰士 | Aurora、Heart of Light、Heart of Stone／Corundum | Nebula／Great Nebula、Camouflage、Superbolide | Trajectory | |
+| 白魔道士 | Temperance、Divine Caress、Aquaveil、Divine Benison | — | Aetherial Shift | |
+| 學者 | Sacred Soil、Expedient、Fey Illumination、Deployment Tactics | — | — | |
+| 占星術師 | Collective Unconscious、Neutral Sect、Exaltation、Sun Sign | — | — | |
+| 賢者 | Kerachole、Holos、Panhaima、Haima、Taurochole | — | Icarus | |
+| 武僧 | Mantra | Riddle of Earth | Thunderclap | |
+| 龍騎士 | — | — | Elusive Jump、Winged Glide | |
+| 忍者 | — | Shade Shift | Shukuchi | |
+| 武士 | — | Third Eye、Tengentsu | — | |
+| 奪魂者 | — | Arcane Crest | Hell's Ingress／Egress、Regress | |
+| 毒蛇劍士 | — | — | Slither | |
+| 吟遊詩人 | Troubadour、Nature's Minne | — | Repelling Shot | |
+| 機工士 | Tactician、Dismantle | — | — | |
+| 舞者 | Shield Samba、Improvisation、Curing Waltz | — | En Avant | |
+| 黑魔道士 | — | Manaward | Aetherial Manipulation、Between the Lines、Retrace | |
+| 召喚士 | — | Radiant Aegis | — | |
+| 赤魔道士 | Magick Barrier | — | — | |
+| 繪靈法師 | Tempera Grassa | Tempera Coat | Smudge | |
 
 ### 名稱
 - **職業名稱**一律以遊戲官方繁中顯示（例如黑魔道士、毒蛇劍士、暗黑騎士）。
@@ -193,7 +194,7 @@
 
 ## 建議規則
 
-依重要性（優先／建議／參考）排序，同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 技能窗口 → 開打前 → 技能 → 站位）。
+依重要性（優先／建議／參考）排序。**「優先」只放影響輸出的項目**（死亡、停手、GCD 速度、推進、技能窗口／爆發、輸出技能與爆發藥少用）；減傷、移動與站位最多到「建議」。同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 技能窗口 → 開打前 → 技能 → 站位）。
 
 | 規則 | 條件 | 等級 |
 |---|---|---|
@@ -209,9 +210,10 @@
 | 輸出能力技各少用 1 次 | 合併為一則 | 建議 |
 | 使用了參考沒用的 GCD | ≥ 3 次（例如武士的燕飛，代表離 Boss 太遠） | 建議 |
 | 技能平均較晚使用 | 配對 ≥ 2 次、平均晚 > 5 秒 | 建議 |
-| **減傷／移動：參考有用、我沒有對應使用** | 參考的使用在我的前後 30 秒內沒有對應，或次數較少；列出參考的使用時間（最多 5 個），「查看」跳到第一個 | 未對應或少用 ≥ 2 次為優先，否則建議 |
-| **減傷／移動：平均較晚使用** | 配對 ≥ 2 次、平均晚 > 5 秒 | 建議 |
-| **機制結算時站位不同**（最多 5 段） | 非對稱、有機制結算；標題指出機制名稱與時間；依是否同時少打 GCD、距離排序 | 同時少打 GCD 為優先，否則建議 |
+| **團隊減傷／移動：參考有用、我沒有對應使用** | 參考的使用在我的前後 30 秒內沒有對應，或次數較少；列出參考的使用時間（最多 5 個），「查看」跳到第一個；團隊減傷註明「影響隊友的生存」 | 建議 |
+| **團隊減傷／移動：平均較晚使用** | 配對 ≥ 2 次、平均晚 > 5 秒 | 建議 |
+| **自身減傷**：少用、時機不同或較晚 | 同上；註明「只要能保住自己即可」 | 參考 |
+| **機制結算時站位不同**（最多 5 段） | 非對稱、有機制結算；標題指出機制名稱與時間；依是否同時少打 GCD、距離排序（同時少打的 GCD 由停手建議列為優先） | 建議 |
 | 附近沒有機制的站位不同（最多 3 段） | 非對稱、持續 ≥ 5 秒 | 參考 |
 | 可能是不同攻略 | 標示為對稱的站位差異合併為一則 | 參考 |
 | 輔助技能少用 | 合併為一則 | 參考 |
@@ -264,6 +266,10 @@
 ## 設計變更紀錄
 
 實作與架構的變更見 TECH_NOTES.md 的「技術變更紀錄」。
+
+### 2026-09-27 建議的優先級只看輸出；減傷分成團隊與自身
+- 變更：「優先」只放影響輸出的項目（死亡、停手、GCD 速度、推進、技能窗口、輸出技能與爆發藥）。減傷分成團隊減傷（可給隊友或降低敵人傷害：目標減傷、支援減傷）與自身減傷：團隊減傷與移動列為「建議」，自身減傷列為「參考」；機制結算時的站位差異最多到「建議」。技能使用次數的「減傷」分頁也分成「團隊減傷」「自身減傷」。
+- 原因：使用者希望優先只顯示影響輸出的情境；自身減傷只要保住自己即可，影響隊友生存的才需要注意。
 
 ### 2026-09-27 推進差距
 - 變更：偵測轉場等推進時間的差距（兩邊時間差在某處跳開並持續），在對齊說明列、時間軸 Boss 列與建議中標示「我慢／快 N 秒」。

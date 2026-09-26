@@ -3,12 +3,13 @@ import type { JobModule } from './index'
 /**
  * 技能在分析中的分類：
  * - ignored：不需要紀錄（坦克的挑釁、退避、坦姿開關），從時間軸、技能次數與建議中移除
- * - mitigation：減傷（重要的學習課題，有專屬建議）
+ * - mitigation：自身減傷（只保護自己；保住自己即可，建議列為參考）
+ * - partyMitigation：團隊減傷（可給隊友或降低敵人傷害：目標減傷、支援減傷；影響隊友生存，建議列為建議）
  * - movement：移動（衝刺、位移技能，同樣是重要的學習課題）
  * - utility：其他依攻略使用的輔助技能（合併為低優先建議）
  * - normal：一般輸出技能
  */
-export type AbilityCategory = 'ignored' | 'mitigation' | 'movement' | 'utility' | 'normal'
+export type AbilityCategory = 'ignored' | 'mitigation' | 'partyMitigation' | 'movement' | 'utility' | 'normal'
 
 // 所有職業共用的職能技能與通用技能
 const ROLE_IGNORED = new Set([
@@ -25,6 +26,10 @@ const ROLE_IGNORED = new Set([
 
 const ROLE_MITIGATION = new Set([
   7531, // Rampart
+])
+
+// 降低敵人傷害，保護全隊
+const ROLE_PARTY_MITIGATION = new Set([
   7535, // Reprisal
   7549, // Feint
   7560, // Addle
@@ -52,6 +57,7 @@ const ROLE_UTILITY = new Set([
 
 export function abilityCategory(abilityId: number, job?: JobModule): AbilityCategory {
   if (ROLE_IGNORED.has(abilityId) || job?.ignored?.has(abilityId)) return 'ignored'
+  if (ROLE_PARTY_MITIGATION.has(abilityId) || job?.partyMitigation?.has(abilityId)) return 'partyMitigation'
   if (ROLE_MITIGATION.has(abilityId) || job?.mitigation?.has(abilityId)) return 'mitigation'
   if (ROLE_MOVEMENT.has(abilityId) || job?.movement?.has(abilityId)) return 'movement'
   if (ROLE_UTILITY.has(abilityId) || job?.utility?.has(abilityId)) return 'utility'

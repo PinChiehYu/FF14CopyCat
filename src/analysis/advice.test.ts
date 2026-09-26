@@ -142,8 +142,8 @@ describe('generateAdvice', () => {
     expect(advice).toEqual([])
   })
 
-  it('lists when the reference used mitigation that I did not', () => {
-    // 7535 Reprisal（職能減傷）、7382 Intervention（騎士減傷）
+  it('lists party mitigation the reference used and I did not as a suggestion, never a priority', () => {
+    // 7535 Reprisal（職能、降低敵人傷害）、7382 Intervention（騎士、給隊友）
     const advice = generateAdvice(
       input({
         usage: [
@@ -153,22 +153,28 @@ describe('generateAdvice', () => {
       }),
     )
     expect(advice[0]).toMatchObject({
-      severity: 'high',
-      title: '減傷：#7535 少用 3 次（你 6 次、參考 9 次）',
+      severity: 'medium',
+      title: '團隊減傷：#7535 少用 3 次（你 6 次、參考 9 次）',
       at: 83_000,
     })
     expect(advice[0].detail).toMatch('參考在 1:23.0、3:45.0、6:40.0 使用，你在前後 30 秒內沒有使用')
-    expect(advice[1]).toMatchObject({ severity: 'medium', title: '減傷：#7382 有 1 次使用時機與參考不同', at: 300_000 })
+    expect(advice[0].detail).toContain('影響隊友的生存')
+    expect(advice[1]).toMatchObject({ severity: 'medium', title: '團隊減傷：#7382 有 1 次使用時機與參考不同', at: 300_000 })
   })
 
-  it('treats Sprint as an important movement action', () => {
+  it('puts self mitigation under reference only', () => {
+    // 7531 Rampart、17 Sentinel（只保護自己）
+    const advice = generateAdvice(input({ usage: [usage(7531, 2, 5, 0, 2, [60_000, 180_000, 300_000]), usage(17, 3, 3, 8000, 3)] }))
+    expect(advice.map((a) => [a.severity, a.title])).toEqual([
+      ['low', '自身減傷：#7531 少用 3 次（你 2 次、參考 5 次）'],
+      ['low', '自身減傷：#17 平均比參考晚 8.0 秒使用'],
+    ])
+    expect(advice[0].detail).toContain('保住自己即可')
+  })
+
+  it('treats Sprint as movement, at most a suggestion', () => {
     const [a] = generateAdvice(input({ usage: [usage(3, 0, 6, null, 0, [10_000, 70_000])] }))
-    expect(a).toMatchObject({ severity: 'high', title: '移動：Sprint 少用 6 次（你 0 次、參考 6 次）', at: 10_000 })
-  })
-
-  it('flags late mitigation', () => {
-    const [a] = generateAdvice(input({ usage: [usage(7531, 5, 5, 8000, 5)] })) // Rampart
-    expect(a).toMatchObject({ severity: 'medium', title: '減傷：#7531 平均比參考晚 8.0 秒使用' })
+    expect(a).toMatchObject({ severity: 'medium', title: '移動：Sprint 少用 6 次（你 0 次、參考 6 次）', at: 10_000 })
   })
 
   it('detects potions by English name when display names are translated', () => {
@@ -218,7 +224,8 @@ describe('generateAdvice', () => {
       }),
     )
     const worst = advice.find((a) => a.at === 100_000)!
-    expect(worst).toMatchObject({ severity: 'high', title: '1:48.0 機制「Meikyo Shisui」結算時站位與參考不同（最遠 15.0 yalm）' })
+    // 同時少打 GCD：排在最前，但站位本身最多到「建議」（停手已由停手建議列為優先）
+    expect(worst).toMatchObject({ severity: 'medium', title: '1:48.0 機制「Meikyo Shisui」結算時站位與參考不同（最遠 15.0 yalm）' })
     expect(worst.detail).toMatch('少打了 GCD')
     expect(advice.find((a) => a.at === 150_000)).toMatchObject({ severity: 'medium' })
     expect(advice.find((a) => a.at === 200_000)).toMatchObject({ severity: 'low' })
