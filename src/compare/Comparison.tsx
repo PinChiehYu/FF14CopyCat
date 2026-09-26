@@ -10,7 +10,7 @@ import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { attachMechanics, compareTracks, distanceAt, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
-import { fetchAbilityNames, type AbilityName } from '../fflogs/client'
+import { fetchAbilityNames, fetchDamageSummary, type AbilityName, type DamageSummary } from '../fflogs/client'
 import { abilityMap } from '../fflogs/report'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
@@ -82,9 +82,28 @@ function useAbilityNames(mine: SideData, reference: SideData): Map<number, Abili
   return names
 }
 
+/** 兩邊整場的 DPS／rDPS（FFLogs 傷害表）；查詢中為 undefined，查不到為 null。不阻擋比較結果。 */
+function useDamageSummaries(mine: Selection, reference: Selection) {
+  const [result, setResult] = useState<{ key: string; mine: DamageSummary | null; ref: DamageSummary | null } | null>(null)
+  const key = `${selectionKey(mine)}|${selectionKey(reference)}`
+  useEffect(() => {
+    const controller = new AbortController()
+    const load = (s: Selection) =>
+      fetchDamageSummary(s.report.code, s.fight.id, s.player.id, controller.signal).catch(() => null)
+    Promise.all([load(mine), load(reference)]).then(([m, r]) => {
+      if (!controller.signal.aborted) setResult({ key, mine: m, ref: r })
+    })
+    return () => controller.abort()
+    // selection 物件會隨名稱翻譯更新，只依 ID 組成的 key 重新查詢
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  return result && result.key === key ? result : undefined
+}
+
 function SummaryTable({
   mine,
   reference,
+  damage,
   mineEnd,
   refEnd,
   abilityName,
@@ -93,6 +112,8 @@ function SummaryTable({
 }: {
   mine: SideData
   reference: SideData
+  /** 整場的 DPS／rDPS；查詢中為 undefined */
+  damage: { mine: DamageSummary | null; ref: DamageSummary | null } | undefined
   /** 各自時間下的比較範圍結束點 */
   mineEnd: number
   refEnd: number
@@ -129,6 +150,30 @@ function SummaryTable({
             ))}
           </span>
         ),
+    },
+    {
+      // FFLogs 的 rDPS：自己的傷害扣掉隊友 Buff 加成的部分、加上自己 Buff 給隊友的貢獻（整場）
+      label: 'rDPS',
+      cell: (s) => {
+        if (damage === undefined) return <span className="hint-inline">…</span>
+        const d = s === mine ? damage.mine : damage.ref
+        if (!d) return <span className="hint-inline">—</span>
+        const other = s === mine ? damage.ref : damage.mine
+        const round = (v: number) => Math.round(v).toLocaleString()
+        return (
+          <span
+            className="rdps"
+            title={`整場（FFLogs 計算）\nrDPS ${round(d.rdps)}＝DPS ${round(d.dps)} − 隊友 Buff 加成 ${round(d.taken)} ＋ 自己 Buff 貢獻 ${round(d.given)}\naDPS ${round(d.adps)}`}
+          >
+            <strong>{round(d.rdps)}</strong>
+            {other && s === mine && d.rdps < other.rdps && (
+              <span className="rdps-diff" title="比參考少">
+                −{round(other.rdps - d.rdps)}
+              </span>
+            )}
+          </span>
+        )
+      },
     },
     {
       label: '比較範圍',
@@ -191,6 +236,7 @@ function SummaryTable({
 
 function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; reference: SideData }) {
   const job = getJob(refLoaded.selection.player.subType)
+  const damage = useDamageSummaries(mineLoaded.selection, refLoaded.selection)
   // 不需紀錄的技能（挑釁、退避、坦姿開關）一開始就移除
   const category = useMemo(() => (id: number) => abilityCategory(id, job), [job])
   const mine = useMemo(() => withoutAbilities(mineLoaded, (id) => category(id) === 'ignored'), [mineLoaded, category])
@@ -365,6 +411,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       <SummaryTable
         mine={mine}
         reference={reference}
+        damage={damage}
         mineEnd={mineInRange.duration}
         refEnd={compareEnd}
         abilityName={abilityName}

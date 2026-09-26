@@ -98,6 +98,30 @@ describe('handleRequest', () => {
     expect((await handleRequest(get('/reports/abc/auto-attacks-taken'), env, ctx, null)).status).toBe(400)
   })
 
+  it('returns only the numeric totals of the damage table per actor', async () => {
+    mockFflogs({
+      data: {
+        reportData: {
+          report: {
+            table: {
+              data: {
+                totalTime: 829710,
+                entries: [
+                  { id: 6, name: '席德', type: 'Samurai', icon: 'x', total: 22735973, activeTime: 766538, totalRDPS: 21168096, totalRDPSGiven: 0, abilities: [{}] },
+                ],
+              },
+            },
+          },
+        },
+      },
+    })
+    const res = await handleRequest(get('/reports/abc/damage-done?fight=1'), env, ctx, null)
+    expect(await res.json()).toEqual({
+      totalTime: 829710,
+      entries: { 6: { total: 22735973, activeTime: 766538, totalRDPS: 21168096, totalRDPSGiven: 0 } },
+    })
+  })
+
   it('rejects invalid parameters without calling FFLogs', async () => {
     const fetchMock = mockFflogs({})
     const cases = [

@@ -829,6 +829,18 @@ button:disabled {
   background: color-mix(in srgb, var(--window-color) 22%, transparent);
 }
 
+/* 摘要的 rDPS：比參考少多少 */
+.rdps {
+  white-space: nowrap;
+  cursor: help;
+}
+
+.rdps-diff {
+  margin-left: 6px;
+  font-size: 0.85em;
+  color: var(--error);
+}
+
 /* 開打前：對方沒有的效果 */
 .prepull-only {
   color: var(--mine);

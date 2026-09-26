@@ -107,7 +107,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 ### 調查：FFLogs 沒有繁中服排名
 - `worldData.regions` 只有 NA、EU、JP、OC、CN、KR（各有子區域），**沒有繁中服**；`characterRankings(serverRegion: "TW")` 回「Invalid region specified」。
 - 繁中服的報告在 FFLogs 上被標成其他區域（hqNYDGK9A4pmWVXB 為 JP、FXLkqaK32PhQH8Ac 為 CN），玩家的 `server` 是繁中服名稱（泰坦、奧汀、利維坦、迦樓羅、伊弗利特、鳳凰、巴哈姆特）。
-- 繁中服報告的 `report.rankings(fightIDs)` 回傳 `{"data":[]}`：**不排名、沒有 PR、沒有 rDPS**。國際服報告同樣查詢會回傳每位玩家的 `rankPercent`、`rank`（例如 `~811`）。
+- 繁中服報告的 `report.rankings(fightIDs)` 回傳 `{"data":[]}`：**不排名、沒有 PR**。但傷害表（`table(dataType: DamageDone)`）**仍有計算 rDPS**：每位角色有 `totalRDPS`、`totalRDPSTaken`、`totalRDPSGiven`、`totalADPS`、`totalNDPS`、`totalCDPS`（2026-09-27 以 FXLkqaK32PhQH8Ac、pwTF16cgnB9G7fWM 等 5 份繁中服日誌確認）；`totalRDPS`＝`total` − `totalRDPSTaken` ＋ `totalRDPSGiven`（8 個職業全部吻合，例如詩人 DPS 21,385 → rDPS 26,459）。除以表格的 `totalTime`（戰鬥長度，毫秒）即為每秒數值。國際服報告同樣查詢會回傳每位玩家的 `rankPercent`、`rank`（例如 `~811`）。
 - `characterRankings` 回傳 `{ page, hasMorePages, count, rankings }`，`count` 是該頁筆數（100）而非總人數，也沒有 PR；每筆有 `name`、`server {name, region}`、`amount`、`duration`、`report {code, fightID, startTime}`、`bracketData`（例如 7.3）。
 - `reportData.reports(zoneID, startTime, endTime, page, limit)` 不需公會或使用者即可列出公開報告，但沒有區域篩選；`total`／`last_page` 為 -1。
 
@@ -401,6 +401,9 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技術變更紀錄
 
+### 2026-09-27 rDPS
+- 變更：Worker 新增 `GET /reports/:code/damage-done?fight`（`DAMAGE_DONE_QUERY`），只回傳 `totalTime` 與每位角色的數字欄位（`total*`、`activeTime`），省掉技能明細；前端 `fetchDamageSummary()`（`client.ts`）換算成每秒 DPS／rDPS／aDPS，`Comparison.tsx` 的 `useDamageSummaries()` 載入兩邊（不阻擋比較結果），摘要表新增 rDPS 列。
+- 資料：見「繁中服排名／調查」— 繁中服日誌不排名但傷害表仍有 rDPS。騎士基準 15,853 對 20,788、武士基準 25,513 對 32,590。
 ### 2026-09-27 以 Boss 為中心的俯視圖
 - 變更：`PositionSample` 加上 `facing`（弧度；`actorPositions()` 從 resources 的 `facing` ÷ 100 取得）；`positions.ts` 新增 `bossPoseAt()`（位置沿用 `BOSS_LIMITS` 內插，面向取 5 秒內最接近的取樣）與 `toBossFrame()`；`Positions.tsx` 新增 `BossArena` 與視角切換（`localStorage` 的 `arenaMode`）；`Comparison.tsx` 把我的 Boss 位置換算成參考時間（`mineBossSamples`）傳入。
 - 面向定義（以實際資料驗證）：FFLogs 的 `facing` ÷ 100 為弧度 θ，面向方向為 **(cos θ, sin θ)**（與 x、y 同一平面）。驗證方式：

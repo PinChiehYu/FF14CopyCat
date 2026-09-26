@@ -66,6 +66,35 @@ export async function fetchAutoAttacksTaken(code: string, fightId: number, signa
   )
 }
 
+/** 一位角色整場的輸出（FFLogs 傷害表；繁中服日誌不排名，但仍有計算 rDPS）。每秒數值。 */
+export interface DamageSummary {
+  dps: number
+  rdps: number
+  adps: number
+  /** 自己 Buff 給隊友的貢獻、被隊友 Buff 加成的部分（每秒） */
+  given: number
+  taken: number
+}
+
+/** 一場戰鬥中某角色的 DPS／rDPS／aDPS；沒有資料時回傳 null。 */
+export async function fetchDamageSummary(code: string, fightId: number, actorId: number, signal?: AbortSignal): Promise<DamageSummary | null> {
+  const result: { totalTime?: number | null; entries?: Record<string, Record<string, number>> } = await get(
+    `/reports/${encodeURIComponent(code)}/damage-done?fight=${fightId}`,
+    signal,
+  )
+  const e = result.entries?.[String(actorId)]
+  const seconds = (result.totalTime ?? 0) / 1000
+  if (!e || !(seconds > 0) || typeof e.total !== 'number') return null
+  const perSecond = (v: number | undefined, fallback: number) => (typeof v === 'number' ? v : fallback) / seconds
+  return {
+    dps: perSecond(e.total, 0),
+    rdps: perSecond(e.totalRDPS, e.total),
+    adps: perSecond(e.totalADPS, e.total),
+    given: perSecond(e.totalRDPSGiven, 0),
+    taken: perSecond(e.totalRDPSTaken, 0),
+  }
+}
+
 // Worker 單次最多查詢的 NPC 名稱數
 const NPC_BATCH = 20
 

@@ -1,7 +1,7 @@
 import { abilityNames, gameRow } from './abilityNames'
 import { tcRankings, type DbLike, type Graphql } from './crawler'
 import { npcNames } from './npcNames'
-import { AUTO_ATTACKS_TAKEN_QUERY, EVENTS_QUERY, REPORT_QUERY } from './queries'
+import { AUTO_ATTACKS_TAKEN_QUERY, DAMAGE_DONE_QUERY, EVENTS_QUERY, REPORT_QUERY } from './queries'
 
 export interface Env {
   FFLOGS_CLIENT_ID: string
@@ -190,7 +190,7 @@ async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds:
 }
 
 async function reportRoute(url: URL, env: Env): Promise<unknown> {
-  const match = /^\/reports\/([^/]+)(\/events|\/auto-attacks-taken)?\/?$/.exec(url.pathname)
+  const match = /^\/reports\/([^/]+)(\/events|\/auto-attacks-taken|\/damage-done)?\/?$/.exec(url.pathname)
   if (!match) throw new HttpError(404, 'Not found')
 
   const code = decodeURIComponent(match[1])
@@ -206,6 +206,22 @@ async function reportRoute(url: URL, env: Env): Promise<unknown> {
     })) as { table: { data?: { entries?: { id: number; total: number }[] } } }
     // 只回傳每位玩家承受的普通攻擊總傷害 { 角色 ID: 傷害 }，省掉表格其餘欄位
     return Object.fromEntries((report.table.data?.entries ?? []).map((e) => [e.id, e.total]))
+  }
+  if (match[2] === '/damage-done') {
+    const report = (await queryReport(env, DAMAGE_DONE_QUERY, {
+      code,
+      fightIDs: [requiredInt(params, 'fight')],
+    })) as { table: { data?: { totalTime?: number; entries?: Record<string, unknown>[] } } }
+    // 每位角色只回傳數字欄位：總傷害 total、FFLogs 有計算時的 totalRDPS／totalADPS／totalNDPS 等、activeTime
+    return {
+      totalTime: report.table.data?.totalTime ?? null,
+      entries: Object.fromEntries(
+        (report.table.data?.entries ?? []).map((e) => [
+          e.id,
+          Object.fromEntries(Object.entries(e).filter(([k, v]) => typeof v === 'number' && (k.startsWith('total') || k === 'activeTime'))),
+        ]),
+      ),
+    }
   }
 
   const report = (await queryReport(env, EVENTS_QUERY, {

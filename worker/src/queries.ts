@@ -56,6 +56,17 @@ export const AUTO_ATTACKS_TAKEN_QUERY = /* GraphQL */ `
   }
 `
 
+/** 一場戰鬥的傷害表（每位角色的總傷害；FFLogs 有計算時也含 rDPS 等欄位）。 */
+export const DAMAGE_DONE_QUERY = /* GraphQL */ `
+  query DamageDone($code: String!, $fightIDs: [Int]) {
+    reportData {
+      report(code: $code) {
+        table(fightIDs: $fightIDs, dataType: DamageDone)
+      }
+    }
+  }
+`
+
 export const EVENTS_QUERY = /* GraphQL */ `
   query Events(
     $code: String!
