@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { evaluateWindows, inapplicableSummary, timelineWindow } from '../analysis/windows'
 import { pairedWindowRules, ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows'
-import { patchAt } from '../jobs/patch'
+import { patchAt, patchLabel, type GamePatch } from '../jobs/patch'
 import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
@@ -101,7 +101,7 @@ function useDamageSummaries(mine: Selection, reference: Selection) {
   return result && result.key === key ? result : undefined
 }
 
-function sidePatch(s: Selection): string {
+function sidePatch(s: Selection): GamePatch {
   return patchAt(s.report.startTime + s.fight.startTime)
 }
 
@@ -121,7 +121,7 @@ function SummaryTable({
   /** 整場的 DPS／rDPS；查詢中為 undefined */
   damage: { mine: DamageSummary | null; ref: DamageSummary | null } | undefined
   /** 兩邊日誌的遊戲版本 */
-  patches: { mine: string; ref: string }
+  patches: { mine: GamePatch; ref: GamePatch }
   /** 各自時間下的比較範圍結束點 */
   mineEnd: number
   refEnd: number
@@ -188,13 +188,13 @@ function SummaryTable({
       label: '版本',
       cell: (s) => {
         const p = s === mine ? patches.mine : patches.ref
-        const differs = patches.mine !== patches.ref
+        const differs = patchLabel(patches.mine) !== patchLabel(patches.ref)
         return (
           <span
             className={differs ? 'patch-differs' : undefined}
-            title="依戰鬥日期對照繁中服的版本上線日期；FFLogs 的報告沒有記錄遊戲版本"
+            title="依戰鬥日期對照繁中服的版本上線日期（FFLogs 的報告沒有記錄遊戲版本）；技能窗口依職業技能的版本評分"
           >
-            {p}
+            {patchLabel(p)}
           </span>
         )
       },
@@ -351,8 +351,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     const evaluate = (rule: WindowRule, side: SideData, gcdMs: number | null) =>
       evaluateWindows(rule, side.buffs, side.playerCasts, job.isGcd, abilityName, gcdMs, side.duration)
     // 兩邊各自依日誌的遊戲版本選用規則（例如絕槍的終結之心 7.4 起每個窗口都要求）
-    return pairedWindowRules(job.subType, patches.mine, patches.ref).map(({ mine: m, ref: r }) => {
-      const reason = (p: string) => `${p} 版本沒有這條規則`
+    // 規則依職業技能的版本選用（繁中服 7.2 的內容搭配 7.3 的技能調整）
+    return pairedWindowRules(job.subType, patches.mine.jobs, patches.ref.jobs).map(({ mine: m, ref: r }) => {
+      const reason = (p: GamePatch) => `技能 ${p.jobs} 版本沒有這條規則`
       return {
         mine: m ? evaluate(m, mineInRange, gcd?.mine.gcdMs ?? null) : inapplicableSummary(r!, reason(patches.mine)),
         ref: r ? evaluate(r, refInRange, gcd?.ref.gcdMs ?? null) : inapplicableSummary(m!, reason(patches.ref)),
