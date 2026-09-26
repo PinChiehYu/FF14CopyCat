@@ -1,5 +1,6 @@
 import type { AbilityCategory } from '../jobs/roleActions'
 import type { PushDifference } from './alignment'
+import { LATE_LISTED_MS, type CooldownPair } from './cooldowns'
 import type { Death } from '../compare/load'
 import { ruleName } from '../jobs/windows'
 import { mechanicLabel, type MechanicDifference } from './mechanics'
@@ -49,6 +50,8 @@ export interface AdviceInput {
   mineDurationMs?: number
   /** 推進差距（例如轉場）：只含比較範圍內的 */
   pushes?: PushDifference[]
+  /** 冷卻技是否好了就用（xivanalysis 的 CooldownDowntime） */
+  cooldowns?: CooldownPair[]
 }
 
 // 機制差異發生在時段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
@@ -202,8 +205,10 @@ function mitigationAdvice(u: AbilityUsage, name: string, kind: CooldownKind): Ad
   return null
 }
 
-function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUse, mineToRef }: AdviceInput): Advice[] {
+function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUse, mineToRef, cooldowns }: AdviceInput): Advice[] {
   const items: Advice[] = []
+  // 已由冷卻技建議涵蓋的技能不再提「少用」
+  const tracked = new Set((cooldowns ?? []).flatMap(({ mine, ref }) => (mine ?? ref)!.group.ids))
   const slightlyFewer: string[] = []
   const roleFewer: string[] = []
 
@@ -249,6 +254,7 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUs
     }
 
     // GCD 的次數差是少打 GCD 的結果，已由停手與 GCD 速度的建議涵蓋，只比較 oGCD 的次數
+    if (tracked.has(u.abilityId)) continue
     if (!gcd && fewer >= 2 && u.ref <= 30) {
       items.push({
         severity: 'high',
@@ -407,6 +413,41 @@ function pushAdvice(input: AdviceInput): Advice[] {
     })
 }
 
+// 冷卻技晚用的時間點最多列出幾個
+const MAX_LATE_LISTED = 3
+
+/**
+ * 冷卻技沒有好了就用（xivanalysis 的 CooldownDowntime）：我比理論最多可用次數少、而且使用率比參考低時提出，
+ * 列出晚了 5 秒以上的時間點。
+ */
+function cooldownAdvice(input: AdviceInput): Advice[] {
+  const items: Advice[] = []
+  for (const { mine, ref } of input.cooldowns ?? []) {
+    if (!mine || mine.max === 0) continue
+    const lost = mine.max - mine.uses
+    if (lost <= 0) continue
+    const mineRate = mine.uses / mine.max
+    const refRate = ref && ref.max > 0 ? ref.uses / ref.max : 1
+    if (ref && mineRate >= refRate) continue
+    const name = input.abilityName(mine.group.ids[0])
+    const late = mine.late.filter((l) => l.lateMs >= LATE_LISTED_MS).sort((a, b) => b.lateMs - a.lateMs)
+    const listed = late
+      .slice(0, MAX_LATE_LISTED)
+      .sort((a, b) => a.t - b.t)
+      .map((l) => `${formatFightTime(input.mineToRef(l.t))}（晚 ${seconds(l.lateMs)} 秒）`)
+      .join('、')
+    items.push({
+      severity: lost >= 2 ? 'high' : 'medium',
+      title: `${name}：最多可用 ${mine.max} 次，你用了 ${mine.uses} 次${ref ? `（參考 ${ref.uses}／${ref.max}）` : ''}`,
+      detail:
+        (late.length > 0 ? `冷卻好後晚了 5 秒以上才用的有 ${late.length} 次：${listed}${late.length > MAX_LATE_LISTED ? ' 等' : ''}。` : '') +
+        '冷卻好就用，才不會整場少用；若是為了對齊爆發而延後，確認沒有因此少用一次。',
+      at: late.length > 0 ? input.mineToRef(late[0].t) : undefined,
+    })
+  }
+  return items
+}
+
 const ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2 }
 
 /** 依各階段的分析結果產生規則式建議，依重要性排序。 */
@@ -416,11 +457,12 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...lostGcdAdvice(input),
     ...gcdSpeedAdvice(input),
     ...pushAdvice(input),
+    ...cooldownAdvice(input),
     ...windowAdvice(input),
     ...prepullAdvice(input),
     ...usageAdvice(input),
     ...positionAdvice(input),
   ]
-  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 技能窗口 → 開打前 → 技能 → 站位）
+  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 冷卻技 → 技能窗口 → 開打前 → 技能 → 站位）
   return items.map((a, i) => ({ a, i })).sort((x, y) => ORDER[x.a.severity] - ORDER[y.a.severity] || x.i - y.i).map((x) => x.a)
 }

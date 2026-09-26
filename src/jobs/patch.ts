@@ -35,6 +35,30 @@ export function comparePatch(a: string, b: string): number {
   return Number(a) - Number(b)
 }
 
+interface Versioned {
+  key: string
+  patches?: { from?: string; before?: string }
+}
+
+/** 依版本選規則：每個 key 只取第一個適用該版本的（依列出的順序）；沒有適用的就不列。 */
+export function rulesForPatch<T extends Versioned>(all: T[], patch: string): T[] {
+  const seen = new Set<string>()
+  return all.filter((rule) => {
+    if (seen.has(rule.key) || !inPatchRange(patch, rule.patches)) return false
+    seen.add(rule.key)
+    return true
+  })
+}
+
+/** 兩邊各自版本的規則，依 key 配對（依規則列出的順序）；某一邊的版本沒有這條規則時為 null。 */
+export function pairRulesByPatch<T extends Versioned>(all: T[], minePatch: string, refPatch: string): { key: string; mine: T | null; ref: T | null }[] {
+  const mine = rulesForPatch(all, minePatch)
+  const ref = rulesForPatch(all, refPatch)
+  return [...new Set(all.map((r) => r.key))]
+    .map((key) => ({ key, mine: mine.find((r) => r.key === key) ?? null, ref: ref.find((r) => r.key === key) ?? null }))
+    .filter((p) => p.mine || p.ref)
+}
+
 /** 版本是否在範圍內（from 含、before 不含）。 */
 export function inPatchRange(patch: string, range: { from?: string; before?: string } | undefined): boolean {
   if (!range) return true

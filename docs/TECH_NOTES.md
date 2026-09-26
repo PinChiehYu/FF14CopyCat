@@ -401,6 +401,20 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技術變更紀錄
 
+### 2026-09-27 冷卻技是否好了就用
+- 變更：
+  - `src/jobs/cooldownRules.ts`：21 個職業的冷卻技組（`COOLDOWN_RULES`，共 106 筆含版本變體），移植自 xivanalysis dawntrail（b240252）各職業的 `CooldownDowntime`／`OGCDDowntime`／`GeneralCDDowntime`／`Cooldowns`／`oGCDs` 模組；技能 ID、冷卻時間、充能取自 xivanalysis `src/data/ACTIONS`（root＋版本層），115 個 ID 已以 Action 表英文名稱查證。版本變體：絕槍烈牙（7.4 起 2 次充能）、血壤（7.4 前 120 秒容許 10 秒延遲，之後 60 秒）、黑魔黑魔紋（7.1 起 2 次充能）、三連詠唱（7.2 前）、繪靈 Striking Muse（7.2 以外）。xivanalysis 的特殊計數（暗黑以 Scorn 效果計算 Living Shadow、忍者夢幻三段重複時間戳）未重現，以註解標註；絕槍 Sonic Break 的 `firseUseOffset` 拼字錯誤照原行為（0）。
+  - `src/analysis/cooldowns.ts`：`maxUsages()`（移植 xivanalysis 的 `calculateMaxUsages`，含充能、`resetBy`、停機時累積充能）、`lateUses()`（以實際使用模擬充能，充能已滿的閒置時間扣掉停機與容許延遲）、`downtimeWindows()`（Boss 沒有位置、至少 5 秒的時段）、`cooldownUsage()`。
+  - `patch.ts` 新增 `rulesForPatch()`／`pairRulesByPatch()`，技能窗口與冷卻技共用。
+  - `Metrics.tsx` 的「冷卻技」分頁、`advice.ts` 的 `cooldownAdvice()`（已追蹤的技能不再出現一般的「少用」建議）。
+- 修正經過：
+  - 冷卻好的時間比實際施放晚幾毫秒（冷卻時間的四捨五入）時，模擬把那次施放當成沒有充能，計時沒有重設，下一次使用被算成晚了一整輪（騎士戰逃反應 573.296 秒施放、下一次在 634.1 秒被誤判晚 59.5 秒）。改為充能為 0 卻能使用時從這次使用重新計時。
+  - 開打前用過的冷卻技（武士的明鏡止水）FFLogs 沒有施放紀錄，被算成 0:00 起閒置（M7S 誤判晚 26 秒）。改為開打當下身上有同名效果（英文名稱比對）時視為 0:00 用了一次。
+  - 實際次數可能超過理論上限（參考明鏡止水 17／16），顯示與建議都以實際次數為上限（xivanalysis 同樣封頂 100%）。
+- 基準結果（我／參考，用了／最多可用）：
+  - 騎士：戰逃反應 13／13、13／13（晚用 1 次：轉場後 Boss 回來 15 秒才用）；調停 6／28 對 26／27（唯一的建議）；償贖劍 24／25、23／25。
+  - 武士 M8S：明鏡止水 16／17 對 17／17、必殺劍·紅蓮 13／14 對 13／13、意氣衝天 7／7 對 7／7。
+  - 武士 M7S：明鏡止水 13／13、必殺劍·紅蓮 10／11 對 11／11、意氣衝天 6／6。
 ### 2026-09-27 遊戲版本
 - 變更：新增 `src/jobs/patch.ts`（`patchAt()`、`inPatchRange()`，繁中服的版本日期表；使用者決定只處理繁中服日誌，第一版的國際服日期表與伺服器判斷已拿掉）；`WindowRule` 新增 `patches`（適用版本範圍）與 `patchNote`，同一個 key 可有多個版本的規則，`windowRules(subType, patch)` 取第一個適用的；`pairedWindowRules()` 依 key 配對兩邊各自版本的規則；`WindowSummary.inapplicable` 表示該側版本沒有這條規則（`inapplicableSummary()`，建議不比較）。`Comparison.tsx` 的 `sidePatch()` 以 `report.startTime + fight.startTime` 判斷版本。
 - 調查：

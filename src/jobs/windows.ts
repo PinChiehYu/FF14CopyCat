@@ -1,6 +1,6 @@
 // 技能窗口規則的格式與查詢：某個效果（Buff）期間應該做到的事，參考 xivanalysis（MIT）的職業模組。
 // 各職業的規則在 windowRules.ts。
-import { inPatchRange } from './patch'
+import { pairRulesByPatch, rulesForPatch } from './patch'
 import { RULES } from './windowRules'
 
 export interface ExpectedActions {
@@ -74,27 +74,12 @@ export interface WindowRule {
  */
 export function windowRules(subType: string, patch?: string): WindowRule[] {
   const all = RULES[subType] ?? []
-  if (patch === undefined) return all
-  const seen = new Set<string>()
-  return all.filter((rule) => {
-    if (seen.has(rule.key) || !inPatchRange(patch, rule.patches)) return false
-    seen.add(rule.key)
-    return true
-  })
+  return patch === undefined ? all : rulesForPatch(all, patch)
 }
 
 /** 兩邊各自版本的規則，依 key 配對（依規則列出的順序）；某一邊的版本沒有這條規則時為 null。 */
-export function pairedWindowRules(
-  subType: string,
-  minePatch: string,
-  refPatch: string,
-): { key: string; mine: WindowRule | null; ref: WindowRule | null }[] {
-  const mine = windowRules(subType, minePatch)
-  const ref = windowRules(subType, refPatch)
-  const keys = [...new Set((RULES[subType] ?? []).map((r) => r.key))]
-  return keys
-    .map((key) => ({ key, mine: mine.find((r) => r.key === key) ?? null, ref: ref.find((r) => r.key === key) ?? null }))
-    .filter((p) => p.mine || p.ref)
+export function pairedWindowRules(subType: string, minePatch: string, refPatch: string) {
+  return pairRulesByPatch(RULES[subType] ?? [], minePatch, refPatch)
 }
 
 /** 規則中出現的所有技能與效果 ID（查詢繁中名稱用：沒用過的技能不在報告的技能清單中）。 */

@@ -1,3 +1,4 @@
+import { LATE_LISTED_MS, type CooldownPair, type CooldownUsage } from '../analysis/cooldowns'
 import type { AbilityUsage, GcdStats, LostWindow } from '../analysis/metrics'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
@@ -102,10 +103,18 @@ export function Metrics({
   category,
   lost,
   onFocus,
+  cooldowns = [],
+  mineToRef,
+  abilityName,
 }: {
   /** 沒有職業模組時為 null */
   gcd: { mine: GcdStats; ref: GcdStats } | null
   usage: AbilityUsage[]
+  /** 冷卻技是否好了就用（兩邊依各自版本的規則；該版本沒有這個技能組時為 null） */
+  cooldowns?: CooldownPair[]
+  mineToRef?: (t: number) => number
+  /** 報告技能清單沒有的技能（兩邊都沒用過的冷卻技）也能顯示名稱 */
+  abilityName?: (id: number) => string
   abilities: Map<number, Ability>
   job: JobModule | undefined
   category: (abilityId: number) => AbilityCategory
@@ -149,14 +158,69 @@ export function Metrics({
       </li>
     )
   }
+  // 冷卻技：可用次數與晚用的次數（xivanalysis 的 CooldownDowntime），放在第一個分頁
+  const cooldownCard = ({ mine, ref }: CooldownPair) => {
+    const group = (mine ?? ref)!.group
+    const ability = abilities.get(group.ids[0])
+    const lost = (c: CooldownUsage | null) => (c ? Math.max(0, c.max - c.uses) : 0)
+    const lateList = (mine?.late ?? []).filter((l) => l.lateMs >= LATE_LISTED_MS)
+    const title = [
+      ability?.englishName,
+      `理論最多可用次數：依冷卻時間、每次冷卻好就用計算（Boss 無法選取的時間不算）`,
+      ...lateList.map((l) => `${formatFightTime(mineToRef ? mineToRef(l.t) : l.t)} 晚了 ${seconds(l.lateMs)} 秒`),
+    ]
+      .filter(Boolean)
+      .join('\n')
+    return (
+      <li key={group.key} className={`usage-card${lost(mine) > lost(ref) ? ' fewer' : ''}`} title={title}>
+        <div className="usage-name">
+          {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
+          <span>{ability?.name ?? abilityName?.(group.ids[0]) ?? `#${group.ids[0]}`}</span>
+        </div>
+        <dl className="usage-stats">
+          <div>
+            <dt className="mine">我</dt>
+            <dd>{mine ? `${mine.uses}／${mine.max}` : '—'}</dd>
+          </div>
+          <div>
+            <dt className="ref">參考</dt>
+            <dd>{ref ? `${ref.uses}／${ref.max}` : '—'}</dd>
+          </div>
+          <div>
+            <dt>晚用</dt>
+            <dd>{mine ? (lateList.length === 0 ? '—' : `${lateList.length} 次`) : '—'}</dd>
+          </div>
+          <div>
+            <dt>最晚</dt>
+            <dd>{lateList.length === 0 ? '—' : `${seconds(Math.max(...lateList.map((l) => l.lateMs)))} 秒`}</dd>
+          </div>
+        </dl>
+      </li>
+    )
+  }
+  const cooldownTab =
+    cooldowns.length === 0
+      ? []
+      : [
+          {
+            key: 'cooldowns',
+            label: '冷卻技',
+            count: cooldowns.length,
+            variant: 'cooldowns',
+            content: <ul className="usage-grid">{cooldowns.map(cooldownCard)}</ul>,
+          },
+        ]
   // 依分類分頁，每頁以卡片橫向排列
-  const tabs = groups.map((group) => ({
-    key: group.key,
-    label: group.label,
-    count: group.rows.length,
-    variant: group.key,
-    content: <ul className="usage-grid">{group.rows.map(row)}</ul>,
-  }))
+  const tabs = [
+    ...cooldownTab,
+    ...groups.map((group) => ({
+      key: group.key,
+      label: group.label,
+      count: group.rows.length,
+      variant: group.key,
+      content: <ul className="usage-grid">{group.rows.map(row)}</ul>,
+    })),
+  ]
   return (
     <section className="metrics">
       {gcd ? (
@@ -170,6 +234,7 @@ export function Metrics({
       <p className="hint">
         平均時機：把你（依 Boss 機制對齊後）與參考的每次使用依序配對（相距 30 秒以內才算同一次），計算你平均早或晚多少；
         使用 30 次以上的技能（連擊等）不計算。普通攻擊不顯示在時間軸，次數明顯較少通常代表離 Boss 太遠或停手較久。
+        冷卻技：「用了／最多可用」依冷卻時間與每次冷卻好就用計算（移植自 xivanalysis，Boss 無法選取的時間不算）；晚用為冷卻好後晚了  秒以上才用。
       </p>
     </section>
   )

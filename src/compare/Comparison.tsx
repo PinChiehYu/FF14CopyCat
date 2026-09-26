@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { evaluateWindows, inapplicableSummary, timelineWindow } from '../analysis/windows'
 import { pairedWindowRules, ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows'
-import { patchAt, type GamePatch } from '../jobs/patch'
+import { pairRulesByPatch, patchAt, type GamePatch } from '../jobs/patch'
+import { COOLDOWN_RULES, type CooldownGroup } from '../jobs/cooldownRules'
+import { cooldownUsage, downtimeWindows } from '../analysis/cooldowns'
 import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
@@ -71,6 +73,8 @@ function useAbilityNames(mine: SideData, reference: SideData): Map<number, Abili
       ]),
       // 技能窗口規則中的技能：兩邊都沒用過的（例如「缺少」的技能）不在報告的技能清單中
       ...windowRules(reference.selection.player.subType).flatMap(ruleIds),
+      // 冷卻技（兩邊都沒用過時也要顯示名稱）
+      ...(COOLDOWN_RULES[reference.selection.player.subType] ?? []).flatMap((g) => g.ids),
     ]
     const controller = new AbortController()
     fetchAbilityNames(ids, controller.signal)
@@ -371,6 +375,21 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         }),
     [windows, abilityName],
   )
+  // 冷卻技是否好了就用：兩邊依各自版本的規則，只看比較範圍內；Boss 沒有位置（無法選取）的時段不算浪費
+  const cooldowns = useMemo(() => {
+    if (!job) return []
+    // 開打當下身上有同名效果（例如武士開打前的明鏡止水）：視為開打前用了一次
+    const english = (id: number) => (abilities.get(id)?.englishName ?? abilities.get(id)?.name ?? '').toLowerCase()
+    const evaluate = (group: CooldownGroup, side: SideData) => {
+      const prepullNames = new Set(side.prepull.map(english).filter(Boolean))
+      const usedPrepull = (g: CooldownGroup) => g.ids.some((id) => prepullNames.has(english(id)))
+      return cooldownUsage([group], side.playerCasts, side.duration, downtimeWindows(side.bossPositions, side.duration), usedPrepull)[0]
+    }
+    return pairRulesByPatch(COOLDOWN_RULES[job.subType] ?? [], patches.mine.rules, patches.ref.rules).map(({ mine: m, ref: r }) => ({
+      mine: m ? evaluate(m, mineInRange) : null,
+      ref: r ? evaluate(r, refInRange) : null,
+    }))
+  }, [job, patches, mineInRange, refInRange, abilities])
   const advice = useMemo(    () =>
       generateAdvice({
         mechanics,
@@ -394,8 +413,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         deaths: { mine: mineInRange.deaths, ref: refInRange.deaths },
         mineDurationMs: mineInRange.duration,
         pushes,
+        cooldowns,
       }),
-    [compareEnd, gcd, lost, usage, positions, abilities, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes],
+    [compareEnd, gcd, lost, usage, positions, abilities, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns],
   )
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
@@ -441,10 +461,21 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         )}
         <h3>Boss 機制差異</h3>
         <Mechanics differences={mechanics} abilityName={abilityName} onJump={jumpTo} />
-        <Metrics gcd={gcd} usage={usage} abilities={abilities} job={job} category={category} lost={lost} onFocus={jumpTo} />
+        <Metrics
+          gcd={gcd}
+          usage={usage}
+          abilities={abilities}
+          job={job}
+          category={category}
+          lost={lost}
+          onFocus={jumpTo}
+          cooldowns={cooldowns}
+          mineToRef={alignment.mineToRef}
+          abilityName={abilityName}
+        />
       </>
     ),
-    [advice, jumpTo, windows, abilities, abilityName, alignment, mechanics, gcd, usage, job, category, lost],
+    [advice, jumpTo, windows, abilities, abilityName, alignment, mechanics, gcd, usage, job, category, lost, cooldowns],
   )
 
   return (
