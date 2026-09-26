@@ -1315,9 +1315,38 @@ h3 {
   gap: 10px;
 }
 
+/* Boss 目前／下一招：固定單行，名稱過長時以「…」截斷（兩個名稱平分剩餘寬度） */
 .boss-now {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
   margin: 0;
   font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.boss-now .legend {
+  flex: none;
+}
+
+.boss-now-name {
+  flex: 0 1 auto;
+  min-width: 2em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.boss-now-name.next {
+  color: var(--text-muted);
+}
+
+.boss-now-time,
+.boss-now-next {
+  flex: none;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .side-status {

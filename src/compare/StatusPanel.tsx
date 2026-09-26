@@ -149,10 +149,32 @@ export function StatusPanel({
   const mineT = refToMine(cursor)
   return (
     <div className="status-panel">
-      <p className="boss-now">
-        <span className="legend boss">● Boss</span>{' '}
-        {recent ? `${abilityName(recent.abilityId)}（${((cursor - recent.t) / 1000).toFixed(1)} 秒前）` : '—'}
-        {upcoming && <span className="hint-inline">　接著：{abilityName(upcoming.abilityId)}（{((upcoming.t - cursor) / 1000).toFixed(1)} 秒後）</span>}
+      {/* 單行：名稱過長時截斷，完整內容在滑鼠提示 */}
+      <p
+        className="boss-now"
+        title={[
+          recent && `${abilityName(recent.abilityId)}（${((cursor - recent.t) / 1000).toFixed(1)} 秒前）`,
+          upcoming && `接著：${abilityName(upcoming.abilityId)}（${((upcoming.t - cursor) / 1000).toFixed(1)} 秒後）`,
+        ]
+          .filter(Boolean)
+          .join('\n')}
+      >
+        <span className="legend boss">● Boss</span>
+        {recent ? (
+          <>
+            <span className="boss-now-name">{abilityName(recent.abilityId)}</span>
+            <span className="boss-now-time">{((cursor - recent.t) / 1000).toFixed(1)}s 前</span>
+          </>
+        ) : (
+          <span className="boss-now-name">—</span>
+        )}
+        {upcoming && (
+          <>
+            <span className="boss-now-next">→</span>
+            <span className="boss-now-name next">{abilityName(upcoming.abilityId)}</span>
+            <span className="boss-now-time">{((upcoming.t - cursor) / 1000).toFixed(1)}s 後</span>
+          </>
+        )}
       </p>
       <SideStatus
         label="我"
