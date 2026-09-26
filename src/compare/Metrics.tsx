@@ -74,13 +74,17 @@ function GcdSection({
           <p>
             共 {lost.length} 段，參考在這些時段多打了 {lostTotal} 個 GCD。雙方都停手的時段（Boss 無法攻擊等）不列入。
           </p>
+          {/* 每段一列、欄位對齊（時間｜停手秒數｜參考同段的 GCD 數），手機上也不換行 */}
           <ul className="lost-list">
             {lost.map((w) => (
-              <li key={w.mineStart}>
-                <button type="button" onClick={() => onFocus(w.refStart)}>
+              <li key={w.mineStart} className={w.refGcds >= 3 ? 'many' : undefined}>
+                <button type="button" onClick={() => onFocus(w.refStart)} title="跳到這段">
                   {formatFightTime(w.mineStart)}–{formatFightTime(w.mineEnd)}
-                </button>{' '}
-                停手 {seconds(w.mineEnd - w.mineStart)} 秒；參考在同一段打了 <strong>{w.refGcds}</strong> 個 GCD
+                </button>
+                <span>停手 {seconds(w.mineEnd - w.mineStart)} 秒</span>
+                <span title="參考在同一段（對齊後）打的 GCD 數">
+                  參考打 <strong>{w.refGcds}</strong> 個 GCD
+                </span>
               </li>
             ))}
           </ul>

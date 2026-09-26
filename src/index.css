@@ -937,17 +937,40 @@ h3 {
   color: var(--error);
 }
 
+/* 少打 GCD 的時段：每段一列，時間｜停手秒數｜參考的 GCD 數各自對齊 */
 .lost-list {
+  display: grid;
+  gap: 4px;
+  max-width: 480px;
   margin: 8px 0;
-  padding-left: 20px;
+  padding: 0;
+  list-style: none;
 }
 
 .lost-list li {
-  margin: 4px 0;
+  display: grid;
+  grid-template-columns: 9.5em 6.5em 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  border-left: 3px solid color-mix(in srgb, var(--error) 35%, var(--border));
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+/* 參考同段打了 3 個以上 GCD（與建議的「優先」同門檻） */
+.lost-list li.many {
+  border-left-color: var(--error);
+}
+
+.lost-list li.many strong {
+  color: var(--error);
 }
 
 .lost-list button {
-  padding: 1px 8px;
+  padding: 1px 6px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1683,6 +1706,14 @@ h3 {
   .player-option,
   .finder-option {
     gap: 4px;
+  }
+
+  /* 少打 GCD 的時段：縮小字級與欄寬，一列放得下 */
+  .lost-list li {
+    grid-template-columns: 8.6em 6em 1fr;
+    gap: 6px;
+    padding: 3px 6px;
+    font-size: 0.85em;
   }
 
   /* 比較結果摘要：標籤欄與內距縮小，留空間給兩欄資料 */
