@@ -261,12 +261,12 @@ export default function App() {
   return (
     <>
       <h1>FF14 CopyCat</h1>
-      <p className="subtitle">比較你與高階玩家的 FFLogs 日誌，找出技能循環與站位的差異。</p>
+      <p className="subtitle">比較你與前輩的 FFLogs 日誌，找出技能循環與站位的差異。</p>
 
       <div className="logs">
         <LogPicker label="我的日誌" storageKey="mine" onChange={setMine} />
         <LogPicker
-          label="參考日誌（高階玩家）"
+          label="參考日誌（前輩）"
           storageKey="ref"
           preferred={preferred}
           onChange={setReference}

@@ -340,7 +340,7 @@ export const RULES: Record<string, WindowRule[]> = {
       key: 'divination',
       statusId: status(1878), // 占卜
       expectedGcds: 8,
-      // xivanalysis 的這條規則只在表格顯示、不產生建議；焚灼常在占卜前補上，實測高手也常「缺少」，不列入
+      // xivanalysis 的這條規則只在表格顯示、不產生建議；焚灼常在占卜前補上，實測排名前段的玩家也常「缺少」，不列入
       expectedActions: [each([AST.LORD_OF_CROWNS, AST.ORACLE])],
       source: 'ast/Divination',
     },
