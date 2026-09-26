@@ -5,6 +5,8 @@ export interface PositionSample {
   t: number
   x: number
   y: number
+  /** 面向（弧度；FFLogs 原始值 ÷ 100），方向為 (cos, sin)，與座標同一平面 */
+  facing?: number
 }
 
 export interface Point {
@@ -50,6 +52,40 @@ export function positionAt(
   }
   const k = (t - a.t) / (b.t - a.t)
   return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }
+}
+
+// Boss 面向取最接近的取樣，最多相差這麼久
+const FACING_HOLD_MS = 5000
+
+/** 某時間點 Boss 的位置與面向；任一項沒有資料時回傳 null。 */
+export function bossPoseAt(samples: PositionSample[], t: number): { at: Point; facing: number } | null {
+  const at = positionAt(samples, t, BOSS_LIMITS)
+  if (!at) return null
+  let facing: number | undefined
+  let best = Infinity
+  for (const s of samples) {
+    if (s.facing === undefined) continue
+    const d = Math.abs(s.t - t)
+    if (d < best) {
+      best = d
+      facing = s.facing
+    }
+    if (s.t > t + FACING_HOLD_MS) break
+  }
+  return facing !== undefined && best <= FACING_HOLD_MS ? { at, facing } : null
+}
+
+/**
+ * 換算成以 Boss 為基準的座標：Boss 在原點、Boss 面向朝上（畫面的 −y）。
+ * 面向 θ 的方向為 (cos θ, sin θ)，旋轉 −π/2 − θ 後落在 (0, −1)。
+ */
+export function toBossFrame(p: Point, pose: { at: Point; facing: number }): Point {
+  const dx = p.x - pose.at.x
+  const dy = p.y - pose.at.y
+  const phi = -Math.PI / 2 - pose.facing
+  const cos = Math.cos(phi)
+  const sin = Math.sin(phi)
+  return { x: dx * cos - dy * sin, y: dx * sin + dy * cos }
 }
 
 export function distance(a: Point, b: Point): number {

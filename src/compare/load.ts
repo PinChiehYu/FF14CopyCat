@@ -49,6 +49,7 @@ export interface SideData {
 interface Resources {
   x?: number
   y?: number
+  facing?: number
 }
 
 /** 從事件的 source/targetResources 取出某角色的位置，依時間排序並去除同時間的重複取樣。 */
@@ -59,7 +60,9 @@ export function actorPositions(events: FFLogsEvent[], fight: Fight, actorId: num
       | Resources
       | undefined
     if (res?.x === undefined || res.y === undefined) continue
-    samples.push({ t: toFightTime(e.timestamp, fight.startTime), x: res.x / 100, y: res.y / 100 })
+    const sample: PositionSample = { t: toFightTime(e.timestamp, fight.startTime), x: res.x / 100, y: res.y / 100 }
+    if (typeof res.facing === 'number') sample.facing = res.facing / 100
+    samples.push(sample)
   }
   samples.sort((a, b) => a.t - b.t)
   return samples.filter((s, i) => i === 0 || s.t !== samples[i - 1].t)

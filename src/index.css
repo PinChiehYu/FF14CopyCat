@@ -1246,6 +1246,54 @@ h3 {
   stroke-width: 1;
 }
 
+/* 以 Boss 為中心：每 5 yalm 一圈，虛線為正面／側面／背面的分界 */
+.arena .ring {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.arena .sector {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.5;
+}
+
+.arena .sector-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+}
+
+/* 俯視圖視角切換 */
+.arena-modes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 0.85em;
+}
+
+.arena-modes button {
+  padding: 2px 10px;
+  font: inherit;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.arena-modes button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.arena-modes .hint-inline {
+  margin-left: 4px;
+}
+
 .arena .trail {
   fill: none;
   stroke-width: 3;

@@ -1,12 +1,14 @@
 import {
+  bossPoseAt,
   distanceAt,
   MIRROR_LABELS,
+  toBossFrame,
   type Divergence,
   type Point,
   type PositionSample,
   type TrackPoint,
 } from '../analysis/positions'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { formatFightTime } from '../analysis/timeline'
 
 // 地圖上顯示游標前多久的移動軌跡
@@ -156,6 +158,105 @@ function Arena({
   )
 }
 
+/** 以 Boss 為中心時，一側在某時間點相對於自己那一場 Boss 的位置 */
+function relativeAt(player: Point | null, bossSamples: PositionSample[], t: number): Point | null {
+  if (!player) return null
+  const pose = bossPoseAt(bossSamples, t)
+  return pose ? toBossFrame(player, pose) : null
+}
+
+// 以 Boss 為中心：範圍對齊到這個格距（yalm）
+const BOSS_VIEW_STEP_YALM = 10
+
+/**
+ * 以 Boss 為中心的俯視圖：Boss 在中央、面向朝上，兩位玩家各自換算成相對於自己那一場 Boss 的位置，
+ * 兩場的 Boss 站位、面向不同也能比較「站在 Boss 的哪一側」。虛線為正面／側面／背面的分界（±45°、±135°）。
+ */
+function BossArena({
+  track,
+  cursor,
+  mineBoss,
+  refBoss,
+}: {
+  track: TrackPoint[]
+  cursor: number
+  /** 我的日誌的 Boss 位置（已換算成參考時間） */
+  mineBoss: PositionSample[]
+  refBoss: PositionSample[]
+}) {
+  const rel = (p: TrackPoint) => ({ mine: relativeAt(p.mine, mineBoss, p.t), ref: relativeAt(p.ref, refBoss, p.t) })
+  const now = nearest(track, cursor)
+  const current = now ? rel(now) : { mine: null, ref: null }
+  // 範圍：游標前後 10 秒內離 Boss 最遠的距離，對齊 10 yalm
+  const around = track.filter((p) => Math.abs(p.t - cursor) <= VIEW_WINDOW_MS && p.t % 1000 === 0).map(rel)
+  const far = Math.max(
+    MIN_VIEW_YALM / 2,
+    ...around.flatMap((r) => [r.mine, r.ref]).filter((p): p is Point => p !== null).map((p) => Math.hypot(p.x, p.y) + 3),
+  )
+  const size = Math.ceil((far * 2) / BOSS_VIEW_STEP_YALM) * BOSS_VIEW_STEP_YALM
+  const scale = MAP_SIZE / size
+  const c = MAP_SIZE / 2
+  const px = (p: Point) => ({ x: c + p.x * scale, y: c + p.y * scale })
+  const trail = (key: 'mine' | 'ref') =>
+    track
+      .filter((p) => p.t > cursor - TRAIL_MS && p.t <= cursor)
+      .map((p) => rel(p)[key])
+      .filter((p): p is Point => p !== null)
+      .map(px)
+      .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+      .join(' ')
+  // 每 5 yalm 一圈
+  const rings = Array.from({ length: Math.floor(size / 2 / 5) }, (_, i) => (i + 1) * 5)
+  const diag = MAP_SIZE
+  return (
+    <svg className="arena boss-frame" viewBox={`0 0 ${MAP_SIZE} ${MAP_SIZE}`} role="img" aria-label="以 Boss 為中心的站位圖">
+      {rings.map((r) => (
+        <circle key={r} className="ring" cx={c} cy={c} r={r * scale} />
+      ))}
+      {[45, 135].map((deg) => {
+        const rad = (deg * Math.PI) / 180
+        const dx = Math.sin(rad) * diag
+        const dy = -Math.cos(rad) * diag
+        return (
+          <g key={deg}>
+            <line className="sector" x1={c} y1={c} x2={c + dx} y2={c + dy} />
+            <line className="sector" x1={c} y1={c} x2={c - dx} y2={c + dy} />
+          </g>
+        )
+      })}
+      <text className="sector-label" x={c} y={16} textAnchor="middle">
+        正面
+      </text>
+      <text className="sector-label" x={c} y={MAP_SIZE - 8} textAnchor="middle">
+        背面
+      </text>
+      <text className="sector-label" x={10} y={c + 4}>
+        側面
+      </text>
+      <text className="sector-label" x={MAP_SIZE - 10} y={c + 4} textAnchor="end">
+        側面
+      </text>
+      <polyline className="trail ref" points={trail('ref')} />
+      <polyline className="trail mine" points={trail('mine')} />
+      {/* Boss：面向朝上的三角形 */}
+      <polygon className="boss-dot" points={`${c},${c - 12} ${c - 9},${c + 8} ${c + 9},${c + 8}`} />
+      {current.ref && <circle className="dot ref" cx={px(current.ref).x} cy={px(current.ref).y} r={6} />}
+      {current.mine && <circle className="dot mine" cx={px(current.mine).x} cy={px(current.mine).y} r={6} />}
+    </svg>
+  )
+}
+
+type ArenaMode = 'arena' | 'boss'
+const ARENA_MODE_KEY = 'arenaMode'
+
+function readArenaMode(): ArenaMode {
+  try {
+    return localStorage.getItem(ARENA_MODE_KEY) === 'boss' ? 'boss' : 'arena'
+  } catch {
+    return 'arena'
+  }
+}
+
 function DistanceChart({
   track,
   divergences,
@@ -218,6 +319,7 @@ export function Positions({
   mineSamples,
   refSamples,
   bossSamples,
+  mineBossSamples,
   threshold,
   duration,
   cursor,
@@ -235,6 +337,8 @@ export function Positions({
   refSamples: PositionSample[]
   /** 參考日誌的 Boss 位置（決定俯視圖的範圍） */
   bossSamples: PositionSample[]
+  /** 我的日誌的 Boss 位置（已換算成參考時間；以 Boss 為中心時用） */
+  mineBossSamples: PositionSample[]
   threshold: number
   duration: number
   cursor: number
@@ -243,9 +347,22 @@ export function Positions({
   /** 移動游標並捲動時間軸（點清單） */
   onJump: (t: number) => void
 }) {
+  // 俯視圖的視角：場地（北方朝上）或以 Boss 為中心（面向朝上）；記在瀏覽器
+  const [mode, setMode] = useState<ArenaMode>(readArenaMode)
+  const changeMode = (next: ArenaMode) => {
+    setMode(next)
+    try {
+      localStorage.setItem(ARENA_MODE_KEY, next)
+    } catch {
+      // 無法儲存時只影響下次開啟的預設值
+    }
+  }
   const now = nearest(track, cursor)
   const hasData = track.some((p) => p.distance !== null)
   if (!hasData) return <p className="hint">這兩份日誌沒有足夠的位置資料。</p>
+  // 以 Boss 為中心需要兩邊當下的 Boss 位置與面向；沒有時（Boss 無法選取、轉場）暫時以場地顯示
+  const bossFrameReady = bossPoseAt(bossSamples, cursor) !== null && bossPoseAt(mineBossSamples, cursor) !== null
+  const showBossFrame = mode === 'boss' && bossFrameReady
   const atMechanic = divergences.filter((d) => d.mechanics.length > 0).length
   const mirrored = divergences.filter((d) => d.mirror).length
 
@@ -277,7 +394,36 @@ export function Positions({
       />
       <div className="positions-body">
         <div className="arena-panel">
-          <Arena track={track} cursor={cursor} mineSamples={mineSamples} refSamples={refSamples} bossSamples={bossSamples} />
+          <div className="arena-modes" role="group" aria-label="俯視圖視角">
+            <button
+              type="button"
+              className={mode === 'arena' ? 'active' : undefined}
+              aria-pressed={mode === 'arena'}
+              title="北方朝上，範圍跟著目前的場地"
+              onClick={() => changeMode('arena')}
+            >
+              場地
+            </button>
+            <button
+              type="button"
+              className={mode === 'boss' ? 'active' : undefined}
+              aria-pressed={mode === 'boss'}
+              title="Boss 在中央、面向朝上；兩人各自換算成相對於自己那一場 Boss 的位置，可比較站在 Boss 的哪一側"
+              onClick={() => changeMode('boss')}
+            >
+              以 Boss 為中心
+            </button>
+            {mode === 'boss' && !bossFrameReady && (
+              <span className="hint-inline" title="這個時間點至少一邊沒有 Boss 的位置或面向（Boss 無法選取、轉場等）">
+                Boss 不在場，暫以場地顯示
+              </span>
+            )}
+          </div>
+          {showBossFrame ? (
+            <BossArena track={track} cursor={cursor} mineBoss={mineBossSamples} refBoss={bossSamples} />
+          ) : (
+            <Arena track={track} cursor={cursor} mineSamples={mineSamples} refSamples={refSamples} bossSamples={bossSamples} />
+          )}
           <p className="arena-caption">
             <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
             <span className="legend boss" title={now?.boss ? undefined : '這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）'}>

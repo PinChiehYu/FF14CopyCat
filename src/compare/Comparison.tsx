@@ -252,7 +252,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       (t) => distanceAt(track, t),
       DIVERGENCE_YALM,
     )
-    return { mineSamples, track, divergences: found }
+    // 以 Boss 為中心的俯視圖用：我的 Boss 位置換算成參考時間
+    const mineBossSamples = mineInRange.bossPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
+    return { mineSamples, mineBossSamples, track, divergences: found }
   }, [mineInRange, refInRange, reference, alignment, compareEnd])
   const mechanics = useMemo(
     () =>
@@ -402,6 +404,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         mineSamples={positions.mineSamples}
         refSamples={refInRange.playerPositions}
         bossSamples={refInRange.bossPositions}
+        mineBossSamples={positions.mineBossSamples}
         threshold={DIVERGENCE_YALM}
         duration={compareEnd}
         cursor={cursor}

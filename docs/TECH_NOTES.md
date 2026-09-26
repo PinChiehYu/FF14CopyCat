@@ -401,6 +401,13 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技術變更紀錄
 
+### 2026-09-27 以 Boss 為中心的俯視圖
+- 變更：`PositionSample` 加上 `facing`（弧度；`actorPositions()` 從 resources 的 `facing` ÷ 100 取得）；`positions.ts` 新增 `bossPoseAt()`（位置沿用 `BOSS_LIMITS` 內插，面向取 5 秒內最接近的取樣）與 `toBossFrame()`；`Positions.tsx` 新增 `BossArena` 與視角切換（`localStorage` 的 `arenaMode`）；`Comparison.tsx` 把我的 Boss 位置換算成參考時間（`mineBossSamples`）傳入。
+- 面向定義（以實際資料驗證）：FFLogs 的 `facing` ÷ 100 為弧度 θ，面向方向為 **(cos θ, sin θ)**（與 x、y 同一平面）。驗證方式：
+  - Boss 普通攻擊坦克時 Boss 應面向坦克：(cos θ, sin θ) 與「Boss→坦克」夾角小於約 25° 的比例為 19/27（`khNfTaMtYwKBd36b` #10）、33/39（`YbakGgfzPQjJ4MK7` #5）、36/44（`dbN4HXY3QPzMRvDw` #4），其他假設（sin/cos 對調、正負號）都不到一半。
+  - 玩家攻擊 Boss 的事件同時有玩家（`sourceResources`）與 Boss（`targetResources`，含面向）：M8S MT 在正面（±45°）52%、距 Boss 中心中位數 13.4 yalm（M8S Boss 體型大），與圖上的統計完全一致；M7S MT（騎士）86%、ST（絕槍）65% 在正面；近戰武士 M8S 27%、M7S 約 50%（M7S 打法常站在正面）。
+- 注意：`masterData.actors` 涵蓋整份報告，subType Boss 也包含其他戰鬥的 Boss（例如 hqNYDGK9A4pmWVXB 有 Omega 等）；事件只含這場戰鬥，所以不影響。同名玩家可能有多個 actor，要以 `fight.friendlyPlayers` 確認。
+- 開發時踩到：Vite 在 PowerShell 連續寫入同一檔時讀到寫入中的內容，提供了缺少新屬性的舊編譯結果（頁面整個崩潰）；重新存檔即恢復。
 ### 2026-09-27 Boss 本體位置與俯視圖範圍
 - 變更：`load.ts` 新增 `bossPositions()`：Boss 位置取 masterData 中 subType 為 Boss 的角色（沒有時退回施放最多的敵人），取樣來自敵方施放與玩家事件（攻擊 Boss 的 `targetResources`、被 Boss 攻擊的 `sourceResources`）。`Positions.tsx` 的 `bounds()` 改為游標前後 10 秒（`VIEW_WINDOW_MS`）、最小 30 yalm、對齊 5 yalm；新增 `EdgeArrow`。
 - 資料（M8S `pwTF16cgnB9G7fWM` #29、M7S `dbN4HXY3QPzMRvDw` #4／`YbakGgfzPQjJ4MK7` #5）：

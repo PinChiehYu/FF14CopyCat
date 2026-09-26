@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attachMechanics, compareTracks, divergences, positionAt, type PositionSample } from './positions'
+import { attachMechanics, bossPoseAt, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
 
 const s = (seconds: number, x: number, y: number): PositionSample => ({ t: seconds * 1000, x, y })
 
@@ -79,5 +79,29 @@ describe('compareTracks / divergences', () => {
   it('ignores short blips', () => {
     const mine = Array.from({ length: 31 }, (_, i) => (i === 10 ? s(i, 120, 100) : s(i, 95, 100)))
     expect(divergences(compareTracks(mine, ref, boss, 30_000))).toEqual([])
+  })
+})
+
+describe('bossPoseAt / toBossFrame', () => {
+  // Boss 在 (100, 100)，面向 +x（θ = 0）
+  const boss: PositionSample[] = [
+    { t: 0, x: 100, y: 100, facing: 0 },
+    { t: 10_000, x: 100, y: 100 },
+  ]
+
+  it('takes the position and the nearest facing', () => {
+    expect(bossPoseAt(boss, 5000)).toEqual({ at: { x: 100, y: 100 }, facing: 0 })
+    // 面向取樣相差超過 5 秒：沒有面向
+    expect(bossPoseAt([{ t: 0, x: 100, y: 100 }, { t: 20_000, x: 100, y: 100, facing: 0 }], 5000)).toBeNull()
+  })
+
+  it('puts the boss at the origin facing up', () => {
+    const pose = { at: { x: 100, y: 100 }, facing: 0 }
+    // + 0 把 −0 變成 0
+    const round = (p: { x: number; y: number }) => ({ x: Math.round(p.x * 100) / 100 + 0, y: Math.round(p.y * 100) / 100 + 0 })
+    expect(round(toBossFrame({ x: 105, y: 100 }, pose))).toEqual({ x: 0, y: -5 }) // 正面 → 上
+    expect(round(toBossFrame({ x: 95, y: 100 }, pose))).toEqual({ x: 0, y: 5 }) // 背面 → 下
+    // 面向朝上時，Boss 的右手邊（面向方向順時針 90°，座標 +y）在畫面右側
+    expect(round(toBossFrame({ x: 100, y: 105 }, pose))).toEqual({ x: 5, y: 0 })
   })
 })
