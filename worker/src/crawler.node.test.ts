@@ -81,6 +81,40 @@ describe('crawl', () => {
     expect(again.calls.filter((c) => c === 'damage')).toHaveLength(0)
   })
 
+  it('removes parses of reports that became private or were deleted', async () => {
+    const db = memoryDb()
+    const now = 10 * 24 * 3600_000
+    for (const code of ['OK', 'PRIV', 'GONE', 'FLAKY', 'NEW']) {
+      await db
+        .prepare(
+          "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, 'Samurai', '席德', '泰坦', 1, 0, 1, 0)",
+        )
+        .bind(code)
+        .run()
+      // NEW 剛收錄，還不用確認
+      await db.prepare('INSERT INTO scanned_reports (code, scanned_at) VALUES (?, ?)').bind(code, code === 'NEW' ? now : 0).run()
+    }
+    const checked: string[] = []
+    const graphql: Graphql = async <T>(query: string, vars: Record<string, unknown>) => {
+      if (query.includes('reports(')) return { rateLimitData: { pointsSpentThisHour: 10 }, reportData: { reports: { has_more_pages: false, data: [] } } } as T
+      const code = vars.code as string
+      checked.push(code)
+      if (code === 'PRIV') throw new Error('You do not have permission to view this report.')
+      if (code === 'GONE') throw new Error('This report does not exist.')
+      if (code === 'FLAKY') throw new Error('Too many requests')
+      return { reportData: { report: { code } } } as T
+    }
+    expect(await crawl(db, graphql, now, 68)).toMatchObject({ checkedReports: 3, removedReports: 2 })
+    expect(checked.sort()).toEqual(['FLAKY', 'GONE', 'OK', 'PRIV'])
+    const left = await db.prepare('SELECT report FROM parses ORDER BY report').all<{ report: string }>()
+    expect(left.results.map((r) => r.report)).toEqual(['FLAKY', 'NEW', 'OK'])
+
+    // 一小時後：暫時失敗的再確認一次，已確認的一天內不再確認
+    checked.length = 0
+    await crawl(db, graphql, now + 3600_000, 68)
+    expect(checked).toEqual(['FLAKY'])
+  })
+
   const DAY = 24 * 3600_000
   const state = async (db: DbLike, key: string) =>
     Number((await db.prepare('SELECT value FROM crawl_state WHERE key = ?').bind(`zone68:${key}`).first<{ value: string }>())!.value)

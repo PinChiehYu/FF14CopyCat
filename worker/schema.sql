@@ -25,7 +25,9 @@ CREATE INDEX IF NOT EXISTS parses_rdps ON parses (encounter, difficulty, job, rd
 -- 已處理過的報告（避免重複計算）
 CREATE TABLE IF NOT EXISTS scanned_reports (
   code TEXT PRIMARY KEY,
-  scanned_at INTEGER NOT NULL
+  scanned_at INTEGER NOT NULL,
+  -- 最後一次確認報告仍公開的時間（Unix 毫秒）；正式資料庫以 ALTER TABLE scanned_reports ADD COLUMN checked_at INTEGER 加上
+  checked_at INTEGER
 );
 
 -- 掃描進度（key/value）

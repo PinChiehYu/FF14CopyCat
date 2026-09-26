@@ -148,6 +148,9 @@ export interface CrawlResult {
   reports: number
   tcReports: number
   parses: number
+  /** 確認是否仍公開的報告數與其中被移除的（設為私人或已刪除） */
+  checkedReports: number
+  removedReports: number
 }
 
 /**
@@ -216,13 +219,50 @@ async function scanPage(
   return hasMore
 }
 
+// 已收錄的報告多久確認一次是否仍公開，每次執行最多確認幾份（一份一個查詢，點數很少）
+const CHECK_INTERVAL_MS = 24 * 3600_000
+const CHECKS_PER_RUN = 20
+const CHECK_QUERY = /* GraphQL */ `query ($code: String!) { reportData { report(code: $code) { code } } }`
+// FFLogs 對設為私人與已刪除的報告回傳的錯誤；其他錯誤（額度、網路）視為暫時的，下次再確認
+const GONE_REPORT = /permission to view this report|report does not exist/i
+
+/** 收錄後被設為私人或刪除的報告：前端打不開，從排名中移除（紀錄刪除，報告仍記在 scanned_reports，不會再收錄）。 */
+async function pruneGoneReports(db: DbLike, graphql: Graphql, now: number, result: CrawlResult): Promise<void> {
+  const { results } = await db
+    .prepare(
+      `SELECT s.code FROM scanned_reports s WHERE s.code IN (SELECT DISTINCT report FROM parses)
+       AND COALESCE(s.checked_at, s.scanned_at) < ? ORDER BY COALESCE(s.checked_at, s.scanned_at) LIMIT ?`,
+    )
+    .bind(now - CHECK_INTERVAL_MS, CHECKS_PER_RUN)
+    .all<{ code: string }>()
+  const writes: StatementLike[] = []
+  for (const { code } of results) {
+    let gone: boolean
+    try {
+      const data = await graphql<{ reportData?: { report?: { code: string } | null } }>(CHECK_QUERY, { code })
+      gone = !data?.reportData?.report
+    } catch (err) {
+      if (!GONE_REPORT.test(err instanceof Error ? err.message : String(err))) continue
+      gone = true
+    }
+    result.checkedReports++
+    if (gone) {
+      result.removedReports++
+      writes.push(db.prepare('DELETE FROM parses WHERE report = ?').bind(code))
+    }
+    writes.push(db.prepare('UPDATE scanned_reports SET checked_at = ? WHERE code = ?').bind(now, code))
+  }
+  if (writes.length > 0) await db.batch(writes)
+}
+
 /**
  * 定時執行一次，存入繁中服玩家的擊殺：
  * 1. 先掃最近兩天（跨次執行逐頁輪完一輪；時間窗的起點在一輪開始時固定，新上傳的報告只會讓後面的頁往後移，不會漏掉）。
  * 2. 剩下的頁數往回補舊資料（從 60 天前一天一天往後），追上最近兩天的起點就停止。
+ * 3. 確認已收錄的報告是否仍公開（每份每天一次），被設為私人或刪除的從排名移除。
  */
 export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zoneID = CRAWL_ZONES[0]): Promise<CrawlResult> {
-  const result: CrawlResult = { pages: 0, recentPages: 0, reports: 0, tcReports: 0, parses: 0 }
+  const result: CrawlResult = { pages: 0, recentPages: 0, reports: 0, tcReports: 0, parses: 0, checkedReports: 0, removedReports: 0 }
   const prefix = `zone${zoneID}`
   let cursor = Number((await getState(db, `${prefix}:cursor`)) ?? now - BACKFILL_MS)
   let page = Number((await getState(db, `${prefix}:page`)) ?? 1)
@@ -263,6 +303,7 @@ export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zone
       cursor = windowEnd
     }
   }
+  await pruneGoneReports(db, graphql, now, result)
   return result
 }
 

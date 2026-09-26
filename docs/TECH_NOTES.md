@@ -124,7 +124,9 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
     2. **剩下的頁數補舊資料**（`cursor`／`page`）：第一次從 60 天前開始，一個時間窗 1 天往後推，追上「現在 − 2 天」就停止；之後只有落後超過 12 小時（例如停擺過）才再補。
   - 跳過 `scanned_reports` 中已處理的報告；有繁中服玩家的報告，把零式（`difficulty` 101）擊殺的傷害表合成一個查詢（以 `f{fightID}:` 別名），`rDPS = totalRDPS ÷ 戰鬥秒數`（沒有 totalRDPS 時以 `total` 代替），只存繁中服玩家（排除極限技等非玩家）。
   - 這小時已用超過 2,000 點就跳過，把額度留給訪客。
+  - 最後確認已收錄的報告是否仍公開（`pruneGoneReports()`）：`parses` 中的報告依 `scanned_reports.checked_at`（沒有時用 `scanned_at`）由舊到新，超過 1 天沒確認的每次最多 20 份，各以只取 `code` 的查詢確認。FFLogs 對私人報告回「You do not have permission to view this report.」、已刪除回「This report does not exist.」（2026-09-27 確認），這兩種錯誤就刪除該報告的 `parses`（報告仍留在 `scanned_reports`，不會再收錄）；其他錯誤（額度、網路）不記錄確認時間，下次再試。
   - 掃描的副本：`CRAWL_ZONES = [68]`、`CRAWL_DIFFICULTY = 101`，**換季時要更新**。
+- `scanned_reports` 另有 `checked_at`（最後一次確認仍公開的時間）。
 - 資料表：`parses`（主鍵 report＋fight＋actor；只存 `rdps`，排名用索引 `parses_rdps`；另存戰鬥在報告中的開始／結束，供前端抓 Boss 施放比對機制）、`scanned_reports`、`crawl_state`。
 - `tcRankings()`：取出該 Boss／職業的所有紀錄依 **rDPS** 排序（同 rDPS 以較早的報告優先），每位玩家（名稱＋伺服器）第一次出現的順序即名次，`PR = floor((人數 − 名次) ÷ (人數 − 1) × 100)`；回傳 PR 在範圍內的玩家的所有紀錄（每筆帶該玩家的名次與 PR）。D1 中同一場擊殺常被隊伍中不同人重複上傳（例：劍十三@巴哈姆特 32973 DPS 同時在 `nQY4gy78XCRdTAWH` #24 與 `2Apm4MrbCR3jB7qT` #8，也有同一場 3 份的），以「玩家＋戰鬥的實際開始時間（`report_start + fight_start`）」去重：FFLogs 沒有跨報告的戰鬥識別碼，但同一場戰鬥在不同人上傳的報告中，實際開始時間完全相同（2026-09-27 查 D1：同玩家、同 Boss、開始時間相差 1 分鐘內的 920 組重複紀錄，差距全部為 0 毫秒，DPS、rDPS、長度也相同；原本以 DPS＋長度去重的結果一致，沒有誤判）。前端最多列 40 筆（勾「機制相同」時逐筆抓 Boss 施放，3 個並行，在 Worker 每 IP 每分鐘 60 次限制內）。
 - 實測（2026-09-27）：
@@ -507,7 +509,11 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 ### 2026-09-27 繁中服排名改用 rDPS
 - 變更：`parses` 新增 `rdps` 欄位與 `parses_rdps` 索引（正式資料庫以 `ALTER TABLE parses ADD COLUMN rdps REAL` 加上，`schema.sql` 已同步）；`crawl()` 存入 rDPS，並以 `fillRdps()` 替舊紀錄補上；`tcRankings()` 依 rDPS 排名並回傳 `rdps`。上線時舊紀錄另以 scratchpad 腳本透過已部署的 `/reports/:code/damage-done` 端點一次補齊（365 場戰鬥）。
 - 原因：使用者要求排名比較使用 rDPS（詳見 DESIGN.md）。
-- 後續（同日）：去重改用戰鬥的實際開始時間，DPS 不再需要，移除 `dps` 欄位、`parses_rank` 索引與 `fillRdps()`（正式資料庫以 `ALTER TABLE parses DROP COLUMN dps` 移除；報告 `613M9CjHKbmXT7rL` 已被設為私人、查不到 rDPS，刪除其 8 筆紀錄）。私人報告的紀錄目前仍會留在資料庫中。
+- 後續（同日）：去重改用戰鬥的實際開始時間，DPS 不再需要，移除 `dps` 欄位、`parses_rank` 索引與 `fillRdps()`（正式資料庫以 `ALTER TABLE parses DROP COLUMN dps` 移除；報告 `613M9CjHKbmXT7rL` 已被設為私人、查不到 rDPS，刪除其 8 筆紀錄）。
+
+### 2026-09-27 定期移除設為私人或刪除的報告
+- 變更：`crawl()` 最後執行 `pruneGoneReports()`；`scanned_reports` 新增 `checked_at`（正式資料庫以 `ALTER TABLE scanned_reports ADD COLUMN checked_at INTEGER` 加上）。
+- 原因：使用者要求定期清理；收錄後被設為私人的報告（例 `613M9CjHKbmXT7rL`）會留在排名中但打不開。
 
 ### 2026-09-27 排名回傳每人所有擊殺
 - 變更：	cRankings() 不再 GROUP BY name, server，改在程式中計算每人最好一場的名次與 PR，回傳範圍內玩家的所有紀錄並去除重複上傳；ReferenceFinder 的 MAX_LISTED 20 → 40。Worker 已部署。
