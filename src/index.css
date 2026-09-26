@@ -1796,29 +1796,60 @@ h3 {
   }
 
   /* 技能窗口：名稱欄縮小、時間標籤縮小，一列放得下更多 */
+  /* 技能窗口：每個窗口的名稱獨佔一列當標題，下方「我／參考」各佔一半；
+     分數固定獨立一行，時間標籤用等寬格線，每列數量一致 */
+  .windows-table,
+  .windows-table thead,
+  .windows-table tbody {
+    display: block;
+  }
+
+  .windows-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .windows-table thead th:first-child {
+    display: none;
+  }
+
   .windows-table th,
   .windows-table td {
-    padding: 6px 4px;
+    padding: 4px 2px;
+    border-bottom: none;
   }
 
   .windows-table tbody th {
-    width: 4.5em;
-    font-size: 0.8em;
-    white-space: normal;
+    grid-column: 1 / -1;
+    width: auto;
+    display: flex;
+    align-items: center;
+    padding-top: 8px;
+    font-size: 0.9em;
+    color: var(--text);
   }
 
-  .windows-table tbody th .usage-icon {
+  .windows-table tbody td {
+    padding-bottom: 8px;
+  }
+
+  .window-score {
     display: block;
-    margin-bottom: 2px;
-  }
-
-  .window-chip {
-    padding: 0 4px;
-    font-size: 0.72em;
+    margin-bottom: 4px;
   }
 
   .window-chips {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(2.4em, 1fr));
     gap: 3px;
+  }
+
+  .window-chip {
+    padding: 0 2px;
+    font-size: 0.72em;
+    text-align: center;
   }
 
   /* 機制差異表：縮小間距 */
