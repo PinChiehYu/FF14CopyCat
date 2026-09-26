@@ -51,7 +51,7 @@ function fakeGraphql(listed: unknown[]): { graphql: Graphql; calls: string[] } {
           f3: {
             data: {
               entries: [
-                { id: 1, name: '席德', type: 'Samurai', total: 2_500_000 },
+                { id: 1, name: '席德', type: 'Samurai', total: 2_500_000, totalRDPS: 3_000_000 },
                 { id: 2, name: 'Lavid', type: 'Paladin', total: 2_000_000 },
                 { id: 9, name: 'Limit Break', type: 'LimitBreak', total: 100_000 },
               ],
@@ -72,12 +72,29 @@ describe('crawl', () => {
     // 只有繁中服的報告查傷害表；非繁中服、非零式、非玩家不存
     expect(result).toMatchObject({ tcReports: 1, parses: 1 })
     expect(calls.filter((c) => c === 'damage')).toHaveLength(1)
-    const rows = await db.prepare('SELECT report, fight, actor, job, dps FROM parses').all()
-    expect(rows.results).toEqual([{ report: 'TC1', fight: 3, actor: 1, job: 'Samurai', dps: 25_000 }])
+    const rows = await db.prepare('SELECT report, fight, actor, job, dps, rdps FROM parses').all()
+    expect(rows.results).toEqual([{ report: 'TC1', fight: 3, actor: 1, job: 'Samurai', dps: 25_000, rdps: 30_000 }])
 
     // 再掃一次：已處理過的報告不再查傷害表
     const again = fakeGraphql([tcReport, globalReport])
     await crawl(db, again.graphql, 10 * 24 * 3600_000 + 1, 68)
+    expect(again.calls.filter((c) => c === 'damage')).toHaveLength(0)
+  })
+
+  it('fills rDPS for parses stored before the column existed', async () => {
+    const db = memoryDb()
+    await db
+      .prepare(
+        "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, fight_start, fight_end, report_start) VALUES ('TC1', 3, 1, 100, 101, 'Samurai', '席德', '泰坦', 25000, 10000, 110000, 0)",
+      )
+      .run()
+    const { graphql, calls } = fakeGraphql([])
+    expect(await crawl(db, graphql, 10 * 24 * 3600_000, 68)).toMatchObject({ rdpsFilled: 1 })
+    expect(calls.filter((c) => c === 'damage')).toHaveLength(1)
+    expect(await db.prepare('SELECT rdps FROM parses').first()).toEqual({ rdps: 30_000 })
+    // 補完後不再查
+    const again = fakeGraphql([])
+    expect(await crawl(db, again.graphql, 10 * 24 * 3600_000 + 1, 68)).toMatchObject({ rdpsFilled: 0 })
     expect(again.calls.filter((c) => c === 'damage')).toHaveLength(0)
   })
 
@@ -146,20 +163,22 @@ describe('crawl', () => {
 })
 
 describe('tcRankings', () => {
-  it('ranks characters by their best parse and lists all their kills', async () => {
+  it('ranks characters by the rDPS of their best parse and lists all their kills', async () => {
     const db = memoryDb()
-    const insert = (report: string, name: string, dps: number, job = 'Samurai') =>
+    // rdps 為排名依據；dps 預設與 rdps 相同
+    const insert = (report: string, name: string, rdps: number | null, job = 'Samurai', dps = rdps ?? 0) =>
       db
         .prepare(
-          'INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, ?, ?, ?, ?, 0, 1, 0)',
+          'INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, ?, ?, ?, ?, ?, 0, 1, 0)',
         )
-        .bind(report, job, name, '泰坦', dps)
+        .bind(report, job, name, '泰坦', dps, rdps)
         .run()
     await insert('A', '甲', 30_000)
     await insert('B', '甲', 31_000) // 同一人較好的一場
     await insert('C', '乙', 29_000)
     await insert('D', '丙', 28_000)
-    await insert('E', '丁', 20_000)
+    await insert('E', '丁', 20_000, 'Samurai', 33_000) // DPS 最高但 rDPS 最低：依 rDPS 排最後
+    await insert('J', '己', null, 'Samurai', 50_000) // 還沒補上 rDPS：不列入
     await insert('H', '乙', 29_000) // 同一場被另一人重複上傳：只留一筆
     await insert('I', '丙', 25_000) // 同一人較差的一場：沿用最好一場的名次與 PR
     // 其他職業不列入人數與名次（包括同一人玩其他職業）

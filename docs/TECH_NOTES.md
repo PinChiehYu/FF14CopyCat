@@ -122,11 +122,12 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
   - 每次最多 6 頁（每頁 25 份），分兩部分（進度都存在 `crawl_state`）：
     1. **先掃最近 2 天**（`recent_start`／`recent_page`）：一輪的起點在開始時固定為當時的「現在 − 2 天」、終點為每次執行的現在，跨次執行逐頁輪完；新上傳的報告只會讓後面的頁往後移，翻頁不會漏掉（可能重複列到，已處理的會跳過）。一輪掃完就停，下一輪留到下次執行。還在補舊資料時最多用 3 頁，補完後 6 頁都給最近 2 天。
     2. **剩下的頁數補舊資料**（`cursor`／`page`）：第一次從 60 天前開始，一個時間窗 1 天往後推，追上「現在 − 2 天」就停止；之後只有落後超過 12 小時（例如停擺過）才再補。
-  - 跳過 `scanned_reports` 中已處理的報告；有繁中服玩家的報告，把零式（`difficulty` 101）擊殺的傷害表合成一個查詢（以 `f{fightID}:` 別名），`DPS = total ÷ 戰鬥秒數`，只存繁中服玩家（排除極限技等非玩家）。
+  - 跳過 `scanned_reports` 中已處理的報告；有繁中服玩家的報告，把零式（`difficulty` 101）擊殺的傷害表合成一個查詢（以 `f{fightID}:` 別名），`DPS = total ÷ 戰鬥秒數`、`rDPS = totalRDPS ÷ 戰鬥秒數`（沒有 totalRDPS 時同 DPS），只存繁中服玩家（排除極限技等非玩家）。
   - 這小時已用超過 2,000 點就跳過，把額度留給訪客。
+  - 最後替 `rdps` 為 NULL 的舊紀錄補上 rDPS（`fillRdps()`，每次最多 40 份報告，重查傷害表；表中沒有該角色時以 DPS 代替，避免每次重查）。
   - 掃描的副本：`CRAWL_ZONES = [68]`、`CRAWL_DIFFICULTY = 101`，**換季時要更新**。
-- 資料表：`parses`（主鍵 report＋fight＋actor；另存戰鬥在報告中的開始／結束，供前端抓 Boss 施放比對機制）、`scanned_reports`、`crawl_state`。
-- `tcRankings()`：取出該 Boss／職業的所有紀錄依 DPS 排序（同 DPS 以較早的報告優先），每位玩家（名稱＋伺服器）第一次出現的順序即名次，`PR = floor((人數 − 名次) ÷ (人數 − 1) × 100)`；回傳 PR 在範圍內的玩家的所有紀錄（每筆帶該玩家的名次與 PR）。D1 中同一場擊殺常被隊伍中不同人重複上傳（例：劍十三@巴哈姆特 32973 DPS 同時在 `nQY4gy78XCRdTAWH` #24 與 `2Apm4MrbCR3jB7qT` #8，也有同一場 3 份的），以「玩家＋四捨五入的 DPS＋戰鬥長度（秒）」去重。前端最多列 40 筆（勾「機制相同」時逐筆抓 Boss 施放，3 個並行，在 Worker 每 IP 每分鐘 60 次限制內）。
+- 資料表：`parses`（主鍵 report＋fight＋actor；`dps` 與 `rdps`，排名用索引 `parses_rdps`；另存戰鬥在報告中的開始／結束，供前端抓 Boss 施放比對機制）、`scanned_reports`、`crawl_state`。
+- `tcRankings()`：取出該 Boss／職業 `rdps` 不為 NULL 的所有紀錄依 **rDPS** 排序（同 rDPS 以較早的報告優先），每位玩家（名稱＋伺服器）第一次出現的順序即名次，`PR = floor((人數 − 名次) ÷ (人數 − 1) × 100)`；回傳 PR 在範圍內的玩家的所有紀錄（每筆帶該玩家的名次與 PR）。D1 中同一場擊殺常被隊伍中不同人重複上傳（例：劍十三@巴哈姆特 32973 DPS 同時在 `nQY4gy78XCRdTAWH` #24 與 `2Apm4MrbCR3jB7qT` #8，也有同一場 3 份的），以「玩家＋四捨五入的 DPS＋戰鬥長度（秒）」去重（去重仍用 DPS：同一場在不同報告的 DPS 相同，rDPS 也會相同）。前端最多列 40 筆（勾「機制相同」時逐筆抓 Boss 施放，3 個並行，在 Worker 每 IP 每分鐘 60 次限制內）。
 - 實測（2026-09-27）：
   - 第一次執行從 60 天前（7 月底）開始，35 份報告都沒有繁中服擊殺（該副本那時可能還沒有繁中服紀錄）。
   - 暫時把進度移到最近兩天驗證：50 份報告收錄 192 筆，涵蓋本季 4 隻 Boss（97～100）與 20 個職業；最高 DPS 為利維坦的忍者 Wqw 約 3.8 萬。
@@ -503,6 +504,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 原因：依 xivanalysis 的職業規則做技能窗口分析，並顯示開打前的效果（見 DESIGN.md）。
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
+
+### 2026-09-27 繁中服排名改用 rDPS
+- 變更：`parses` 新增 `rdps` 欄位與 `parses_rdps` 索引（正式資料庫以 `ALTER TABLE parses ADD COLUMN rdps REAL` 加上，`schema.sql` 已同步）；`crawl()` 存入 rDPS，並以 `fillRdps()` 替舊紀錄補上；`tcRankings()` 依 rDPS 排名並回傳 `rdps`。上線時舊紀錄另以 scratchpad 腳本透過已部署的 `/reports/:code/damage-done` 端點一次補齊（365 場戰鬥）。
+- 原因：使用者要求排名比較使用 rDPS（詳見 DESIGN.md）。
 
 ### 2026-09-27 排名回傳每人所有擊殺
 - 變更：	cRankings() 不再 GROUP BY name, server，改在程式中計算每人最好一場的名次與 PR，回傳範圍內玩家的所有紀錄並去除重複上傳；ReferenceFinder 的 MAX_LISTED 20 → 40。Worker 已部署。

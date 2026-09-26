@@ -175,7 +175,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
                 label={
                   <span className="finder-summary">
                     <span
-                      title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，PR 依每人最好的一場計算；列出 PR 範圍內玩家的所有擊殺（重複上傳的只留一筆），依 DPS 排序的前 ${MAX_LISTED} 筆`}
+                      title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，PR 依每人 rDPS 最好的一場計算；列出 PR 範圍內玩家的所有擊殺（重複上傳的只留一筆），依 rDPS 排序的前 ${MAX_LISTED} 筆`}
                     >
                       共 {result.count} 人，列出 {result.rows.length} 筆
                     </span>
@@ -200,12 +200,12 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   )
 }
 
-/** 排名紀錄的選項：名次、PR、玩家 @ 伺服器、DPS、戰鬥長度（日期放在滑鼠提示） */
+/** 排名紀錄的選項：名次、PR、玩家 @ 伺服器、rDPS、戰鬥長度（DPS 與日期放在滑鼠提示） */
 function rankingOption(r: TcRanking, mech: MechanicState | undefined): DropdownOption<string> {
   const date = new Date(r.reportStart).toLocaleDateString('zh-TW')
   return {
     value: rowKey(r),
-    title: `${r.name} @ ${r.server}，${Math.round(r.dps).toLocaleString()} DPS，${formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}，${date}`,
+    title: `${r.name} @ ${r.server}，${Math.round(r.rdps).toLocaleString()} rDPS（DPS ${Math.round(r.dps).toLocaleString()}），${formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}，${date}`,
     content: (
       <span className={`option-row finder-option${mech ? ' with-mech' : ''}`}>
         <span className="finder-rank">#{r.rank}</span>
@@ -215,8 +215,8 @@ function rankingOption(r: TcRanking, mech: MechanicState | undefined): DropdownO
           <span className="finder-server"> @ {r.server}</span>
         </span>
         <span className="option-meta">
-          {Math.round(r.dps).toLocaleString()}
-          <span className="finder-unit"> DPS</span>
+          {Math.round(r.rdps).toLocaleString()}
+          <span className="finder-unit"> rDPS</span>
         </span>
         <span className="option-meta finder-time">{formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}</span>
         {mech && (

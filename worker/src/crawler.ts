@@ -1,5 +1,5 @@
 // 繁中服排名資料庫的定時掃描：FFLogs 不替繁中服排名（沒有區域、報告排名為空），
-// 因此定時列出零式副本的公開報告，挑出繁中服玩家的擊殺，以傷害表算出每位玩家的 DPS 存進 D1。
+// 因此定時列出零式副本的公開報告，挑出繁中服玩家的擊殺，以傷害表算出每位玩家的 DPS 與 rDPS 存進 D1。
 // 額度：每小時 3,600 點由所有訪客共用；列出 25 份報告約 50 點、一份報告的傷害表約 2 點。
 
 /** D1 的最小介面（方便在 Node 測試中以假物件替代）。 */
@@ -68,6 +68,8 @@ interface DamageEntry {
   name: string
   type: string
   total: number
+  /** FFLogs 的 rDPS 總量（total − 隊友 Buff 加成 ＋ 自己 Buff 給隊友的貢獻） */
+  totalRDPS?: number
 }
 
 export interface Parse {
@@ -80,6 +82,7 @@ export interface Parse {
   name: string
   server: string
   dps: number
+  rdps: number
   fightStart: number
   fightEnd: number
   reportStart: number
@@ -94,7 +97,7 @@ export function tcKills(report: ListedReport): ListedReport['fights'] {
   return report.fights.filter((f) => f.difficulty === CRAWL_DIFFICULTY)
 }
 
-/** 由傷害表算出繁中服玩家的 DPS。 */
+/** 由傷害表算出繁中服玩家的 DPS 與 rDPS。 */
 export function parsesFromDamage(report: ListedReport, fight: ListedReport['fights'][number], entries: DamageEntry[]): Parse[] {
   const actors = new Map((report.masterData?.actors ?? []).map((a) => [a.id, a]))
   const seconds = (fight.endTime - fight.startTime) / 1000
@@ -115,6 +118,7 @@ export function parsesFromDamage(report: ListedReport, fight: ListedReport['figh
           name: actor.name,
           server: actor.server,
           dps: e.total / seconds,
+          rdps: (e.totalRDPS ?? e.total) / seconds,
           fightStart: fight.startTime,
           fightEnd: fight.endTime,
           reportStart: report.startTime,
@@ -146,6 +150,8 @@ export interface CrawlResult {
   reports: number
   tcReports: number
   parses: number
+  /** 補上 rDPS 的舊紀錄數 */
+  rdpsFilled: number
 }
 
 /**
@@ -200,9 +206,9 @@ async function scanPage(
           writes.push(
             db
               .prepare(
-                'INSERT OR REPLACE INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, fight_start, fight_end, report_start) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT OR REPLACE INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, rdps, fight_start, fight_end, report_start) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
               )
-              .bind(p.report, p.fight, p.actor, p.encounter, p.difficulty, p.job, p.name, p.server, p.dps, p.fightStart, p.fightEnd, p.reportStart),
+              .bind(p.report, p.fight, p.actor, p.encounter, p.difficulty, p.job, p.name, p.server, p.dps, p.rdps, p.fightStart, p.fightEnd, p.reportStart),
           )
         }
       }
@@ -214,13 +220,44 @@ async function scanPage(
   return hasMore
 }
 
+// 每次執行最多替幾份舊報告補上 rDPS（一份約 2 點）
+const RDPS_FILL_REPORTS_PER_RUN = 40
+
+/** 加入 rDPS 欄位前存的紀錄（rdps 為 NULL）：重新查傷害表補上。傷害表沒有該角色時以 DPS 代替，避免每次重查。 */
+async function fillRdps(db: DbLike, graphql: Graphql, result: CrawlResult): Promise<void> {
+  const { results: reports } = await db
+    .prepare('SELECT DISTINCT report FROM parses WHERE rdps IS NULL LIMIT ?')
+    .bind(RDPS_FILL_REPORTS_PER_RUN)
+    .all<{ report: string }>()
+  for (const { report } of reports) {
+    const { results: rows } = await db
+      .prepare('SELECT fight, actor, dps, fight_start, fight_end FROM parses WHERE report = ? AND rdps IS NULL')
+      .bind(report)
+      .all<{ fight: number; actor: number; dps: number; fight_start: number; fight_end: number }>()
+    const fights = [...new Set(rows.map((r) => r.fight))]
+    const tables = await graphql<{ reportData?: { report?: Record<string, { data?: { entries?: DamageEntry[] } }> } }>(damageQuery(fights), {
+      code: report,
+    })
+    await db.batch(
+      rows.map((r) => {
+        const entry = tables?.reportData?.report?.[`f${r.fight}`]?.data?.entries?.find((e) => e.id === r.actor)
+        const seconds = (r.fight_end - r.fight_start) / 1000
+        const rdps = entry?.totalRDPS !== undefined && seconds > 0 ? entry.totalRDPS / seconds : r.dps
+        result.rdpsFilled++
+        return db.prepare('UPDATE parses SET rdps = ? WHERE report = ? AND fight = ? AND actor = ?').bind(rdps, report, r.fight, r.actor)
+      }),
+    )
+  }
+}
+
 /**
  * 定時執行一次，存入繁中服玩家的擊殺：
  * 1. 先掃最近兩天（跨次執行逐頁輪完一輪；時間窗的起點在一輪開始時固定，新上傳的報告只會讓後面的頁往後移，不會漏掉）。
  * 2. 剩下的頁數往回補舊資料（從 60 天前一天一天往後），追上最近兩天的起點就停止。
+ * 3. 替還沒有 rDPS 的舊紀錄補上 rDPS（這小時額度快用完時跳過）。
  */
 export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zoneID = CRAWL_ZONES[0]): Promise<CrawlResult> {
-  const result: CrawlResult = { pages: 0, recentPages: 0, reports: 0, tcReports: 0, parses: 0 }
+  const result: CrawlResult = { pages: 0, recentPages: 0, reports: 0, tcReports: 0, parses: 0, rdpsFilled: 0 }
   const prefix = `zone${zoneID}`
   let cursor = Number((await getState(db, `${prefix}:cursor`)) ?? now - BACKFILL_MS)
   let page = Number((await getState(db, `${prefix}:page`)) ?? 1)
@@ -261,6 +298,7 @@ export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zone
       cursor = windowEnd
     }
   }
+  await fillRdps(db, graphql, result)
   return result
 }
 
@@ -274,6 +312,8 @@ export interface RankedParse {
   name: string
   server: string
   dps: number
+  /** 排名依據（FFLogs 的 rDPS） */
+  rdps: number
   fightStart: number
   fightEnd: number
   reportStart: number
@@ -285,8 +325,9 @@ export function percentile(rank: number, count: number): number {
 }
 
 /**
- * 某 Boss、某職業的繁中服排名：玩家（名稱＋伺服器）的名次與 PR 依每人最好的一場計算，
- * 回傳 PR 在 [minPr, maxPr] 之間的玩家的所有擊殺（依 DPS 由高到低，重複上傳的只留一筆）前 limit 筆與總人數。
+ * 某 Boss、某職業的繁中服排名（依 rDPS）：玩家（名稱＋伺服器）的名次與 PR 依每人最好的一場計算，
+ * 回傳 PR 在 [minPr, maxPr] 之間的玩家的所有擊殺（依 rDPS 由高到低，重複上傳的只留一筆）前 limit 筆與總人數。
+ * 還沒補上 rDPS 的舊紀錄不列入。
  */
 export async function tcRankings(
   db: DbLike,
@@ -299,9 +340,9 @@ export async function tcRankings(
 ): Promise<{ count: number; rankings: RankedParse[] }> {
   const { results } = await db
     .prepare(
-      `SELECT report, fight, actor, name, server, dps, fight_start, fight_end, report_start
-       FROM parses WHERE encounter = ? AND difficulty = ? AND job = ?
-       ORDER BY dps DESC, report_start, report`,
+      `SELECT report, fight, actor, name, server, dps, rdps, fight_start, fight_end, report_start
+       FROM parses WHERE encounter = ? AND difficulty = ? AND job = ? AND rdps IS NOT NULL
+       ORDER BY rdps DESC, report_start, report`,
     )
     .bind(encounter, difficulty, job)
     .all<{
@@ -311,11 +352,12 @@ export async function tcRankings(
       name: string
       server: string
       dps: number
+      rdps: number
       fight_start: number
       fight_end: number
       report_start: number
     }>()
-  // 玩家的名次與 PR 以每人最好的一場計算（依 DPS 由高到低，第一次出現即最好的一場）
+  // 玩家的名次與 PR 以每人最好的一場計算（依 rDPS 由高到低，第一次出現即最好的一場）
   const player = (r: { name: string; server: string }) => `${r.name}@${r.server}`
   const ranks = new Map<string, number>()
   for (const r of results) if (!ranks.has(player(r))) ranks.set(player(r), ranks.size + 1)
@@ -340,6 +382,7 @@ export async function tcRankings(
       name: r.name,
       server: r.server,
       dps: r.dps,
+      rdps: r.rdps,
       fightStart: r.fight_start,
       fightEnd: r.fight_end,
       reportStart: r.report_start,
