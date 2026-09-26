@@ -207,14 +207,15 @@ describe('tcRankings', () => {
     const all = await tcRankings(db, 100, 101, 'Samurai', 0, 100)
     expect(all.count).toBe(4)
     expect(all.rankings.map((r) => [r.name, r.report, r.rank, r.pr])).toEqual([
+      // 名次為所有場次依 rDPS 的順位（重複上傳的 H 不佔名次）；PR 為這一場與其他玩家最好一場比較
       ['甲', 'B', 1, 100],
-      ['甲', 'A', 1, 100],
-      ['乙', 'C', 2, 66],
-      ['丙', 'D', 3, 33],
-      ['乙', 'L', 3, 33],
-      ['丙', 'I', 3, 33],
-      ['丙', 'K', 3, 33],
-      ['丁', 'E', 4, 0],
+      ['甲', 'A', 2, 100],
+      ['乙', 'C', 3, 66],
+      ['丙', 'D', 4, 33],
+      ['乙', 'L', 5, 33],
+      ['丙', 'I', 6, 33],
+      ['丙', 'K', 7, 33],
+      ['丁', 'E', 8, 0],
     ])
     const mid = await tcRankings(db, 100, 101, 'Samurai', 30, 70)
     expect(mid.rankings.map((r) => r.report)).toEqual(['C', 'D', 'L', 'I', 'K'])

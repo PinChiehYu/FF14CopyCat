@@ -175,7 +175,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
                 label={
                   <span className="finder-summary">
                     <span
-                      title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，每場擊殺各自計算 PR（與其他玩家各自最好的一場比較），列出 PR 在範圍內的所有場次（重複上傳的只留一筆），依 rDPS 排序的前 ${MAX_LISTED} 筆`}
+                      title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，每場擊殺各自計算 PR（與其他玩家各自最好的一場比較），列出 PR 在範圍內的所有場次（重複上傳的只留一筆），依 rDPS 排序（# 為所有場次依 rDPS 的名次）的前 ${MAX_LISTED} 筆`}
                     >
                       共 {result.count} 人，列出 {result.rows.length} 筆
                     </span>

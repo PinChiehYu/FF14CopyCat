@@ -308,8 +308,9 @@ export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zone
 }
 
 export interface RankedParse {
+  /** 這一場在所有場次（重複上傳只算一次）中依 rDPS 的順位，每場不同 */
   rank: number
-  /** 繁中服內的百分位（最高 100、最低 0） */
+  /** 繁中服內的百分位（最高 100、最低 0）：這一場與其他玩家各自最好的一場比較 */
   pr: number
   report: string
   fight: number
@@ -329,7 +330,7 @@ export function percentile(rank: number, count: number): number {
 }
 
 /**
- * 某 Boss、某職業的繁中服排名（依 rDPS）：每一場擊殺各自計算名次與 PR（與 FFLogs 相同，和其他玩家各自最好的一場比較），
+ * 某 Boss、某職業的繁中服排名（依 rDPS）：每一場擊殺各自計算 PR（和其他玩家各自最好的一場比較），名次為所有場次依 rDPS 的順位；
  * 回傳 PR 在 [minPr, maxPr] 之間的擊殺（依 rDPS 由高到低，重複上傳的只留一筆）前 limit 筆與總人數。
  */
 export async function tcRankings(
@@ -376,19 +377,21 @@ export async function tcRankings(
     }
     return lo
   }
-  // 每一場擊殺各自的名次：勝過幾位其他玩家的最好一場（不和自己的最好一場比較）。
+  // 每一場擊殺各自的 PR：勝過幾位其他玩家的最好一場（不和自己的最好一場比較）。
   // 同一人較差的一場有自己的 PR，PR 範圍內的每一場都列出，找得到隨機機制與我相同的機率較高。
   // 同一場戰鬥被不同人重複上傳只留一筆：FFLogs 沒有跨報告的戰鬥識別碼，以戰鬥的實際開始時間（報告開始＋戰鬥在報告中的開始）判斷，
   // 同一場在不同報告中完全相同
+  // 名次為所有場次依 rDPS 的順位（PR 相同的場次 rDPS 仍不同，名次不重複）
   const seen = new Set<string>()
   const rankings: RankedParse[] = []
+  let rank = 0
   for (const r of results) {
-    const rank = 1 + above(r.rdps) - (bests.get(player(r))! > r.rdps ? 1 : 0)
-    const pr = percentile(rank, count)
-    if (pr < minPr || pr > maxPr) continue
     const duplicate = `${player(r)}|${r.report_start + r.fight_start}`
     if (seen.has(duplicate)) continue
     seen.add(duplicate)
+    rank++
+    const pr = percentile(1 + above(r.rdps) - (bests.get(player(r))! > r.rdps ? 1 : 0), count)
+    if (pr < minPr || pr > maxPr) continue
     rankings.push({
       rank,
       pr,

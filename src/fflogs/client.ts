@@ -28,6 +28,7 @@ export function fetchReport(code: string, signal?: AbortSignal): Promise<Report>
 
 /** 繁中服排名（Worker 定時掃描公開報告自建）中的一筆擊殺；名次與 PR 為這一場的 rDPS 和其他玩家各自最好的一場比較。 */
 export interface TcRanking {
+  /** 所有場次（重複上傳只算一次）依 rDPS 的名次，每場不同 */
   rank: number
   /** 繁中服內的百分位（最高 100） */
   pr: number
