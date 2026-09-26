@@ -404,6 +404,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 ### 2026-09-27 職業技能也收同名的變體 ID
 - 變更：`scripts/gen-job-data.mjs` 依名稱找技能時，職業技能之外也收同名、沒有 ClassJob 的變體（原本只在找不到職業技能時才用），重新產生 `generated.ts`。
 - 原因：黑騎的暗影步在遊戲資料有 36926（DRK）與 38512（沒有 ClassJob）兩個 ID，FFLogs 報告的技能清單兩個都有，實際施放記錄為 38512，因此被歸到「非 GCD」而不是「移動」。另外補進的同名變體（例如 8755 Hallowed Ground、27834 Icarus、17764 En Avant）只在日誌出現時才有作用。
+- 全職業位移技檢查：以 `Action`＋`ActionTransient` 說明文字篩出所有會位移（rush、jump、dash、move 等）的非 PvP 職業技能，說明沒有威力（不造成傷害）的有 18 個：Repelling Shot、Between the Lines、Retrace、Aetherial Manipulation、En Avant、Elusive Jump、Winged Glide、Shadowstride、Trajectory、Thunderclap、Shukuchi、Smudge、Hell's Ingress、Hell's Egress、Regress、Icarus、Slither、Aetherial Shift，全部已在 `movement`（加上職能的 Sprint、Peloton）。會造成傷害的突進（Intervene、Onslaught、Primal Rend、Gyoten、Corps-a-corps、Forked Raiju、Dragonfire Dive、Stardiver 等）維持輸出技能。再以 12 份測試報告的技能清單交叉檢查：同名但不在分類中的 ID 只剩 PvP 版本（例如 29430 En Avant、39184 Slither，`IsPvP` 為 true），PvE 沒有遺漏。
 ### 2026-09-27 推進差距
 - 變更：`alignment.ts` 新增 `pushDifferences()`、`pushTitle()` 與 `PushDifference`；`AdviceInput.pushes` 與 `pushAdvice()`；`Timeline` 新增 `pushes` prop（Boss 列的 `.push-marker`）；對齊說明列加上可點擊的 `.push-chip`。
 - 原因：使用者詢問轉場前長度不固定時轉場後是否對齊；驗證結果見「實測結果／時間軸對齊」。
