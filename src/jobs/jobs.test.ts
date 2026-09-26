@@ -64,6 +64,9 @@ describe('abilityCategory', () => {
     expect(abilityCategory(188, job('Scholar'))).toBe('partyMitigation') // Sacred Soil
     expect(abilityCategory(3541, job('Paladin'))).toBe('utility') // Clemency
     expect(abilityCategory(36962, job('Samurai'))).toBe('mitigation') // Tengentsu
+    // 暗影步：日誌記錄的是沒有職業歸屬的變體 38512，同樣是移動（只位移、不帶傷害）
+    expect(abilityCategory(36926, job('DarkKnight'))).toBe('movement')
+    expect(abilityCategory(38512, job('DarkKnight'))).toBe('movement')
     expect(abilityCategory(157, job('BlackMage'))).toBe('mitigation') // Manaward
     expect(abilityCategory(36988, job('BlackMage'))).toBe('movement') // Retrace
     expect(abilityCategory(34646, job('Viper'))).toBe('movement') // Slither

@@ -24,12 +24,14 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
       36920, // Guardian
       22, // Bulwark
       30, // Hallowed Ground
+      8755, // Hallowed Ground
       3542, // Sheltron
       25746, // Holy Sheltron
     ]),
     partyMitigation: new Set([
       3540, // Divine Veil
       7382, // Intervention
+      19085, // Intervention
       7385, // Passage of Arms
       27, // Cover
     ]),
@@ -45,10 +47,13 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
       25751, // Bloodwhetting
       40, // Thrill of Battle
       43, // Holmgang
+      8767, // Holmgang
     ]),
     partyMitigation: new Set([
       16464, // Nascent Flash
+      17889, // Nascent Flash
       7388, // Shake It Off
+      17699, // Shake It Off
     ]),
     utility: new Set([
       3552, // Equilibrium
@@ -63,11 +68,14 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
     ]),
     partyMitigation: new Set([
       7393, // The Blackest Night
+      8779, // The Blackest Night
       25754, // Oblation
       16471, // Dark Missionary
+      18909, // Dark Missionary
     ]),
     movement: new Set([
       36926, // Shadowstride
+      38512, // Shadowstride
     ]),
   },
   Gunbreaker: {
@@ -79,6 +87,7 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
     ]),
     partyMitigation: new Set([
       16151, // Aurora
+      17891, // Aurora
       16160, // Heart of Light
       16161, // Heart of Stone
       25758, // Heart of Corundum
@@ -90,6 +99,7 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
   WhiteMage: {
     partyMitigation: new Set([
       16536, // Temperance
+      17794, // Temperance
       37011, // Divine Caress
       25861, // Aquaveil
       7432, // Divine Benison
@@ -103,6 +113,7 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
       188, // Sacred Soil
       25868, // Expedient
       16538, // Fey Illumination
+      805, // Fey Illumination
       3585, // Deployment Tactics
     ]),
   },
@@ -110,6 +121,7 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
     partyMitigation: new Set([
       3613, // Collective Unconscious
       16559, // Neutral Sect
+      17809, // Neutral Sect
       25873, // Exaltation
       37031, // Sun Sign
     ]),
@@ -120,15 +132,18 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
       24310, // Holos
       24311, // Panhaima
       24305, // Haima
+      27833, // Haima
       24303, // Taurochole
     ]),
     movement: new Set([
       24295, // Icarus
+      27834, // Icarus
     ]),
   },
   Monk: {
     mitigation: new Set([
       7394, // Riddle of Earth
+      8788, // Riddle of Earth
     ]),
     partyMitigation: new Set([
       65, // Mantra
@@ -140,6 +155,7 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
   Dragoon: {
     movement: new Set([
       94, // Elusive Jump
+      8803, // Elusive Jump
       36951, // Winged Glide
     ]),
   },
@@ -149,6 +165,7 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
     ]),
     movement: new Set([
       2262, // Shukuchi
+      8812, // Shukuchi
     ]),
   },
   Samurai: {
@@ -160,10 +177,13 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
   Reaper: {
     mitigation: new Set([
       24404, // Arcane Crest
+      27820, // Arcane Crest
     ]),
     movement: new Set([
       24401, // Hell's Ingress
+      27817, // Hell's Ingress
       24402, // Hell's Egress
+      27818, // Hell's Egress
       24403, // Regress
     ]),
   },
@@ -176,14 +196,17 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
     partyMitigation: new Set([
       7405, // Troubadour
       7408, // Nature's Minne
+      19071, // Nature's Minne
     ]),
     movement: new Set([
       112, // Repelling Shot
+      8839, // Repelling Shot
     ]),
   },
   Machinist: {
     partyMitigation: new Set([
       16889, // Tactician
+      18934, // Tactician
       2887, // Dismantle
     ]),
   },
@@ -192,17 +215,21 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
       16012, // Shield Samba
       16014, // Improvisation
       16015, // Curing Waltz
+      17763, // Curing Waltz
     ]),
     movement: new Set([
       16010, // En Avant
+      17764, // En Avant
     ]),
   },
   BlackMage: {
     mitigation: new Set([
       157, // Manaward
+      17687, // Manaward
     ]),
     movement: new Set([
       155, // Aetherial Manipulation
+      8869, // Aetherial Manipulation
       7419, // Between the Lines
       36988, // Retrace
     ]),
@@ -210,6 +237,7 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
   Summoner: {
     mitigation: new Set([
       25799, // Radiant Aegis
+      25841, // Radiant Aegis
     ]),
   },
   RedMage: {

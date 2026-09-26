@@ -147,7 +147,8 @@ const gcd = rows
   .filter((r) => isPlayerSkill(r.fields) && (r.fields.CooldownGroup === GCD_GROUP || r.fields.AdditionalCooldownGroup === GCD_GROUP))
   .map((r) => r.row_id)
 
-// 依名稱找職業技能 ID：先找職業／基本職業的技能，找不到再找沒有 ClassJob 的變形技能
+// 依名稱找職業技能 ID：職業／基本職業的技能，加上同名、沒有 ClassJob 的變形技能
+// （例如暗影步除了黑騎的 36926，日誌中實際記錄的是沒有 ClassJob 的 38512）
 const errors = []
 const categories = {}
 for (const [subType, groups] of Object.entries(CATEGORIES)) {
@@ -157,7 +158,7 @@ for (const [subType, groups] of Object.entries(CATEGORIES)) {
     categories[subType][kind] = names.map((name) => {
       const candidates = rows.filter((r) => r.fields.Name === name && isPlayerSkill(r.fields))
       const own = candidates.filter((r) => abbrs.includes(r.fields.ClassJob?.fields?.Abbreviation))
-      const pick = own.length > 0 ? own : candidates.filter((r) => !r.fields.ClassJob?.fields?.Abbreviation)
+      const pick = [...own, ...candidates.filter((r) => !r.fields.ClassJob?.fields?.Abbreviation)]
       if (pick.length === 0) errors.push(`${subType} ${kind}: 找不到「${name}」`)
       return { name, ids: pick.map((r) => r.row_id) }
     })
