@@ -819,12 +819,14 @@ button:disabled {
   background: var(--window-color);
 }
 
+/* 分數與時間標籤都垂直置中，與左側的技能名稱對齊（標籤多行時分數也在中間） */
 .windows-table td {
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .window-score {
   display: inline-block;
+  vertical-align: middle;
   min-width: 3.2em;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -837,7 +839,7 @@ button:disabled {
   flex-wrap: wrap;
   gap: 4px;
   max-width: calc(100% - 3.2em);
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .window-chip {
