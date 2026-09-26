@@ -782,7 +782,8 @@ button:disabled {
   color: var(--accent);
 }
 
-.finder-server {
+.finder-server,
+.option-server {
   font-size: 0.85em;
   color: var(--text-muted);
 }
