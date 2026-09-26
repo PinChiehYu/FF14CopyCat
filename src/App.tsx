@@ -292,6 +292,41 @@ export default function App() {
           <Comparison mine={mine} reference={reference} />
         </section>
       )}
+
+      <SiteFooter />
     </>
+  )
+}
+
+/** 頁尾：資料來源、參考專案與授權聲明（MIT 等授權要求保留版權聲明，全文在 THIRD_PARTY_NOTICES.txt）。 */
+function SiteFooter() {
+  const link = (href: string, text: string, title?: string) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" title={title}>
+      {text}
+    </a>
+  )
+  return (
+    <footer className="site-footer">
+      <p className="footer-groups">
+        <span>
+          資料來源：{link('https://www.fflogs.com/', 'FF Logs', '戰鬥日誌（API v2）與技能圖示；繁中服排名依公開報告自行計算')}・
+          {link('https://xivapi.com/', 'XIVAPI', '技能、效果、道具與 Boss 名稱等遊戲資料（Boilmaster 鏡像）')}
+        </span>
+        <span>
+          參考：{link('https://github.com/xivanalysis/xivanalysis', 'xivanalysis', '技能窗口規則移植自其職業模組（MIT License）')}・
+          {link('https://ffreplay.vjoi.cn/', 'FFReplay', '播放列與當下狀態的呈現方式')}
+        </span>
+        <span>
+          使用：{link('https://react.dev/', 'React')}・
+          {link('https://github.com/nk2028/opencc-js', 'opencc-js', '簡轉繁（MIT；辭典資料 Apache-2.0）')}
+        </span>
+        <a href={`${import.meta.env.BASE_URL}THIRD_PARTY_NOTICES.txt`} target="_blank" rel="noopener">
+          授權聲明
+        </a>
+      </p>
+      <p>
+        FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved. 本站為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs 無關。
+      </p>
+    </footer>
   )
 }

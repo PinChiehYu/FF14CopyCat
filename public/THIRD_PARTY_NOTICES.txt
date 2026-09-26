@@ -1,0 +1,113 @@
+FF14 CopyCat — 第三方授權聲明（Third-Party Notices）
+=====================================================
+
+本站使用或參考了下列專案與服務。依各授權條款保留其版權與授權聲明。
+This site uses or is derived in part from the following projects and services.
+Their copyright and permission notices are reproduced below as required.
+
+
+1. xivanalysis
+--------------
+https://github.com/xivanalysis/xivanalysis （https://xivanalysis.com/）
+
+本站的技能窗口規則（src/jobs/windowRules.ts、src/jobs/windows.ts）移植自
+xivanalysis dawntrail 分支的職業模組。
+The skill window rules on this site are ported from the job modules of the
+xivanalysis dawntrail branch.
+
+MIT License
+
+Copyright (c) 2018 Saxon Landers & contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+2. React / React DOM
+--------------------
+https://react.dev/
+
+MIT License
+
+Copyright (c) Meta Platforms, Inc. and affiliates.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+3. opencc-js（簡轉繁，用於 API 代理 Worker）
+--------------------------------------------
+https://github.com/nk2028/opencc-js
+
+程式碼以 MIT 授權；其辭典資料衍生自 opencc-data（https://github.com/nk2028/opencc-data），
+以 Apache License, Version 2.0 授權（全文：https://www.apache.org/licenses/LICENSE-2.0）。
+The code is MIT licensed; its dictionary data is derived from opencc-data and
+is licensed under the Apache License, Version 2.0.
+
+MIT License
+
+Copyright (c) 2020-2021 The nk2028 Project
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+4. 資料來源與參考（Data sources and references）
+------------------------------------------------
+- FF Logs（https://www.fflogs.com/）：戰鬥日誌經由官方 API v2 取得；技能圖示來自
+  assets.rpglogs.com。繁中服排名由本站依 FF Logs 公開報告自行計算。
+- XIVAPI（https://xivapi.com/）與其 Boilmaster 鏡像（xivapi-v2.xivcdn.com）：技能、效果、
+  道具與 Boss 的繁中／簡中名稱，以及 GCD、技能分類等遊戲資料。
+- FFReplay（https://ffreplay.vjoi.cn/）：播放列、當下狀態（讀條、最近技能、自身 Buff）的
+  呈現方式參考其設計，未使用其程式碼。
+
+FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved.
+FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.
+本站為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs、XIVAPI、xivanalysis 無任何關係。
+This is an unofficial fan-made tool and is not affiliated with SQUARE ENIX,
+FF Logs, XIVAPI or xivanalysis.

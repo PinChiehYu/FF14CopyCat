@@ -67,3 +67,13 @@ npm run dev                                     # 終端機 2：前端，http://
 ### 前端
 
 推送到 `main` 後由 GitHub Actions 建置、部署到 GitHub Pages，並執行冒煙測試。Repo 的 Settings → Pages → Source 必須是 **GitHub Actions**（若設成 Deploy from a branch，GitHub 會另外把原始碼直接發布上去並覆蓋建置結果）。
+
+## 致謝與授權
+
+- 資料來源：[FF Logs](https://www.fflogs.com/)（戰鬥日誌 API v2、技能圖示；繁中服排名依公開報告自行計算）、[XIVAPI](https://xivapi.com/)（Boilmaster 鏡像，技能／效果／道具／Boss 名稱與遊戲資料）。
+- 技能窗口規則移植自 [xivanalysis](https://github.com/xivanalysis/xivanalysis)（MIT License，Copyright (c) 2018 Saxon Landers & contributors）。
+- 播放列與當下狀態的呈現參考 [FFReplay](https://ffreplay.vjoi.cn/)（僅參考設計，未使用其程式碼）。
+- 使用 [React](https://react.dev/)（MIT）與 [opencc-js](https://github.com/nk2028/opencc-js)（MIT；辭典資料 Apache-2.0）。
+- 各授權全文見 [public/THIRD_PARTY_NOTICES.txt](public/THIRD_PARTY_NOTICES.txt)（網站頁尾的「授權聲明」）。
+
+FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved. 本專案為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs 無關。

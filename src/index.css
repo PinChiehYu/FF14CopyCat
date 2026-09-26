@@ -327,6 +327,36 @@ h1 {
   margin-top: 32px;
 }
 
+/* 頁尾：資料來源、參考與授權聲明 */
+.site-footer {
+  margin-top: 40px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 0.8em;
+  line-height: 1.8;
+  color: var(--text-muted);
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+.footer-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+}
+
+.site-footer a {
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.site-footer a:hover {
+  color: var(--accent);
+}
+
 .error {
   color: var(--error);
 }
