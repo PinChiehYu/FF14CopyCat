@@ -347,6 +347,8 @@ function windowAdvice(input: AdviceInput): Advice[] {
   for (const { mine, ref } of input.windows ?? []) {
     if (mine.judged === 0) continue
     const mineRate = mine.passed / mine.judged
+    // 參考的版本沒有這條規則：無從比較
+    if (ref.inapplicable) continue
     const refRate = ref.judged > 0 ? ref.passed / ref.judged : 1
     if (mineRate >= refRate || mine.passed === mine.judged) continue
     const failed = mine.windows.filter((w) => w.judged && w.issues.length > 0)

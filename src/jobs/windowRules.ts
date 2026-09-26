@@ -308,10 +308,24 @@ export const RULES: Record<string, WindowRule[]> = {
       expectedGcds: 9,
       expectedActions: [
         each([GNB.SAVAGE_CLAW, GNB.WICKED_TALON, GNB.DOUBLE_DOWN, GNB.SONIC_BREAK, GNB.BLASTING_ZONE, GNB.BOW_SHOCK]),
-        // 7.4 以前：窗口內用了血壤才要求終結之心（基準日誌為 7.4 以前的版本）
+        // 7.4 起血壤冷卻 60 秒，每個無情窗口都要求終結之心
+        each([GNB.LION_HEART]),
+      ],
+      source: 'gnb/NoMercy',
+      patches: { from: '7.4' },
+      patchNote: '7.4 起每個窗口都要求終結之心（血壤冷卻改為 60 秒）',
+    },
+    {
+      key: 'no-mercy',
+      statusId: status(1831), // 無情
+      expectedGcds: 9,
+      expectedActions: [
+        each([GNB.SAVAGE_CLAW, GNB.WICKED_TALON, GNB.DOUBLE_DOWN, GNB.SONIC_BREAK, GNB.BLASTING_ZONE, GNB.BOW_SHOCK]),
+        // 7.4 以前：窗口內用了血壤才要求終結之心
         each([GNB.LION_HEART], 1, { onlyIf: [GNB.BLOODFEST] }),
       ],
       source: 'gnb/NoMercy',
+      patchNote: '7.4 以前：窗口內用了血壤才要求終結之心',
     },
     {
       key: 'tincture',
@@ -582,9 +596,23 @@ export const RULES: Record<string, WindowRule[]> = {
       trackedGcds: [...RDM.MELEE, ...RDM.FINISHERS, ...RDM.RUSH_CASTS, ...RDM.OTHER, RDM.IMPACT, RDM.VERRAISE],
       allowedGcds: [...RDM.MELEE, ...RDM.FINISHERS, ...RDM.RUSH_CASTS, ...RDM.OTHER],
       source: 'rdm/Manafication',
+      // xivanalysis：只適用 7.0～7.3（7.4 起魔元化不再是需要檢查的窗口）
+      patches: { before: '7.4' },
+      patchNote: '只適用 7.0～7.3',
     },
   ],
   Pictomancer: [
+    {
+      // 7.2：六減色窗口會用到一次加色系技能、可以少用重錘（xivanalysis 的 isPatch720），
+      // 改以 GCD 數 9 個檢查，不要求 3 次重錘、不限制加色系技能
+      key: 'starry-muse',
+      statusId: status(3685), // 星空構想
+      expectedGcds: 9,
+      expectedActions: [each([PCT.STAR_PRISM, PCT.RAINBOW_DRIP, PCT.COMET_IN_BLACK]), total(PCT.MOG_OR_MADEEN, 1)],
+      source: 'pct/StarryMuse',
+      patches: { from: '7.2', before: '7.3' },
+      patchNote: '7.2：不要求 3 次重錘、可使用加色系技能，改檢查 GCD 數 9 個',
+    },
     {
       key: 'starry-muse',
       statusId: status(3685), // 星空構想
@@ -595,6 +623,7 @@ export const RULES: Record<string, WindowRule[]> = {
       ],
       limitedActions: [{ ids: PCT.ADDITIVES }],
       source: 'pct/StarryMuse',
+      patchNote: '7.2 以外：要求 3 次重錘、不可使用加色系技能',
     },
   ],
 }

@@ -1,5 +1,6 @@
 // 技能窗口規則的格式與查詢：某個效果（Buff）期間應該做到的事，參考 xivanalysis（MIT）的職業模組。
 // 各職業的規則在 windowRules.ts。
+import { inPatchRange } from './patch'
 import { RULES } from './windowRules'
 
 export interface ExpectedActions {
@@ -57,11 +58,42 @@ export interface WindowRule {
   limitedActions?: LimitedActions[]
   /** 規則出處（xivanalysis 模組） */
   source: string
+  /**
+   * 適用的遊戲版本（from 含、before 不含）；同一個 key 可有多個版本的規則，依列出的順序取第一個適用的
+   * （xivanalysis 以 parser.patch 分支的規則，例如絕槍的終結之心 7.4 起每個窗口都要求）
+   */
+  patches?: { from?: string; before?: string }
+  /** 這個版本的規則與其他版本的差異（顯示在滑鼠提示與版本不同時的說明） */
+  patchNote?: string
 }
 
-/** 職業的技能窗口規則；沒有規則的職業回傳空陣列。 */
-export function windowRules(subType: string): WindowRule[] {
-  return RULES[subType] ?? []
+/**
+ * 職業的技能窗口規則；沒有規則的職業回傳空陣列。指定版本時，每個 key 只取第一個適用該版本的規則，
+ * 沒有適用的就不列（例如赤魔的魔元化只到 7.3）；不指定時列出所有規則（查名稱用）。
+ */
+export function windowRules(subType: string, patch?: string): WindowRule[] {
+  const all = RULES[subType] ?? []
+  if (patch === undefined) return all
+  const seen = new Set<string>()
+  return all.filter((rule) => {
+    if (seen.has(rule.key) || !inPatchRange(patch, rule.patches)) return false
+    seen.add(rule.key)
+    return true
+  })
+}
+
+/** 兩邊各自版本的規則，依 key 配對（依規則列出的順序）；某一邊的版本沒有這條規則時為 null。 */
+export function pairedWindowRules(
+  subType: string,
+  minePatch: string,
+  refPatch: string,
+): { key: string; mine: WindowRule | null; ref: WindowRule | null }[] {
+  const mine = windowRules(subType, minePatch)
+  const ref = windowRules(subType, refPatch)
+  const keys = [...new Set((RULES[subType] ?? []).map((r) => r.key))]
+  return keys
+    .map((key) => ({ key, mine: mine.find((r) => r.key === key) ?? null, ref: ref.find((r) => r.key === key) ?? null }))
+    .filter((p) => p.mine || p.ref)
 }
 
 /** 規則中出現的所有技能與效果 ID（查詢繁中名稱用：沒用過的技能不在報告的技能清單中）。 */

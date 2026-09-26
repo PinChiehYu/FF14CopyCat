@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { evaluateWindows, timelineWindow } from '../analysis/windows'
-import { ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows'
+import { evaluateWindows, inapplicableSummary, timelineWindow } from '../analysis/windows'
+import { pairedWindowRules, ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows'
+import { patchAt, patchLabel, type GamePatch } from '../jobs/patch'
 import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
@@ -100,10 +101,15 @@ function useDamageSummaries(mine: Selection, reference: Selection) {
   return result && result.key === key ? result : undefined
 }
 
+function sidePatch(s: Selection): GamePatch {
+  return patchAt(s.report.startTime + s.fight.startTime, s.player.server)
+}
+
 function SummaryTable({
   mine,
   reference,
   damage,
+  patches,
   mineEnd,
   refEnd,
   abilityName,
@@ -114,6 +120,8 @@ function SummaryTable({
   reference: SideData
   /** 整場的 DPS／rDPS；查詢中為 undefined */
   damage: { mine: DamageSummary | null; ref: DamageSummary | null } | undefined
+  /** 兩邊日誌的遊戲版本 */
+  patches: { mine: GamePatch; ref: GamePatch }
   /** 各自時間下的比較範圍結束點 */
   mineEnd: number
   refEnd: number
@@ -171,6 +179,22 @@ function SummaryTable({
                 −{round(other.rdps - d.rdps)}
               </span>
             )}
+          </span>
+        )
+      },
+    },
+    {
+      // 依角色的伺服器與戰鬥日期判斷；兩邊不同時標示（技能窗口依各自版本評分，差異列在表格下方）
+      label: '版本',
+      cell: (s) => {
+        const p = s === mine ? patches.mine : patches.ref
+        const differs = patches.mine.key !== patches.ref.key
+        return (
+          <span
+            className={differs ? 'patch-differs' : undefined}
+            title="依角色的伺服器（繁中服／國際服）與戰鬥日期判斷；FFLogs 的報告沒有記錄遊戲版本"
+          >
+            {patchLabel(p)}
           </span>
         )
       },
@@ -236,6 +260,8 @@ function SummaryTable({
 
 function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; reference: SideData }) {
   const job = getJob(refLoaded.selection.player.subType)
+  // 兩邊日誌的遊戲版本（依伺服器判斷繁中服／國際服，再依戰鬥時間對照版本日期）
+  const patches = useMemo(() => ({ mine: sidePatch(mineLoaded.selection), ref: sidePatch(refLoaded.selection) }), [mineLoaded, refLoaded])
   const damage = useDamageSummaries(mineLoaded.selection, refLoaded.selection)
   // 不需紀錄的技能（挑釁、退避、坦姿開關）一開始就移除
   const category = useMemo(() => (id: number) => abilityCategory(id, job), [job])
@@ -324,13 +350,27 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     // 各自的 GCD 間隔用來依窗口長度封頂應打的 GCD 數
     const evaluate = (rule: WindowRule, side: SideData, gcdMs: number | null) =>
       evaluateWindows(rule, side.buffs, side.playerCasts, job.isGcd, abilityName, gcdMs, side.duration)
-    return windowRules(job.subType).map((rule) => ({
-      mine: evaluate(rule, mineInRange, gcd?.mine.gcdMs ?? null),
-      ref: evaluate(rule, refInRange, gcd?.ref.gcdMs ?? null),
-    }))
-  }, [job, mineInRange, refInRange, abilityName, gcd])
-  const advice = useMemo(
+    // 兩邊各自依日誌的遊戲版本選用規則（例如絕槍的終結之心 7.4 起每個窗口都要求）
+    return pairedWindowRules(job.subType, patches.mine.key, patches.ref.key).map(({ mine: m, ref: r }) => {
+      const reason = (p: GamePatch) => `${patchLabel(p)}沒有這條規則`
+      return {
+        mine: m ? evaluate(m, mineInRange, gcd?.mine.gcdMs ?? null) : inapplicableSummary(r!, reason(patches.mine)),
+        ref: r ? evaluate(r, refInRange, gcd?.ref.gcdMs ?? null) : inapplicableSummary(m!, reason(patches.ref)),
+      }
+    })
+  }, [job, mineInRange, refInRange, abilityName, gcd, patches])
+  // 兩邊版本的規則不同的技能窗口（版本不同時列在摘要下方）
+  const patchDiffs = useMemo(
     () =>
+      windows
+        .filter(({ mine: m, ref: r }) => m.rule !== r.rule || m.inapplicable || r.inapplicable)
+        .map(({ mine: m, ref: r }) => {
+          const note = (s: typeof m) => s.inapplicable ?? s.rule.patchNote ?? '一般規則'
+          return `${ruleName(m.rule, abilityName)}（我 ${note(m)}／參考 ${note(r)}）`
+        }),
+    [windows, abilityName],
+  )
+  const advice = useMemo(    () =>
       generateAdvice({
         mechanics,
         durationMs: compareEnd,
@@ -412,12 +452,24 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         mine={mine}
         reference={reference}
         damage={damage}
+        patches={patches}
         mineEnd={mineInRange.duration}
         refEnd={compareEnd}
         abilityName={abilityName}
         mineToRef={alignment.mineToRef}
         onJump={jumpTo}
       />
+      {patchDiffs.length > 0 && (
+        <p className="hint patch-note">
+          兩邊版本不同，技能窗口依各自版本的規則評分：
+          {patchDiffs.map((d, i) => (
+            <span key={d}>
+              {i > 0 && '；'}
+              {d}
+            </span>
+          ))}
+        </p>
+      )}
       <p className="hint">
         時間軸以 Boss 技能對齊：錨點 {alignment.anchors.length} 個
         {drifts.length > 0 &&

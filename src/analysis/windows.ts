@@ -23,6 +23,13 @@ export interface WindowSummary {
   /** 評分的窗口數與合格數 */
   judged: number
   passed: number
+  /** 這一邊的遊戲版本沒有這條規則時的說明（不評分） */
+  inapplicable?: string
+}
+
+/** 某一邊的版本沒有這條規則：沿用另一邊的規則顯示名稱，不評分。 */
+export function inapplicableSummary(rule: WindowRule, reason: string): WindowSummary {
+  return { rule, windows: [], judged: 0, passed: 0, inapplicable: reason }
 }
 
 export type WindowState = 'ok' | 'bad' | 'unjudged'

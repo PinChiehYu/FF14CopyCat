@@ -829,6 +829,12 @@ button:disabled {
   background: color-mix(in srgb, var(--window-color) 22%, transparent);
 }
 
+/* 兩邊遊戲版本不同 */
+.patch-differs {
+  color: var(--mine);
+  cursor: help;
+}
+
 /* 摘要的 rDPS：比參考少多少 */
 .rdps {
   white-space: nowrap;

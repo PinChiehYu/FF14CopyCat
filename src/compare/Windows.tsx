@@ -14,6 +14,14 @@ function Chips({
   toRef: (t: number) => number
   onJump: (t: number) => void
 }) {
+  // 這一邊的遊戲版本沒有這條規則
+  if (summary.inapplicable) {
+    return (
+      <span className="hint-inline" title={summary.inapplicable}>
+        不適用
+      </span>
+    )
+  }
   return (
     <>
       <span className="window-score">
@@ -65,7 +73,7 @@ export function Windows({
           const icon = abilities.get(displayId)
           return (
             <tr key={mine.rule.key}>
-              <th title={icon?.englishName}>
+              <th title={[icon?.englishName, ...new Set([mine.rule.patchNote, ref.rule.patchNote])].filter(Boolean).join('\n')}>
                 {icon && (
                   <img
                     className={`usage-icon${isStatusId(displayId) ? ' status-icon' : ''}`}
