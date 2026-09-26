@@ -29,6 +29,25 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   const [mechanics, setMechanics] = useState<Map<string, MechanicState>>(new Map())
   // 已從選單選為參考的紀錄
   const [picked, setPicked] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+
+  // 點面板外或按 Esc 關閉（搜尋結果保留，再打開不用重搜）
+  useEffect(() => {
+    if (!open) return
+    const onMouseDown = (e: MouseEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) setOpen(false)
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
   const mineBoss = useRef<{ key: string; casts: Promise<TimedCast[]> } | null>(null)
 
   const mineKey = mine ? `${mine.report.code}/${mine.fight.id}/${mine.player.subType}` : null
@@ -92,7 +111,15 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [sameMechanics, result, mine])
 
-  if (!mine) return null
+  if (!mine) {
+    return (
+      <div className="finder">
+        <button type="button" className="finder-toggle" disabled title="先選好「我的日誌」的戰鬥與角色">
+          從排名找
+        </button>
+      </div>
+    )
+  }
   const variantsOf = (r: TcRanking) => {
     const m = mechanics.get(rowKey(r))
     return m?.status === 'done' ? m.variants : undefined
@@ -108,68 +135,85 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       ? [...all].sort((a, b) => (variantsOf(a) ?? Infinity) - (variantsOf(b) ?? Infinity))
       : same
 
+  // 浮在頁面上的面板，不推擠下方的戰鬥／角色欄位
   return (
-    <details className="finder">
-      <summary>從繁中服排名找參考日誌</summary>
-      <div className="finder-controls">
-        <label>
-          PR
-          <PrInput value={minPr} min={0} max={maxPr} onChange={setMinPr} />
-          ～
-          <PrInput value={maxPr} min={minPr} max={100} onChange={setMaxPr} />
-        </label>
-        <label className="finder-check" title="逐筆比對 Boss 的隨機機制，只列出與我的戰鬥相同的紀錄">
-          <input type="checkbox" checked={sameMechanics} onChange={(e) => setSameMechanics(e.target.checked)} />
-          機制相同
-        </label>
-        <button type="button" onClick={search} disabled={result.status === 'loading'}>
-          搜尋
-        </button>
-      </div>
-      {result.status === 'loading' && <p className="hint">搜尋中…</p>}
-      {result.status === 'error' && <p className="error">{result.message}</p>}
-      {result.status === 'ready' &&
-        (rows.length === 0 ? (
-          <p className="hint">沒有符合的紀錄。</p>
-        ) : (
-          <Dropdown
-            // 摘要只佔一行，完整說明放在滑鼠提示，避免撐高輸入框
-            label={
-              <span className="finder-summary">
-                <span
-                  title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，每人取最好的一場，依 DPS 排序；列出 PR 範圍內的前 ${MAX_LISTED} 筆`}
-                >
-                  共 {result.count} 人，列出 {result.rows.length} 筆
-                </span>
-                {noneSame && <span title="沒有隨機機制完全相同的紀錄，改依不同處由少到多排序">・無完全相同，依差異排序</span>}
-              </span>
-            }
-            placeholder={`選擇要參考的紀錄（${rows.length} 筆）`}
-            options={rows.map((r) => rankingOption(r, sameMechanics ? (mechanics.get(rowKey(r)) ?? { status: 'loading' }) : undefined))}
-            value={picked}
-            onChange={(key) => {
-              const r = rows.find((row) => rowKey(row) === key)
-              if (!r) return
-              setPicked(key)
-              onPick(reportUrl(r.report, r.fight, r.actor))
-            }}
-          />
-        ))}
-    </details>
+    <div className="finder" ref={root}>
+      <button
+        type="button"
+        className={`finder-toggle${open ? ' open' : ''}`}
+        aria-expanded={open}
+        title="從繁中服排名找參考日誌"
+        onClick={() => setOpen((o) => !o)}
+      >
+        從排名找
+      </button>
+      {open && (
+        <div className="finder-panel" role="dialog" aria-label="從繁中服排名找參考日誌">
+          <div className="finder-controls">
+            <label>
+              PR
+              <PrInput value={minPr} min={0} max={maxPr} onChange={setMinPr} />
+              ～
+              <PrInput value={maxPr} min={minPr} max={100} onChange={setMaxPr} />
+            </label>
+            <label className="finder-check" title="逐筆比對 Boss 的隨機機制，只列出與我的戰鬥相同的紀錄">
+              <input type="checkbox" checked={sameMechanics} onChange={(e) => setSameMechanics(e.target.checked)} />
+              機制相同
+            </label>
+            <button type="button" onClick={search} disabled={result.status === 'loading'}>
+              搜尋
+            </button>
+          </div>
+          {result.status === 'loading' && <p className="hint">搜尋中…</p>}
+          {result.status === 'error' && <p className="error">{result.message}</p>}
+          {result.status === 'ready' &&
+            (rows.length === 0 ? (
+              <p className="hint">沒有符合的紀錄。</p>
+            ) : (
+              <Dropdown
+                // 摘要只佔一行，完整說明放在滑鼠提示，避免撐高輸入框
+                label={
+                  <span className="finder-summary">
+                    <span
+                      title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，每人取最好的一場，依 DPS 排序；列出 PR 範圍內的前 ${MAX_LISTED} 筆`}
+                    >
+                      共 {result.count} 人，列出 {result.rows.length} 筆
+                    </span>
+                    {noneSame && <span title="沒有隨機機制完全相同的紀錄，改依不同處由少到多排序">・無完全相同，依差異排序</span>}
+                  </span>
+                }
+                placeholder={`選擇要參考的紀錄（${rows.length} 筆）`}
+                options={rows.map((r) => rankingOption(r, sameMechanics ? (mechanics.get(rowKey(r)) ?? { status: 'loading' }) : undefined))}
+                value={picked}
+                onChange={(key) => {
+                  const r = rows.find((row) => rowKey(row) === key)
+                  if (!r) return
+                  setPicked(key)
+                  onPick(reportUrl(r.report, r.fight, r.actor))
+                  setOpen(false)
+                }}
+              />
+            ))}
+        </div>
+      )}
+    </div>
   )
 }
 
-/** 排名紀錄的選項：名次、PR、玩家、DPS、戰鬥長度（伺服器與日期放在滑鼠提示） */
+/** 排名紀錄的選項：名次、PR、玩家 @ 伺服器、DPS、戰鬥長度（日期放在滑鼠提示） */
 function rankingOption(r: TcRanking, mech: MechanicState | undefined): DropdownOption<string> {
   const date = new Date(r.reportStart).toLocaleDateString('zh-TW')
   return {
     value: rowKey(r),
-    title: `${r.name}（${r.server}）${Math.round(r.dps).toLocaleString()} DPS，${formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}，${date}`,
+    title: `${r.name} @ ${r.server}，${Math.round(r.dps).toLocaleString()} DPS，${formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}，${date}`,
     content: (
       <span className={`option-row finder-option${mech ? ' with-mech' : ''}`}>
         <span className="finder-rank">#{r.rank}</span>
         <span className="finder-pr">PR {r.pr}</span>
-        <span className="option-main">{r.name}</span>
+        <span className="option-main">
+          {r.name}
+          <span className="finder-server"> @ {r.server}</span>
+        </span>
         <span className="option-meta">
           {Math.round(r.dps).toLocaleString()}
           <span className="finder-unit"> DPS</span>

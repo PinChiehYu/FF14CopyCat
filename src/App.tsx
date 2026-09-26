@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
 import { fetchAutoAttacksTaken, fetchFightNames, fetchReport, translateReport } from './fflogs/client'
@@ -177,7 +177,7 @@ function LogPicker({
   preferred,
   onChange,
   picked,
-  children,
+  action,
 }: {
   label: string
   /** 保存在本頁網址的參數名稱 */
@@ -186,9 +186,10 @@ function LogPicker({
   onChange: (selection: Selection | null) => void
   /** 從外部選定的連結（例如從排名找參考）；每次傳入新物件就套用一次 */
   picked?: { url: string } | null
-  /** 顯示在輸入框下方（例如找參考日誌） */
-  children?: ReactNode
+  /** 顯示在標題列右側（例如找參考日誌）；不佔額外高度，兩邊的戰鬥／角色欄位才能對齊 */
+  action?: ReactNode
 }) {
+  const inputId = useId()
   // 重新整理後從本頁網址還原輸入的連結
   const [url, setUrl] = useState(() => readLogParam(storageKey))
   const applyUrl = (next: string) => {
@@ -222,16 +223,17 @@ function LogPicker({
 
   return (
     <section className="log-input">
-      <label>
-        {label}
-        <input
-          type="url"
-          placeholder="https://www.fflogs.com/reports/..."
-          value={url}
-          onChange={(e) => applyUrl(e.target.value)}
-        />
-      </label>
-      {children}
+      <div className="log-head">
+        <label htmlFor={inputId}>{label}</label>
+        {action}
+      </div>
+      <input
+        id={inputId}
+        type="url"
+        placeholder="https://www.fflogs.com/reports/..."
+        value={url}
+        onChange={(e) => applyUrl(e.target.value)}
+      />
       {url.trim() && !ref && <p className="error">無法辨識的 FFLogs 報告連結</p>}
       {state.status === 'loading' && <p>載入報告中…</p>}
       {state.status === 'error' && <p className="error">{state.message}</p>}
@@ -272,15 +274,16 @@ export default function App() {
           preferred={preferred}
           onChange={setReference}
           picked={picked}
-        >
-          <ReferenceFinder
-            mine={mine}
-            onPick={(url) => {
-              writeLogParam('ref', url)
-              setPicked({ url })
-            }}
-          />
-        </LogPicker>
+          action={
+            <ReferenceFinder
+              mine={mine}
+              onPick={(url) => {
+                writeLogParam('ref', url)
+                setPicked({ url })
+              }}
+            />
+          }
+        />
       </div>
 
       {mine && reference && (

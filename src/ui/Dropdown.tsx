@@ -77,6 +77,8 @@ export function Dropdown<T>({
       if (options[active]) choose(active)
     } else if (e.key === 'Escape' || e.key === 'Tab') {
       setOpen(false)
+      // Esc 只關閉選單本身（外層的浮動面板依 defaultPrevented 判斷）；Tab 保留預設以移動焦點
+      if (e.key === 'Escape') e.preventDefault()
       return
     } else return
     e.preventDefault()
