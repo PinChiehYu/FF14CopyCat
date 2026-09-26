@@ -50,6 +50,27 @@ describe('generateAdvice', () => {
     expect(generateAdvice(input({ usage: [usage(1, 5, 5)] }))).toEqual([])
   })
 
+  it('puts deaths first and tells the player not to die', () => {
+    const advice = generateAdvice(
+      input({
+        deaths: {
+          mine: [{ t: 120_000, abilityId: 2, revivedAt: 140_000 }],
+          ref: [],
+        },
+        // 死亡期間的停手：註明是因為死亡
+        lost: [{ mineStart: 121_000, mineEnd: 139_000, refStart: 121_000, refEnd: 139_000, refGcds: 7 }],
+      }),
+    )
+    expect(advice[0]).toMatchObject({ severity: 'high', title: '你死亡了 1 次：避免死亡是最優先的改進', at: 120_000 })
+    expect(advice[0].detail).toContain('2:00.0（Enpi）')
+    expect(advice[0].detail).toContain('20.0 秒無法輸出')
+    expect(advice[0].detail).toContain('參考在同一場沒有死亡')
+    expect(advice[0].detail).toContain('不要死亡')
+    const lost = advice.find((a) => a.title.startsWith('2:01.0 停手'))
+    expect(lost?.title).toContain('（這段期間你已死亡）')
+    expect(lost?.detail).toContain('不要死亡')
+  })
+
   it('summarises lost GCD windows and notes movement differences', () => {
     const track: TrackPoint[] = [10_000, 12_000, 14_000].map((t) => ({
       t,

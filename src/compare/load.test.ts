@@ -5,6 +5,8 @@ import {
   autoAttacks,
   castBars,
   clipSide,
+  deathAt,
+  deaths,
   incompatibility,
   playerCasts,
   type Selection,
@@ -88,6 +90,31 @@ function selection(encounterID: number, subType: string): Selection {
   return { report: {} as Report, fight, player }
 }
 
+describe('deaths', () => {
+  it('finds deaths with the killing blow and the time the player acts again', () => {
+    const fight = { startTime: 1000, endTime: 60_000 } as Fight
+    const list = deaths(
+      [
+        { timestamp: 9000, type: 'damage', sourceID: 50, targetID: 2, abilityGameID: 42075 },
+        { timestamp: 10_000, type: 'death', sourceID: 50, targetID: 2, killingAbilityGameID: 42075 },
+        { timestamp: 15_000, type: 'cast', sourceID: 9, targetID: 2, abilityGameID: 125 }, // 別人復活我
+        { timestamp: 21_000, type: 'cast', sourceID: 2, targetID: 50, abilityGameID: 3577 },
+        { timestamp: 30_000, type: 'damage', sourceID: 50, targetID: 2, abilityGameID: 42078 },
+        { timestamp: 31_000, type: 'death', sourceID: 50, targetID: 2, abilityGameID: 0 }, // 沒有致命一擊：取最後受到的傷害
+      ],
+      fight,
+      2,
+    )
+    expect(list).toEqual([
+      { t: 9000, abilityId: 42075, revivedAt: 20_000 },
+      { t: 30_000, abilityId: 42078, revivedAt: null },
+    ])
+    expect(deathAt(list, 15_000)?.t).toBe(9000)
+    expect(deathAt(list, 25_000)).toBeUndefined()
+    expect(deathAt(list, 50_000)?.t).toBe(30_000)
+  })
+})
+
 describe('castBars', () => {
   it('pairs begincast with its cast and marks cancelled casts', () => {
     const fight = { startTime: 1000, endTime: 60_000 } as Fight
@@ -142,6 +169,7 @@ describe('clipSide', () => {
       auras: [],
       hp: [],
       castBars: [],
+      deaths: [{ t: 9000, abilityId: 1, revivedAt: null }],
       duration: 10_000,
     }
     const clipped = clipSide(side, 5000)
@@ -151,6 +179,7 @@ describe('clipSide', () => {
       [5000, true],
     ])
     expect(clipped.playerCasts).toEqual([{ t: 1000, abilityId: 1 }])
+    expect(clipped.deaths).toEqual([])
     expect(clipped.autoAttacks).toEqual([])
     expect(clipped.bossCasts).toHaveLength(1)
     expect(clipped.playerPositions).toHaveLength(1)

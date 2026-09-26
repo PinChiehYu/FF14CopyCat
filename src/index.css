@@ -1207,6 +1207,85 @@ h3 {
   border: 1px solid transparent;
 }
 
+/* 死亡：重點標示 */
+.death-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.death-count {
+  color: var(--error);
+}
+
+.no-death {
+  color: var(--kill);
+}
+
+.death-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 0.85em;
+  line-height: 1.8;
+  font-variant-numeric: tabular-nums;
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--error) 45%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.death-cause {
+  color: var(--text-muted);
+}
+
+.death-marker {
+  position: absolute;
+  top: 2px;
+  z-index: 2;
+  margin-left: -9px;
+  width: 18px;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 26px;
+  text-align: center;
+  color: var(--error);
+  text-shadow: 0 0 3px var(--bg);
+}
+
+.dead-span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--error) 18%, transparent) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+.side-status.dead {
+  border-color: var(--error);
+}
+
+.side-status.dead .cast-bar,
+.side-status.dead .recent-actions,
+.side-status.dead .aura-row,
+.side-status.dead .hp-bar {
+  opacity: 0.35;
+}
+
+.dead-badge {
+  margin-bottom: 6px;
+  font-size: 0.85em;
+  font-weight: 700;
+  color: var(--error);
+}
+
 /* 讀條 */
 .cast-bar {
   position: relative;

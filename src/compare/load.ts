@@ -40,6 +40,8 @@ export interface SideData {
   auras: Aura[]
   hp: HpSample[]
   castBars: CastBar[]
+  /** 死亡（重點標示） */
+  deaths: Death[]
   /** 戰鬥長度（毫秒） */
   duration: number
 }
@@ -127,6 +129,39 @@ export function playerCasts(events: FFLogsEvent[], fight: Fight, actorId?: numbe
   return casts
 }
 
+/** 玩家死亡（戰鬥時間）。 */
+export interface Death {
+  t: number
+  /** 致命一擊的技能（死亡事件沒有時，取死前最後受到的傷害） */
+  abilityId: number | null
+  /** 恢復行動（死亡後第一次施放技能）的時間；到戰鬥結束都沒有則為 null */
+  revivedAt: number | null
+}
+
+/** 玩家的死亡：死亡事件的 targetID 是死者、killingAbilityGameID 是致命一擊。 */
+export function deaths(events: FFLogsEvent[], fight: Fight, actorId: number): Death[] {
+  const result: Death[] = []
+  for (const [i, e] of events.entries()) {
+    if (e.type !== 'death' || e.targetID !== actorId) continue
+    const killing = typeof e.killingAbilityGameID === 'number' && e.killingAbilityGameID > 0 ? e.killingAbilityGameID : null
+    const lastHit = events
+      .slice(0, i)
+      .findLast((x) => x.type === 'damage' && x.targetID === actorId && x.abilityGameID !== undefined)
+    const next = events.slice(i + 1).find((x) => x.type === 'cast' && x.sourceID === actorId)
+    result.push({
+      t: toFightTime(e.timestamp, fight.startTime),
+      abilityId: killing ?? lastHit?.abilityGameID ?? null,
+      revivedAt: next ? toFightTime(next.timestamp, fight.startTime) : null,
+    })
+  }
+  return result
+}
+
+/** 某個時間點是否處於死亡（到恢復行動前）；是的話回傳該次死亡。 */
+export function deathAt(list: Death[], t: number): Death | undefined {
+  return list.find((d) => d.t <= t && (d.revivedAt === null || t < d.revivedAt))
+}
+
 /** 有詠唱時間的技能讀條（戰鬥時間）；被打斷的詠唱標 interrupted。 */
 export interface CastBar {
   abilityId: number
@@ -184,6 +219,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     auras: playerAuras(playerEvents, fight, player.id),
     hp: hpSamples(playerEvents, fight, player.id),
     castBars: castBars(playerEvents, fight, player.id),
+    deaths: deaths(playerEvents, fight, player.id),
     duration: fight.endTime - fight.startTime,
   }
 }
@@ -201,6 +237,7 @@ export function clipSide(side: SideData, endMs: number): SideData {
     bossCasts: before(side.bossCasts),
     playerPositions: before(side.playerPositions),
     bossPositions: before(side.bossPositions),
+    deaths: before(side.deaths),
     // 比較範圍外才開始的窗口不計；跨過結束點的窗口視為未結束（不評分）
     buffs: side.buffs
       .filter((b) => b.start <= endMs)

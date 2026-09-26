@@ -3,7 +3,7 @@ import { aurasAt, hpAt, type Aura } from '../analysis/buffs'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
-import type { CastBar, SideData } from './load'
+import { deathAt, type CastBar, type SideData } from './load'
 
 // Boss 施放：顯示游標前後這段時間內的
 const BOSS_WINDOW_MS = 5000
@@ -92,12 +92,18 @@ function SideStatus({
   const icon = (a: Aura) => (
     <AuraIcon key={a.statusId} aura={a} t={t} ability={abilities.get(a.statusId)} name={abilityName(a.statusId)} />
   )
+  const dead = deathAt(side.deaths, t)
   return (
-    <div className="side-status">
+    <div className={`side-status${dead ? ' dead' : ''}`}>
       <div className="side-status-head">
         <span className={label === '我' ? 'mine' : 'ref'}>{label}</span>
         <span className="hint-inline">{formatFightTime(Math.max(0, t))}</span>
       </div>
+      {dead && (
+        <div className="dead-badge">
+          ✕ 死亡{dead.abilityId !== null && `（被「${abilityName(dead.abilityId)}」擊殺）`}
+        </div>
+      )}
       <div className="hp-bar" title={hp ? `${hp.hp.toLocaleString()} / ${hp.maxHp.toLocaleString()}` : '沒有血量資料'}>
         <span className="hp-fill" style={{ width: `${pct ?? 0}%` }} />
         {hp && hp.absorb > 0 && <span className="hp-shield" style={{ width: `${Math.min(100, hp.absorb)}%` }} />}

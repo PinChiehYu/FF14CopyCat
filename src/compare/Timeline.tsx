@@ -256,6 +256,23 @@ function TimelineLanesImpl({
                     <span key={i} className="cast unknown" title={`${name(c.abilityId)} ${time}`} style={{ left: x(c.t) }} />
                   )
                 })}
+                {/* 死亡：每側第一列標 ✕，死亡到恢復行動之間畫斜線區段 */}
+                {allLanes.findIndex((l) => l.side === lane.side) === laneIndex &&
+                  (lane.side === 'mine' ? mine : ref).deaths.map((d) => {
+                    const toRef = lane.side === 'mine' ? alignment.mineToRef : (t: number) => t
+                    const side = lane.side === 'mine' ? mine : ref
+                    const start = toRef(d.t)
+                    const end = toRef(d.revivedAt ?? side.duration)
+                    const cause = d.abilityId !== null ? `被「${name(d.abilityId)}」擊殺` : '死亡'
+                    return (
+                      <span key={`death-${d.t}`}>
+                        <span className="dead-span" style={{ left: x(start), width: Math.max(2, x(end - start)) }} title={`死亡中（${cause}）`} />
+                        <span className="death-marker" style={{ left: x(start) }} title={`${formatFightTime(d.t)} 死亡：${cause}`}>
+                          ✕
+                        </span>
+                      </span>
+                    )
+                  })}
                 {lane.side === 'mine' && mine.duration < ref.duration && (
                   <span className="end-marker" style={{ left: x(mineEnd) }} title="我的戰鬥結束" />
                 )}

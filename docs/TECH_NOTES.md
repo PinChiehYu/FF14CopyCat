@@ -391,6 +391,13 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技術變更紀錄
 
+### 2026-09-27 死亡
+- 變更：`load.ts` 新增 `deaths()`、`deathAt()`，`SideData` 新增 `deaths`（`clipSide()` 會裁切）；`AdviceInput` 新增 `deaths`、`mineDurationMs`。
+- 資料：
+  - `death` 事件的 `targetID` 是死者，`killingAbilityGameID`／`killerID` 是致命一擊與擊殺者（`abilityGameID` 為 0）。致命一擊偶爾缺少（例如 WATKBdHRh7m8PNQt #2 滅團時多人），改用死前最後一次受到的 `damage`。
+  - FFLogs 沒有「復活」事件，以死亡後第一次自己施放技能的時間當作恢復行動（被拉起後到開始行動的空檔也算在內）；到戰鬥結束都沒有則為 null。
+  - 快取的 48 位玩家中有 13 次死亡（多數是 WATKBdHRh7m8PNQt #2 的滅團）。
+
 ### 2026-09-27 讀條
 - 變更：`load.ts` 新增 `castBars()`，`SideData` 新增 `castBars`；`StatusPanel` 顯示讀條與最近使用的技能（取自 `playerCasts`）。
 - 資料：`begincast` 帶有 `duration`（該次的詠唱時間，已含加速，例如炎之四 1660 ms）。黑魔基準 152 次詠唱全部接著同技能的 `cast`。詠唱中不能使用其他技能，所以在同技能 `cast` 之前出現其他施放或新的詠唱，就視為原本的詠唱已取消。

@@ -65,6 +65,8 @@ function useAbilityNames(mine: SideData, reference: SideData): Map<number, Abili
         ...s.buffs.map((b) => b.statusId),
         // 當下狀態面板：角色自身的效果
         ...s.auras.filter((a) => a.sourceId === s.selection.player.id).map((a) => a.statusId),
+        // 死亡的致命技能
+        ...s.deaths.flatMap((d) => (d.abilityId === null ? [] : [d.abilityId])),
       ]),
       // 技能窗口規則中的技能：兩邊都沒用過的（例如「缺少」的技能）不在報告的技能清單中
       ...windowRules(reference.selection.player.subType).flatMap(ruleIds),
@@ -86,6 +88,8 @@ function SummaryTable({
   mineEnd,
   refEnd,
   abilityName,
+  mineToRef,
+  onJump,
 }: {
   mine: SideData
   reference: SideData
@@ -93,6 +97,8 @@ function SummaryTable({
   mineEnd: number
   refEnd: number
   abilityName: (id: number) => string
+  mineToRef: (t: number) => number
+  onJump: (refTime: number) => void
 }) {
   const sides = [
     { key: 'mine', label: '我', side: mine, end: mineEnd },
@@ -100,6 +106,30 @@ function SummaryTable({
   ]
   // 玩家、戰鬥、結果與長度已在上方的選單顯示，這裡只列比較才有的資訊
   const rows: { label: string; cell: (s: SideData, end: number) => ReactNode }[] = [
+    {
+      // 死亡是最優先的改進：放在第一列，紅色標示，可點擊跳到該時間
+      label: '死亡',
+      cell: (s) =>
+        s.deaths.length === 0 ? (
+          <span className="no-death">沒有死亡</span>
+        ) : (
+          <span className="death-list">
+            <strong className="death-count">{s.deaths.length} 次</strong>
+            {s.deaths.map((d) => (
+              <button
+                key={d.t}
+                type="button"
+                className="death-chip"
+                title={d.abilityId !== null ? `被「${abilityName(d.abilityId)}」擊殺` : '死亡'}
+                onClick={() => onJump(s === mine ? mineToRef(d.t) : d.t)}
+              >
+                ✕ {formatFightTime(d.t).replace(/\.\d$/, '')}
+                {d.abilityId !== null && <span className="death-cause">{abilityName(d.abilityId)}</span>}
+              </button>
+            ))}
+          </span>
+        ),
+    },
     {
       label: '比較範圍',
       cell: (s, end) => (
@@ -265,8 +295,10 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         firstUse: (id) => mineInRange.playerCasts.find((c) => c.abilityId === id)?.t,
         windows,
         prepull: { mine: mine.prepull, ref: reference.prepull },
+        deaths: { mine: mineInRange.deaths, ref: refInRange.deaths },
+        mineDurationMs: mineInRange.duration,
       }),
-    [compareEnd, gcd, lost, usage, positions, abilities, abilityName, job, category, alignment, mineInRange, mechanics, windows, mine, reference],
+    [compareEnd, gcd, lost, usage, positions, abilities, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference],
   )
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
@@ -326,6 +358,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         mineEnd={mineInRange.duration}
         refEnd={compareEnd}
         abilityName={abilityName}
+        mineToRef={alignment.mineToRef}
+        onJump={jumpTo}
       />
       <p className="hint">
         時間軸以 Boss 技能對齊：錨點 {alignment.anchors.length} 個

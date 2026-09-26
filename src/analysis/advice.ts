@@ -1,4 +1,5 @@
 import type { AbilityCategory } from '../jobs/roleActions'
+import type { Death } from '../compare/load'
 import { ruleName } from '../jobs/windows'
 import { mechanicLabel, type MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
@@ -41,6 +42,10 @@ export interface AdviceInput {
   windows?: { mine: WindowSummary; ref: WindowSummary }[]
   /** 開打當下身上已有的自身效果（推知開打前用過的技能） */
   prepull?: { mine: number[]; ref: number[] }
+  /** 死亡（各自的戰鬥時間） */
+  deaths?: { mine: Death[]; ref: Death[] }
+  /** 我的戰鬥長度（我的時間；死亡到戰鬥結束都沒恢復時計算無法行動的時間） */
+  mineDurationMs?: number
 }
 
 // 機制差異發生在時段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
@@ -97,14 +102,41 @@ function lostGcdAdvice(input: AdviceInput): Advice[] {
     const d = averageDistance(track, w.refStart, w.refEnd)
     const movement =
       d !== null && d > MOVEMENT_DISTANCE_YALM ? `這段期間你與參考平均相距 ${d.toFixed(1)} yalm，可能是走位路線不同。` : ''
+    // 停手是因為死亡：根本原因是死亡，不是手慢
+    const died = input.deaths?.mine.find((x) => x.t < w.mineEnd && (x.revivedAt === null || x.revivedAt > w.mineStart))
     items.push({
       severity: w.refGcds >= 3 ? 'high' : 'medium',
-      title: `${formatFightTime(w.mineStart)} 停手 ${seconds(w.mineEnd - w.mineStart)} 秒`,
-      detail: `參考在同一段打了 ${w.refGcds} 個 GCD。${movement}${mechanicNote(input, w.refStart, w.refEnd)}`,
+      title: `${formatFightTime(w.mineStart)} 停手 ${seconds(w.mineEnd - w.mineStart)} 秒${died ? '（這段期間你已死亡）' : ''}`,
+      detail: died
+        ? `參考在同一段打了 ${w.refGcds} 個 GCD。你在 ${formatFightTime(died.t)} 死亡${died.abilityId !== null ? `（${input.abilityName(died.abilityId)}）` : ''}，死亡期間無法輸出：先學會避開這個機制，不要死亡。`
+        : `參考在同一段打了 ${w.refGcds} 個 GCD。${movement}${mechanicNote(input, w.refStart, w.refEnd)}`,
       at: w.refStart,
     })
   }
   return items
+}
+
+/** 死亡：最優先的改進。列出每次死亡的時間與致命技能，並與參考比較。 */
+function deathAdvice(input: AdviceInput): Advice[] {
+  const mine = input.deaths?.mine ?? []
+  if (mine.length === 0) return []
+  const refCount = input.deaths?.ref.length ?? 0
+  const list = mine
+    .map((d) => `${formatFightTime(d.t)}${d.abilityId !== null ? `（${input.abilityName(d.abilityId)}）` : ''}`)
+    .join('、')
+  const unable = mine.reduce((sum, d) => sum + ((d.revivedAt ?? input.mineDurationMs ?? d.t) - d.t), 0)
+  return [
+    {
+      severity: 'high',
+      title: `你死亡了 ${mine.length} 次：避免死亡是最優先的改進`,
+      detail:
+        `死亡時間與致命技能：${list}。` +
+        (unable > 0 ? `死亡到恢復行動共 ${seconds(unable)} 秒無法輸出，` : '死亡期間無法輸出，') +
+        `還會消耗隊友的復活與資源、增加全隊的壓力。${refCount === 0 ? '參考在同一場沒有死亡。' : `參考死亡 ${refCount} 次。`}` +
+        '先對照站位與時間軸，確認參考怎麼避開這些機制或用了哪些減傷，不要死亡。',
+      at: input.mineToRef(mine[0].t),
+    },
+  ]
 }
 
 function gcdSpeedAdvice({ gcd, durationMs }: AdviceInput): Advice[] {
@@ -343,6 +375,7 @@ const ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2 }
 /** 依各階段的分析結果產生規則式建議，依重要性排序。 */
 export function generateAdvice(input: AdviceInput): Advice[] {
   const items = [
+    ...deathAdvice(input),
     ...lostGcdAdvice(input),
     ...gcdSpeedAdvice(input),
     ...windowAdvice(input),
@@ -350,6 +383,6 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...usageAdvice(input),
     ...positionAdvice(input),
   ]
-  // 穩定排序：同等級維持產生順序（停手 → GCD 速度 → 技能窗口 → 開打前 → 技能 → 站位）
+  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 技能窗口 → 開打前 → 技能 → 站位）
   return items.map((a, i) => ({ a, i })).sort((x, y) => ORDER[x.a.severity] - ORDER[y.a.severity] || x.i - y.i).map((x) => x.a)
 }
