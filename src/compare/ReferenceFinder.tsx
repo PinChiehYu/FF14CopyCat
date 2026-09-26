@@ -150,8 +150,8 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       {open && (
         <div className="finder-panel" role="dialog" aria-label="從繁中服排名找參考日誌">
           <div className="finder-controls">
-            <label>
-              PR
+            <label title={`PR 只在繁中服的${jobName(mine.player.subType)}之間計算`}>
+              {jobName(mine.player.subType)} PR
               <PrInput value={minPr} min={0} max={maxPr} onChange={setMinPr} />
               ～
               <PrInput value={maxPr} min={minPr} max={100} onChange={setMaxPr} />

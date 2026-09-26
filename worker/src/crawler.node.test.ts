@@ -101,18 +101,21 @@ describe('crawl', () => {
 describe('tcRankings', () => {
   it('ranks each character by their best parse and filters by PR', async () => {
     const db = memoryDb()
-    const insert = (report: string, name: string, dps: number) =>
+    const insert = (report: string, name: string, dps: number, job = 'Samurai') =>
       db
         .prepare(
           'INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, ?, ?, ?, ?, 0, 1, 0)',
         )
-        .bind(report, 'Samurai', name, '泰坦', dps)
+        .bind(report, job, name, '泰坦', dps)
         .run()
     await insert('A', '甲', 30_000)
     await insert('B', '甲', 31_000) // 同一人較好的一場
     await insert('C', '乙', 29_000)
     await insert('D', '丙', 28_000)
     await insert('E', '丁', 20_000)
+    // 其他職業不列入人數與名次（包括同一人玩其他職業）
+    await insert('F', '戊', 40_000, 'Ninja')
+    await insert('G', '丁', 35_000, 'Ninja')
 
     const all = await tcRankings(db, 100, 101, 'Samurai', 0, 100)
     expect(all.count).toBe(4)
@@ -124,6 +127,11 @@ describe('tcRankings', () => {
     ])
     const mid = await tcRankings(db, 100, 101, 'Samurai', 30, 70)
     expect(mid.rankings.map((r) => r.name)).toEqual(['乙', '丙'])
+    const ninja = await tcRankings(db, 100, 101, 'Ninja', 0, 100)
+    expect(ninja.rankings.map((r) => [r.name, r.rank, r.pr])).toEqual([
+      ['戊', 1, 100],
+      ['丁', 2, 0],
+    ])
   })
 
   it('computes percentiles', () => {
