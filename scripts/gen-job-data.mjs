@@ -6,8 +6,10 @@
 import { writeFileSync } from 'node:fs'
 
 const API = 'https://xivapi-v2.xivcdn.com/api/sheet/Action'
-const FIELDS = 'Name,CooldownGroup,AdditionalCooldownGroup,IsPvP,IsPlayerAction,ClassJobLevel,ClassJob.Abbreviation'
+const FIELDS = 'Name,CooldownGroup,AdditionalCooldownGroup,IsPvP,IsPlayerAction,ClassJobLevel,ClassJob.Abbreviation,ActionCategory'
 const GCD_GROUP = 58
+// ActionCategory 的極限技（9 與 15 都叫 Limit Break）
+const LIMIT_BREAK_CATEGORIES = [9, 15]
 
 // 職業（FFLogs subType）→ 職業與基本職業的縮寫
 const JOBS = {
@@ -147,6 +149,14 @@ const gcd = rows
   .filter((r) => isPlayerSkill(r.fields) && (r.fields.CooldownGroup === GCD_GROUP || r.fields.AdditionalCooldownGroup === GCD_GROUP))
   .map((r) => r.row_id)
 
+// 極限技（非 PvP）：技能使用次數不計入
+const categoryOf = (f) => f.ActionCategory?.value ?? f.ActionCategory?.row_id
+const limitBreaks = rows.filter((r) => !r.fields.IsPvP && LIMIT_BREAK_CATEGORIES.includes(categoryOf(r.fields))).map((r) => r.row_id)
+if (limitBreaks.length === 0) {
+  console.error('找不到極限技（ActionCategory 欄位格式可能改變）')
+  process.exit(1)
+}
+
 // 依名稱找職業技能 ID：職業／基本職業的技能，加上同名、沒有 ClassJob 的變形技能
 // （例如暗影步除了黑騎的 36926，日誌中實際記錄的是沒有 ClassJob 的 38512）
 const errors = []
@@ -177,6 +187,9 @@ const out = `// 由 scripts/gen-job-data.mjs 從遊戲資料產生，請勿手�
 
 /** 所有 GCD 技能 ID（公共冷卻群組 58），共 ${gcd.length} 個。 */
 export const GCD_IDS: ReadonlySet<number> = new Set(${JSON.stringify(gcd)})
+
+/** 極限技（ActionCategory 為 Limit Break、非 PvP），共 ${limitBreaks.length} 個。 */
+export const LIMIT_BREAK_IDS: ReadonlySet<number> = new Set(${JSON.stringify(limitBreaks)})
 
 export interface GeneratedCategories {
   ignored?: ReadonlySet<number>

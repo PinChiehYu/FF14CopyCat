@@ -1,3 +1,4 @@
+import { LIMIT_BREAK_IDS } from '../jobs/generated'
 import type { TimedCast } from './alignment'
 
 export interface GcdStats {
@@ -139,7 +140,7 @@ export function matchPairs(mine: number[], ref: number[], maxMs = MAX_MATCH_MS):
 }
 
 /**
- * 各技能的使用次數與時機比較，依次數差距大小排序。
+ * 各技能的使用次數與時機比較，依次數差距大小排序。極限技不計（全隊共用、由誰施放依隊伍分配）。
  * @param maxUsesForTiming 使用次數超過此值（連擊等）不計算時機，避免 O(n²) 配對與無意義的結果
  */
 export function abilityUsage(
@@ -150,7 +151,10 @@ export function abilityUsage(
 ): AbilityUsage[] {
   const group = (casts: TimedCast[], map: (t: number) => number) => {
     const groups = new Map<number, number[]>()
-    for (const c of casts) groups.set(c.abilityId, [...(groups.get(c.abilityId) ?? []), map(c.t)])
+    for (const c of casts) {
+      if (LIMIT_BREAK_IDS.has(c.abilityId)) continue
+      groups.set(c.abilityId, [...(groups.get(c.abilityId) ?? []), map(c.t)])
+    }
     return groups
   }
   const mine = group(mineCasts, mineToRef)

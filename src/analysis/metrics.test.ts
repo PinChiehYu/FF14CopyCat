@@ -88,6 +88,12 @@ describe('abilityUsage', () => {
     expect(rows).toEqual([{ abilityId: 9, mine: 1, ref: 0, matched: 0, avgDelayMs: null, unmatchedRef: [] }])
   })
 
+  it('does not count limit breaks', () => {
+    // 199 Last Bastion、4240 Land Waker（坦克極限技）
+    const rows = abilityUsage([{ t: 300_000, abilityId: 199 }, { t: 1000, abilityId: 9 }], [{ t: 500_000, abilityId: 4240 }], identity)
+    expect(rows.map((r) => r.abilityId)).toEqual([9])
+  })
+
   it('skips timing for spammed abilities', () => {
     const spam = Array.from({ length: 40 }, (_, i) => ({ t: i * 2000, abilityId: 5 }))
     expect(abilityUsage(spam, spam, identity)[0]).toMatchObject({ matched: 0, avgDelayMs: null })

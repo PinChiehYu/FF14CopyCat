@@ -401,6 +401,9 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技術變更紀錄
 
+### 2026-09-27 極限技 ID
+- 變更：`gen-job-data.mjs` 多抓 `ActionCategory`，產生 `LIMIT_BREAK_IDS`（ActionCategory 9 與 15 都是 Limit Break、非 PvP）；`abilityUsage()` 排除這些 ID。
+- 資料：極限技以玩家本人為施放者記錄（不是 `LimitBreak` 假角色），例如 FXLkqaK32PhQH8Ac #1 席德的 Doom of the Living（2 次）、pwTF16cgnB9G7fWM #29 忍者的 Chimatsuri、WATKBdHRh7m8PNQt #11 的 Big Shot 與 Last Bastion。
 ### 2026-09-27 職業技能也收同名的變體 ID
 - 變更：`scripts/gen-job-data.mjs` 依名稱找技能時，職業技能之外也收同名、沒有 ClassJob 的變體（原本只在找不到職業技能時才用），重新產生 `generated.ts`。
 - 原因：黑騎的暗影步在遊戲資料有 36926（DRK）與 38512（沒有 ClassJob）兩個 ID，FFLogs 報告的技能清單兩個都有，實際施放記錄為 38512，因此被歸到「非 GCD」而不是「移動」。另外補進的同名變體（例如 8755 Hallowed Ground、27834 Icarus、17764 En Avant）只在日誌出現時才有作用。
