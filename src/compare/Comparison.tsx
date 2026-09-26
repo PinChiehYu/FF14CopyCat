@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { evaluateWindows, inapplicableSummary, timelineWindow } from '../analysis/windows'
 import { pairedWindowRules, ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows'
-import { patchAt, patchLabel, type GamePatch } from '../jobs/patch'
+import { patchAt } from '../jobs/patch'
 import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
@@ -101,8 +101,8 @@ function useDamageSummaries(mine: Selection, reference: Selection) {
   return result && result.key === key ? result : undefined
 }
 
-function sidePatch(s: Selection): GamePatch {
-  return patchAt(s.report.startTime + s.fight.startTime, s.player.server)
+function sidePatch(s: Selection): string {
+  return patchAt(s.report.startTime + s.fight.startTime)
 }
 
 function SummaryTable({
@@ -121,7 +121,7 @@ function SummaryTable({
   /** 整場的 DPS／rDPS；查詢中為 undefined */
   damage: { mine: DamageSummary | null; ref: DamageSummary | null } | undefined
   /** 兩邊日誌的遊戲版本 */
-  patches: { mine: GamePatch; ref: GamePatch }
+  patches: { mine: string; ref: string }
   /** 各自時間下的比較範圍結束點 */
   mineEnd: number
   refEnd: number
@@ -184,17 +184,17 @@ function SummaryTable({
       },
     },
     {
-      // 依角色的伺服器與戰鬥日期判斷；兩邊不同時標示（技能窗口依各自版本評分，差異列在表格下方）
+      // 依戰鬥日期對照繁中服版本；兩邊不同時標示（技能窗口依各自版本評分，差異列在表格下方）
       label: '版本',
       cell: (s) => {
         const p = s === mine ? patches.mine : patches.ref
-        const differs = patches.mine.key !== patches.ref.key
+        const differs = patches.mine !== patches.ref
         return (
           <span
             className={differs ? 'patch-differs' : undefined}
-            title="依角色的伺服器（繁中服／國際服）與戰鬥日期判斷；FFLogs 的報告沒有記錄遊戲版本"
+            title="依戰鬥日期對照繁中服的版本上線日期；FFLogs 的報告沒有記錄遊戲版本"
           >
-            {patchLabel(p)}
+            {p}
           </span>
         )
       },
@@ -260,7 +260,7 @@ function SummaryTable({
 
 function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; reference: SideData }) {
   const job = getJob(refLoaded.selection.player.subType)
-  // 兩邊日誌的遊戲版本（依伺服器判斷繁中服／國際服，再依戰鬥時間對照版本日期）
+  // 兩邊日誌的遊戲版本（依戰鬥時間對照繁中服的版本日期）
   const patches = useMemo(() => ({ mine: sidePatch(mineLoaded.selection), ref: sidePatch(refLoaded.selection) }), [mineLoaded, refLoaded])
   const damage = useDamageSummaries(mineLoaded.selection, refLoaded.selection)
   // 不需紀錄的技能（挑釁、退避、坦姿開關）一開始就移除
@@ -351,8 +351,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     const evaluate = (rule: WindowRule, side: SideData, gcdMs: number | null) =>
       evaluateWindows(rule, side.buffs, side.playerCasts, job.isGcd, abilityName, gcdMs, side.duration)
     // 兩邊各自依日誌的遊戲版本選用規則（例如絕槍的終結之心 7.4 起每個窗口都要求）
-    return pairedWindowRules(job.subType, patches.mine.key, patches.ref.key).map(({ mine: m, ref: r }) => {
-      const reason = (p: GamePatch) => `${patchLabel(p)}沒有這條規則`
+    return pairedWindowRules(job.subType, patches.mine, patches.ref).map(({ mine: m, ref: r }) => {
+      const reason = (p: string) => `${p} 版本沒有這條規則`
       return {
         mine: m ? evaluate(m, mineInRange, gcd?.mine.gcdMs ?? null) : inapplicableSummary(r!, reason(patches.mine)),
         ref: r ? evaluate(r, refInRange, gcd?.ref.gcdMs ?? null) : inapplicableSummary(m!, reason(patches.ref)),

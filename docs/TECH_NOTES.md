@@ -402,7 +402,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 ## 技術變更紀錄
 
 ### 2026-09-27 遊戲版本
-- 變更：新增 `src/jobs/patch.ts`（`patchAt()`、`inPatchRange()`、`patchLabel()`，繁中服與國際服的版本日期表）；`WindowRule` 新增 `patches`（適用版本範圍）與 `patchNote`，同一個 key 可有多個版本的規則，`windowRules(subType, patch)` 取第一個適用的；`pairedWindowRules()` 依 key 配對兩邊各自版本的規則；`WindowSummary.inapplicable` 表示該側版本沒有這條規則（`inapplicableSummary()`，建議不比較）。`Comparison.tsx` 的 `sidePatch()` 以 `report.startTime + fight.startTime` 與 `player.server` 判斷版本。
+- 變更：新增 `src/jobs/patch.ts`（`patchAt()`、`inPatchRange()`，繁中服的版本日期表；使用者決定只處理繁中服日誌，第一版的國際服日期表與伺服器判斷已拿掉）；`WindowRule` 新增 `patches`（適用版本範圍）與 `patchNote`，同一個 key 可有多個版本的規則，`windowRules(subType, patch)` 取第一個適用的；`pairedWindowRules()` 依 key 配對兩邊各自版本的規則；`WindowSummary.inapplicable` 表示該側版本沒有這條規則（`inapplicableSummary()`，建議不比較）。`Comparison.tsx` 的 `sidePatch()` 以 `report.startTime + fight.startTime` 判斷版本。
 - 調查：
   - FFLogs 報告沒有遊戲版本：`masterData.gameVersion` 固定為 1（遊戲種類），`logVersion` 是 FFLogs 解析器版本（2026-08 的日誌為 75、2026-09 為 76）。
   - xivanalysis 依伺服器區域（GLOBAL／KOREAN／CHINESE）＋日期判斷版本（`src/data/PATCHES/patches.ts`），沒有繁中服；繁中服日誌在 FFLogs 被標成 JP 或 CN，會被當成國際服或國服而判為 7.4 以上。
@@ -411,7 +411,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 驗證：
   - 基準日誌都判為繁中服 7.2（8 月）或 7.25（9 月下旬）。
   - 繪靈（FXLkqaK32PhQH8Ac #1）改用 7.2 規則後仍為 4/7，不合格原因由「重錘不足 3 次」變為「GCD 只打 8 個（應 9 個）」。
-  - 繁中服絕槍（kCcYLfbxnTJ91Md6 #7，7.25）對國際服絕槍（PnrG9CYmQHxV3yhN #5，Midgardsormr，2026-08-03，7.5）：摘要列出無情的規則差異；參考以 7.4 起的規則評分。國際服日誌取自爬蟲的 `scanned_reports`（FFLogs 排名網頁有真人驗證）。
+  - 第一版曾以國際服絕槍（PnrG9CYmQHxV3yhN #5，Midgardsormr，7.5）對照繁中服絕槍（kCcYLfbxnTJ91Md6 #7，7.25），確認版本不同時的規則差異說明與各自評分；之後依使用者決定只處理繁中服。
 - 維護：**繁中服每次改版都要更新 `patch.ts` 的 `TC_PATCHES`**；xivanalysis 新增版本分支時同步規則。
 ### 2026-09-27 rDPS
 - 變更：Worker 新增 `GET /reports/:code/damage-done?fight`（`DAMAGE_DONE_QUERY`），只回傳 `totalTime` 與每位角色的數字欄位（`total*`、`activeTime`），省掉技能明細；前端 `fetchDamageSummary()`（`client.ts`）換算成每秒 DPS／rDPS／aDPS，`Comparison.tsx` 的 `useDamageSummaries()` 載入兩邊（不阻擋比較結果），摘要表新增 rDPS 列。

@@ -1,21 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { comparePatch, inPatchRange, patchAt, patchLabel } from './patch'
+import { comparePatch, inPatchRange, patchAt } from './patch'
 import { pairedWindowRules, windowRules } from './windows'
 
 const at = (iso: string) => Date.parse(iso)
 
 describe('patchAt', () => {
-  it('uses the Traditional Chinese schedule for TC servers', () => {
+  it('uses the Traditional Chinese schedule', () => {
     // 基準日誌：2026-08 的繁中服為 7.2
-    expect(patchAt(at('2026-08-19T12:00:00Z'), '伊弗利特')).toEqual({ key: '7.2', edition: 'tc' })
-    expect(patchAt(at('2026-09-25T12:00:00Z'), '巴哈姆特')).toEqual({ key: '7.25', edition: 'tc' })
-    expect(patchAt(at('2026-05-01T12:00:00Z'), '泰坦')).toEqual({ key: '7.1', edition: 'tc' })
-  })
-
-  it('uses the global schedule for other servers', () => {
-    expect(patchAt(at('2026-08-19T12:00:00Z'), 'Gilgamesh')).toEqual({ key: '7.5', edition: 'global' })
-    expect(patchAt(at('2025-12-20T00:00:00Z'), null)).toEqual({ key: '7.4', edition: 'global' })
-    expect(patchLabel(patchAt(at('2025-09-01T00:00:00Z'), 'Tonberry'))).toBe('7.3（國際服）')
+    expect(patchAt(at('2026-08-19T12:00:00Z'))).toBe('7.2')
+    expect(patchAt(at('2026-09-25T12:00:00Z'))).toBe('7.25')
+    expect(patchAt(at('2026-05-01T12:00:00Z'))).toBe('7.1')
+    expect(patchAt(at('2026-01-01T12:00:00Z'))).toBe('7.0')
+    // 改版當天台灣時間 00:00 起
+    expect(patchAt(at('2026-07-27T15:59:00Z'))).toBe('7.1')
+    expect(patchAt(at('2026-07-27T16:00:00Z'))).toBe('7.2')
   })
 
   it('compares patch numbers', () => {
