@@ -172,11 +172,21 @@ export function Positions({
 
   return (
     <section className="positions">
-      <p>
-        兩人距離持續超過 {threshold} yalm 的時段共 {divergences.length} 段，其中{' '}
-        <strong>{atMechanic} 段在 Boss 機制結算時仍站在不同位置</strong>（以「機制」標示，最值得對照）
-        {mirrored > 0 && `，${mirrored} 段可能是對稱站位（不同攻略）`}
-        。站位差異在機制結算時才有明顯意義；其餘多半只是移動路線不同。
+      {/* 一行摘要，說明放在滑鼠提示 */}
+      <p className="positions-summary">
+        <span title={`兩人相距超過 ${threshold} yalm、持續 2 秒以上的時段`}>
+          站位差異 <strong>{divergences.length}</strong> 段
+        </span>
+        {atMechanic > 0 && (
+          <span className="tag mechanic" title="Boss 機制結算時仍站在不同位置，最值得對照；其餘多半只是移動路線不同">
+            機制 {atMechanic}
+          </span>
+        )}
+        {mirrored > 0 && (
+          <span className="tag" title="你的位置接近參考位置的對稱點，可能是攻略或分配不同">
+            可能對稱 {mirrored}
+          </span>
+        )}
       </p>
       <DistanceChart
         track={track}
@@ -191,8 +201,8 @@ export function Positions({
           <Arena track={track} cursor={cursor} mineSamples={mineSamples} refSamples={refSamples} />
           <p className="arena-caption">
             <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
-            <span className="legend boss">● Boss</span>　{formatFightTime(cursor)}
-            {now?.distance != null && `　距離 ${now.distance.toFixed(1)} yalm`}
+            <span className="legend boss">● Boss</span>
+            {now?.distance != null && `　相距 ${now.distance.toFixed(1)} yalm`}
           </p>
         </div>
         {status}

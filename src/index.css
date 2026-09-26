@@ -1171,6 +1171,25 @@ h3 {
   stroke-width: 2;
 }
 
+/* 站位差異的一行摘要：段數＋分類標籤，說明在滑鼠提示 */
+.positions-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+}
+
+.positions-summary [title] {
+  cursor: help;
+}
+
+.positions-summary .tag {
+  margin: 0;
+  padding: 1px 6px;
+  font-size: 0.8em;
+}
+
 .positions-body {
   display: flex;
   flex-wrap: wrap;

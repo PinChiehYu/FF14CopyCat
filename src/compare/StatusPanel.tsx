@@ -74,11 +74,14 @@ function SideStatus({
   t,
   abilities,
   abilityName,
+  time,
 }: {
   label: string
   side: SideData
   /** 這一側的戰鬥時間 */
   t: number
+  /** 標題旁顯示的時間（與播放列不同時才傳） */
+  time?: number
   abilities: Map<number, Ability>
   abilityName: (id: number) => string
 }) {
@@ -97,7 +100,12 @@ function SideStatus({
     <div className={`side-status${dead ? ' dead' : ''}`}>
       <div className="side-status-head">
         <span className={label === '我' ? 'mine' : 'ref'}>{label}</span>
-        <span className="hint-inline">{formatFightTime(Math.max(0, t))}</span>
+        {/* 參考的時間就是播放列的時間；只有我的（對齊前的原始時間）不同才顯示 */}
+        {time !== undefined && (
+          <span className="hint-inline" title="你的日誌中的原始時間">
+            {formatFightTime(Math.max(0, time))}
+          </span>
+        )}
       </div>
       {dead && (
         <div className="dead-badge">
@@ -138,6 +146,7 @@ export function StatusPanel({
 }) {
   const recent = bossCasts.filter((c) => c.t <= cursor && c.t > cursor - BOSS_WINDOW_MS).at(-1)
   const upcoming = bossCasts.find((c) => c.t > cursor && c.t <= cursor + BOSS_WINDOW_MS)
+  const mineT = refToMine(cursor)
   return (
     <div className="status-panel">
       <p className="boss-now">
@@ -145,7 +154,14 @@ export function StatusPanel({
         {recent ? `${abilityName(recent.abilityId)}（${((cursor - recent.t) / 1000).toFixed(1)} 秒前）` : '—'}
         {upcoming && <span className="hint-inline">　接著：{abilityName(upcoming.abilityId)}（{((upcoming.t - cursor) / 1000).toFixed(1)} 秒後）</span>}
       </p>
-      <SideStatus label="我" side={mine} t={refToMine(cursor)} abilities={abilities} abilityName={abilityName} />
+      <SideStatus
+        label="我"
+        side={mine}
+        t={mineT}
+        time={Math.abs(mineT - cursor) >= 100 ? mineT : undefined}
+        abilities={abilities}
+        abilityName={abilityName}
+      />
       <SideStatus label="參考" side={reference} t={cursor} abilities={abilities} abilityName={abilityName} />
     </div>
   )
