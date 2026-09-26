@@ -153,11 +153,11 @@ function SummaryTable({
       // 死亡是最優先的改進：放在第一列，紅色標示，可點擊跳到該時間
       label: '死亡',
       cell: (s) =>
+        // 沒有死亡只顯示「—」；有的話列出每次死亡的時間（可點擊跳到該處）與死因
         s.deaths.length === 0 ? (
-          <span className="no-death">沒有死亡</span>
+          <span className="hint-inline">—</span>
         ) : (
           <span className="death-list">
-            <strong className="death-count">{s.deaths.length} 次</strong>
             {s.deaths.map((d) => (
               <button
                 key={d.t}

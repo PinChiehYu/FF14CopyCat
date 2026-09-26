@@ -1552,14 +1552,6 @@ h3 {
   gap: 4px 6px;
 }
 
-.death-count {
-  color: var(--error);
-}
-
-.no-death {
-  color: var(--kill);
-}
-
 .death-chip {
   display: inline-flex;
   align-items: center;
