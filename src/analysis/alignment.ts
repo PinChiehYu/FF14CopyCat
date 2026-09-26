@@ -121,22 +121,95 @@ interface Occurrence extends TimedCast {
   occurrence: number
 }
 
-function occurrences(casts: TimedCast[], dedupeMs: number): { list: Occurrence[]; counts: Map<number, number> } {
+// 同一組隨機機制（見 variantGroups）的技能在這段時間內都算同一次機制（一次機制常由多個判定技能組成）
+const GROUP_DEDUPE_MS = 5000
+// 第一次對齊至少要有這麼多錨點才找隨機機制組
+const MIN_ANCHORS_FOR_GROUPS = 3
+
+/**
+ * 依時間排序編號：同一技能（或同一組隨機機制）的第 n 次。
+ * @param groups 技能 ID → 所屬隨機機制組的代表 ID；同一組的技能共用編號
+ */
+function occurrences(
+  casts: TimedCast[],
+  dedupeMs: number,
+  groups: Map<number, number> = new Map(),
+): { list: Occurrence[]; counts: Map<number, number> } {
   const sorted = [...casts].sort((a, b) => a.t - b.t)
   const last = new Map<number, number>()
   const counts = new Map<number, number>()
   const list: Occurrence[] = []
   for (const cast of sorted) {
-    const prev = last.get(cast.abilityId)
-    if (prev !== undefined && cast.t - prev < dedupeMs) continue
-    last.set(cast.abilityId, cast.t)
-    const occurrence = (counts.get(cast.abilityId) ?? 0) + 1
-    counts.set(cast.abilityId, occurrence)
-    list.push({ ...cast, occurrence, key: `${cast.abilityId}#${occurrence}` })
+    const group = groups.get(cast.abilityId)
+    const id = group ?? cast.abilityId
+    const prev = last.get(id)
+    if (prev !== undefined && cast.t - prev < (group !== undefined ? GROUP_DEDUPE_MS : dedupeMs)) continue
+    last.set(id, cast.t)
+    const occurrence = (counts.get(id) ?? 0) + 1
+    counts.set(id, occurrence)
+    list.push({ ...cast, occurrence, key: `${group !== undefined ? 'g' : ''}${id}#${occurrence}` })
   }
   return { list, counts }
 }
 
+// 兩邊不同技能相距這麼近（對齊後）才算同一個時間點的隨機變化；同一技能在另一邊這麼近以內有施放就不算
+const VARIANT_WINDOW_MS = 1500
+const SAME_ABILITY_WINDOW_MS = 5000
+
+/**
+ * 隨機機制組：對齊後同一時間點兩邊施放不同技能（例如放入 A 面／B 面、二連／三連／四連指向），
+ * 互為最近的一對就歸成同一組（會連鎖，例如二連—四連、三連—四連合成一組）。遊戲資料沒有這種分組，
+ * 兩邊選到同一個變化時技能 ID 相同、本來就不會配錯，所以只需要從這兩場不同的地方找。
+ * 回傳 技能 ID → 組的代表 ID（只含有被歸組的技能）。
+ */
+export function variantGroups(
+  mineBoss: TimedCast[],
+  refBoss: TimedCast[],
+  mineToRef: (t: number) => number,
+  dedupeMs: number,
+  maxOccurrences: number,
+): Map<number, number> {
+  const side = (casts: TimedCast[], toRef: (t: number) => number) => {
+    const { list, counts } = occurrences(casts, dedupeMs)
+    return list.filter((c) => (counts.get(c.abilityId) ?? 0) <= maxOccurrences).map((c) => ({ t: toRef(c.t), abilityId: c.abilityId }))
+  }
+  const mine = side(mineBoss, mineToRef)
+  const ref = side(refBoss, (t) => t)
+  const unmatched = (list: TimedCast[], other: TimedCast[]) =>
+    list.filter((c) => !other.some((o) => o.abilityId === c.abilityId && Math.abs(o.t - c.t) <= SAME_ABILITY_WINDOW_MS))
+  const mineOnly = unmatched(mine, ref)
+  const refOnly = unmatched(ref, mine)
+  const nearest = (c: TimedCast, list: TimedCast[]) => {
+    let best: TimedCast | undefined
+    for (const o of list) {
+      const d = Math.abs(o.t - c.t)
+      if (d <= VARIANT_WINDOW_MS && (!best || d < Math.abs(best.t - c.t))) best = o
+    }
+    return best
+  }
+
+  const parent = new Map<number, number>()
+  const find = (id: number): number => {
+    const p = parent.get(id) ?? id
+    if (p === id) return id
+    const root = find(p)
+    parent.set(id, root)
+    return root
+  }
+  for (const m of mineOnly) {
+    const r = nearest(m, refOnly)
+    if (r && nearest(r, mineOnly) === m) {
+      const a = find(m.abilityId)
+      const b = find(r.abilityId)
+      if (a !== b) parent.set(Math.max(a, b), Math.min(a, b))
+    }
+  }
+  const groups = new Map<number, number>()
+  for (const id of parent.keys()) groups.set(id, find(id))
+  // 代表 ID 本身也屬於該組
+  for (const root of new Set(groups.values())) groups.set(root, root)
+  return groups
+}
 // 時間差（ref − mine）相差這麼多以上就算不同的一段
 const LEVEL_MS = 3000
 // 跳開又跳回的一段在我的時間上最長多久（更長的視為真的不同，不去掉）
@@ -212,17 +285,35 @@ function longestIncreasing(pairs: Anchor[]): Anchor[] {
  * 以 Boss 技能為錨點對齊兩份日誌的時間軸。
  * 錨點 = 兩份日誌中「同一技能的第 n 次施放」，錨點之間線性內插，
  * 戰鬥開始 (0, 0) 為隱含錨點，最後一個錨點之後以斜率 1 外推。
+ * 對齊兩次：第一次找出兩邊同一時間施放不同技能的隨機機制組（variantGroups），第二次把同一組的技能
+ * 當成同一個機制編號（例如我的第 1 次「放入 A 面」配參考的第 1 次「放入 B 面」），隨機順序不同時也能正確配對。
  */
 export function buildAlignment(
   mineBoss: TimedCast[],
   refBoss: TimedCast[],
   { dedupeMs = 1000, maxOccurrences = 8 }: AlignmentOptions = {},
 ): Alignment {
-  const mine = occurrences(mineBoss, dedupeMs)
-  const ref = occurrences(refBoss, dedupeMs)
+  const first = alignWith(mineBoss, refBoss, dedupeMs, maxOccurrences, new Map())
+  // 第一次對齊要有足夠的錨點，找出的「同一時間點」才可靠
+  if (first.anchors.length < MIN_ANCHORS_FOR_GROUPS) return first
+  const groups = variantGroups(mineBoss, refBoss, first.mineToRef, dedupeMs, maxOccurrences)
+  return groups.size === 0 ? first : alignWith(mineBoss, refBoss, dedupeMs, maxOccurrences, groups)
+}
+
+function alignWith(
+  mineBoss: TimedCast[],
+  refBoss: TimedCast[],
+  dedupeMs: number,
+  maxOccurrences: number,
+  groups: Map<number, number>,
+): Alignment {
+  const mine = occurrences(mineBoss, dedupeMs, groups)
+  const ref = occurrences(refBoss, dedupeMs, groups)
   const refByKey = new Map(ref.list.map((o) => [o.key, o]))
-  const rare = (id: number) =>
-    (mine.counts.get(id) ?? 0) <= maxOccurrences && (ref.counts.get(id) ?? 0) <= maxOccurrences
+  const rare = (id: number) => {
+    const key = groups.get(id) ?? id
+    return (mine.counts.get(key) ?? 0) <= maxOccurrences && (ref.counts.get(key) ?? 0) <= maxOccurrences
+  }
 
   const candidates: Anchor[] = []
   for (const o of mine.list) {
