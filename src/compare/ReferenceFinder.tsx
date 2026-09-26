@@ -109,15 +109,15 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       <div className="finder-controls">
         <label>
           PR
-          <input type="number" min={0} max={100} value={minPr} onChange={(e) => setMinPr(clampPr(e.target.value))} />
+          <PrInput value={minPr} min={0} max={maxPr} onChange={setMinPr} />
           ～
-          <input type="number" min={0} max={100} value={maxPr} onChange={(e) => setMaxPr(clampPr(e.target.value))} />
+          <PrInput value={maxPr} min={minPr} max={100} onChange={setMaxPr} />
         </label>
-        <label className="finder-check">
+        <label className="finder-check" title="逐筆比對 Boss 的隨機機制，只列出與我的戰鬥相同的紀錄">
           <input type="checkbox" checked={sameMechanics} onChange={(e) => setSameMechanics(e.target.checked)} />
-          只顯示隨機機制相同的
+          機制相同
         </label>
-        <button type="button" onClick={search} disabled={result.status === 'loading' || minPr > maxPr}>
+        <button type="button" onClick={search} disabled={result.status === 'loading'}>
           搜尋
         </button>
       </div>
@@ -125,11 +125,15 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       {result.status === 'error' && <p className="error">{result.message}</p>}
       {result.status === 'ready' && (
         <>
-          <p className="hint">
-            繁中服{mine.fight.name}的{jobName(mine.player.subType)}共 {result.count} 人（每人取最好的一場，依 DPS 排序）；
-            PR {minPr}～{maxPr} 列出前 {result.rows.length} 筆。
+          {/* 只佔一行，說明放在滑鼠提示，避免撐高輸入框 */}
+          <p className="hint finder-summary">
+            <span
+              title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，每人取最好的一場，依 DPS 排序；列出 PR 範圍內的前 ${MAX_LISTED} 筆`}
+            >
+              共 {result.count} 人，列出 {result.rows.length} 筆
+            </span>
+            {noneSame && <span title="沒有隨機機制完全相同的紀錄，改依不同處由少到多排序">・無完全相同，依差異排序</span>}
           </p>
-          {noneSame && <p className="hint">沒有隨機機制完全相同的紀錄，以下依不同處由少到多列出。</p>}
           {rows.length === 0 ? (
             <p className="hint">沒有符合的紀錄。</p>
           ) : (
@@ -173,7 +177,34 @@ function rowKey(r: TcRanking): string {
   return `${r.report}/${r.fight}/${r.actor}`
 }
 
-function clampPr(value: string): number {
-  const n = Math.round(Number(value))
-  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0
+/**
+ * PR 輸入框，限制在 [min, max]（下限不超過上限）。輸入中的中間值（例如要打 95 時先出現的 9）
+ * 先暫存不套用，在範圍內才套用；離開輸入框時把超出範圍的值夾回範圍內。
+ */
+function PrInput({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (v: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const parse = (text: string) => Math.round(Number(text))
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      value={draft ?? value}
+      onChange={(e) => {
+        const n = parse(e.target.value)
+        if (e.target.value !== '' && Number.isFinite(n) && n >= min && n <= max) {
+          onChange(n)
+          setDraft(null)
+        } else {
+          setDraft(e.target.value)
+        }
+      }}
+      onBlur={() => {
+        if (draft === null) return
+        const n = parse(draft)
+        onChange(Number.isFinite(n) && draft !== '' ? Math.min(max, Math.max(min, n)) : value)
+        setDraft(null)
+      }}
+    />
+  )
 }

@@ -276,15 +276,19 @@ h1 {
   background: color-mix(in srgb, var(--dps) 14%, transparent);
 }
 
-/* 戰鬥選項：編號、名稱、長度、結果各自固定欄寬 */
+/* 戰鬥選項：編號、名稱、長度、結果各自固定欄寬；
+   第一欄與角色選項的位置欄同寬，讓 Boss 與玩家名稱對齊 */
 .fight-option {
   display: grid;
   grid-template-columns: 3em minmax(0, 1fr) 4.8em 3.8em;
 }
 
+.player-option {
+  display: grid;
+  grid-template-columns: 3em minmax(0, 1fr) auto;
+}
+
 .option-slot {
-  flex: none;
-  min-width: 2.2em;
   font-size: 0.85em;
   font-weight: 600;
   color: var(--text-muted);
@@ -561,6 +565,31 @@ button:disabled {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
+}
+
+/* 勾選框不套用連結輸入框的整列寬度 */
+.log-input .finder-controls input[type='checkbox'] {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.finder-check {
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 結果摘要只佔一行，完整說明放在滑鼠提示 */
+.finder-summary {
+  margin: 0 0 6px;
+  font-size: 0.85em;
+}
+
+.finder-summary [title] {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
 
 .finder-list {
@@ -1167,9 +1196,17 @@ h3 {
   }
 
   /* 戰鬥選單：縮窄編號、長度、結果欄，留空間給 Boss 名稱 */
+  .fight-option,
+  .player-option {
+    gap: 4px;
+  }
+
+  .player-option {
+    grid-template-columns: 2.2em minmax(0, 1fr) auto;
+  }
+
   .fight-option {
     grid-template-columns: 2.2em minmax(0, 1fr) 4.2em 3.2em;
-    gap: 4px;
   }
 
   .dropdown-button {

@@ -86,8 +86,9 @@ function playerOption(player: Actor, slot: string | null): DropdownOption<number
   return {
     value: player.id,
     content: (
-      <span className="option-row">
-        {slot && <span className="option-slot">{slot}</span>}
+      // 沒有位置時也留空欄，讓名稱與戰鬥選單的 Boss 名稱對齊
+      <span className="option-row player-option">
+        <span className="option-slot">{slot}</span>
         <span className="option-main">{player.name}</span>
         <span className={`badge job ${jobRole(player.subType)}`}>{jobName(player.subType)}</span>
       </span>
