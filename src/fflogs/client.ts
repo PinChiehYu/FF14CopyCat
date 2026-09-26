@@ -26,7 +26,7 @@ export function fetchReport(code: string, signal?: AbortSignal): Promise<Report>
   return get(`/reports/${encodeURIComponent(code)}`, signal)
 }
 
-/** 繁中服排名（Worker 定時掃描公開報告自建）中的一筆擊殺；名次與 PR 依該玩家 rDPS 最好的一場。 */
+/** 繁中服排名（Worker 定時掃描公開報告自建）中的一筆擊殺；名次與 PR 為這一場的 rDPS 和其他玩家各自最好的一場比較。 */
 export interface TcRanking {
   rank: number
   /** 繁中服內的百分位（最高 100） */

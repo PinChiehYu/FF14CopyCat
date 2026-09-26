@@ -329,8 +329,8 @@ export function percentile(rank: number, count: number): number {
 }
 
 /**
- * 某 Boss、某職業的繁中服排名（依 rDPS）：玩家（名稱＋伺服器）的名次與 PR 依每人最好的一場計算，
- * 回傳 PR 在 [minPr, maxPr] 之間的玩家的所有擊殺（依 rDPS 由高到低，重複上傳的只留一筆）前 limit 筆與總人數。
+ * 某 Boss、某職業的繁中服排名（依 rDPS）：每一場擊殺各自計算名次與 PR（與 FFLogs 相同，和其他玩家各自最好的一場比較），
+ * 回傳 PR 在 [minPr, maxPr] 之間的擊殺（依 rDPS 由高到低，重複上傳的只留一筆）前 limit 筆與總人數。
  */
 export async function tcRankings(
   db: DbLike,
@@ -359,18 +359,31 @@ export async function tcRankings(
       fight_end: number
       report_start: number
     }>()
-  // 玩家的名次與 PR 以每人最好的一場計算（依 rDPS 由高到低，第一次出現即最好的一場）
+  // 每位玩家最好的一場（依 rDPS 由高到低，第一次出現即最好的一場），由高到低
   const player = (r: { name: string; server: string }) => `${r.name}@${r.server}`
-  const ranks = new Map<string, number>()
-  for (const r of results) if (!ranks.has(player(r))) ranks.set(player(r), ranks.size + 1)
-  const count = ranks.size
-  // 列出 PR 範圍內玩家的所有擊殺：好的玩家常有多場，找得到隨機機制與我相同的機率較高。
+  const bests = new Map<string, number>()
+  for (const r of results) if (!bests.has(player(r))) bests.set(player(r), r.rdps)
+  const bestList = [...bests.values()]
+  const count = bestList.length
+  // 高於 v 的「最好一場」有幾個（bestList 由高到低，二分搜尋）
+  const above = (v: number) => {
+    let lo = 0
+    let hi = bestList.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (bestList[mid] > v) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
+  // 每一場擊殺各自的名次：勝過幾位其他玩家的最好一場（不和自己的最好一場比較）。
+  // 同一人較差的一場有自己的 PR，PR 範圍內的每一場都列出，找得到隨機機制與我相同的機率較高。
   // 同一場戰鬥被不同人重複上傳只留一筆：FFLogs 沒有跨報告的戰鬥識別碼，以戰鬥的實際開始時間（報告開始＋戰鬥在報告中的開始）判斷，
   // 同一場在不同報告中完全相同
   const seen = new Set<string>()
   const rankings: RankedParse[] = []
   for (const r of results) {
-    const rank = ranks.get(player(r))!
+    const rank = 1 + above(r.rdps) - (bests.get(player(r))! > r.rdps ? 1 : 0)
     const pr = percentile(rank, count)
     if (pr < minPr || pr > maxPr) continue
     const duplicate = `${player(r)}|${r.report_start + r.fight_start}`

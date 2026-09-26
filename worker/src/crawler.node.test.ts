@@ -180,7 +180,7 @@ describe('crawl', () => {
 })
 
 describe('tcRankings', () => {
-  it('ranks characters by the rDPS of their best parse and lists all their kills', async () => {
+  it('gives every kill its own rank and PR against the best rDPS of other characters',async () => {
     const db = memoryDb()
     // 戰鬥的實際開始時間＝報告開始＋戰鬥在報告中的開始；預設每份報告不同
     const insert = (report: string, name: string, rdps: number, job = 'Samurai', reportStart = report.charCodeAt(0) * 3600_000, fightStart = 0) =>
@@ -197,8 +197,9 @@ describe('tcRankings', () => {
     await insert('E', '丁', 20_000)
     // 同一場被另一人重複上傳（報告開始時間不同，但戰鬥的實際開始時間相同）：只留一筆
     await insert('H', '乙', 29_000, 'Samurai', 1_020_000, 30_000)
-    await insert('I', '丙', 25_000) // 同一人較差的一場：沿用最好一場的名次與 PR
+    await insert('I', '丙', 25_000) // 同一人較差的一場：自己的名次與 PR（勝過丁）
     await insert('K', '丙', 25_000) // rDPS 相同但是另一場：保留
+    await insert('L', '乙', 27_000) // 乙較差的一場：輸給丙最好的一場，PR 比乙最好的一場低
     // 其他職業不列入人數與名次（包括同一人玩其他職業）
     await insert('F', '戊', 40_000, 'Ninja')
     await insert('G', '丁', 35_000, 'Ninja')
@@ -210,12 +211,16 @@ describe('tcRankings', () => {
       ['甲', 'A', 1, 100],
       ['乙', 'C', 2, 66],
       ['丙', 'D', 3, 33],
+      ['乙', 'L', 3, 33],
       ['丙', 'I', 3, 33],
       ['丙', 'K', 3, 33],
       ['丁', 'E', 4, 0],
     ])
     const mid = await tcRankings(db, 100, 101, 'Samurai', 30, 70)
-    expect(mid.rankings.map((r) => r.report)).toEqual(['C', 'D', 'I', 'K'])
+    expect(mid.rankings.map((r) => r.report)).toEqual(['C', 'D', 'L', 'I', 'K'])
+    // 乙最好的一場在範圍內，較差的一場不在
+    const top = await tcRankings(db, 100, 101, 'Samurai', 60, 100)
+    expect(top.rankings.map((r) => r.report)).toEqual(['B', 'A', 'C'])
     expect((await tcRankings(db, 100, 101, 'Samurai', 0, 100, 2)).rankings.map((r) => r.report)).toEqual(['B', 'A'])
     const ninja = await tcRankings(db, 100, 101, 'Ninja', 0, 100)
     expect(ninja.rankings.map((r) => [r.name, r.rank, r.pr])).toEqual([
