@@ -108,6 +108,8 @@ SOFTWARE.
 
 FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved.
 FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.
+本站顯示的遊戲技能圖示、技能／效果／道具／Boss 名稱與戰鬥數據等遊戲內容，版權皆屬 SQUARE ENIX 所有。
+All game icons, names and data shown on this site are the property of SQUARE ENIX CO., LTD.
 本站為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs、XIVAPI、xivanalysis 無任何關係。
 This is an unofficial fan-made tool and is not affiliated with SQUARE ENIX,
 FF Logs, XIVAPI or xivanalysis.

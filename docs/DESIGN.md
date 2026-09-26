@@ -268,7 +268,7 @@
 實作與架構的變更見 TECH_NOTES.md 的「技術變更紀錄」。
 
 ### 2026-09-27 頁尾：資料來源、參考與授權聲明
-- 變更：頁面最下方新增頁尾，一行列出資料來源（FF Logs、XIVAPI）、參考（xivanalysis、FFReplay）、使用的函式庫（React、opencc-js），各項滑鼠提示說明用途；「授權聲明」連到 `THIRD_PARTY_NOTICES.txt`（xivanalysis、React、opencc-js 的授權全文與資料來源說明）；第二行為 SQUARE ENIX 版權與非官方聲明。README 也加上同樣的段落。
+- 變更：頁面最下方新增頁尾，一行列出資料來源（FF Logs、XIVAPI）、參考（xivanalysis、FFReplay）、使用的函式庫（React、opencc-js），各項滑鼠提示說明用途；「授權聲明」連到 `THIRD_PARTY_NOTICES.txt`（xivanalysis、React、opencc-js 的授權全文與資料來源說明）；第二行為 SQUARE ENIX 版權（遊戲技能圖示、名稱與數據等內容之版權皆屬 SQUARE ENIX）與非官方聲明。README 也加上同樣的段落。
 - 原因：使用者要求補上所有參考網頁以符合授權。技能窗口規則移植自 xivanalysis（MIT），需要保留其版權與授權聲明。
 
 ### 2026-09-27 站位與當下狀態：精簡文字

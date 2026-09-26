@@ -76,4 +76,4 @@ npm run dev                                     # 終端機 2：前端，http://
 - 使用 [React](https://react.dev/)（MIT）與 [opencc-js](https://github.com/nk2028/opencc-js)（MIT；辭典資料 Apache-2.0）。
 - 各授權全文見 [public/THIRD_PARTY_NOTICES.txt](public/THIRD_PARTY_NOTICES.txt)（網站頁尾的「授權聲明」）。
 
-FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved. 本專案為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs 無關。
+FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved. 遊戲中的技能圖示、名稱與數據等內容之版權皆屬 SQUARE ENIX 所有。本專案為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs 無關。

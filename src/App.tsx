@@ -325,7 +325,7 @@ function SiteFooter() {
         </a>
       </p>
       <p>
-        FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved. 本站為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs 無關。
+        FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved. 遊戲中的技能圖示、名稱與數據等內容之版權皆屬 SQUARE ENIX 所有。本站為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs 無關。
       </p>
     </footer>
   )
