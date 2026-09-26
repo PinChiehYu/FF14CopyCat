@@ -164,7 +164,7 @@ function SummaryTable({
     },
   ]
   return (
-    <table className="summary-table">
+    <table className="summary-table compare-summary">
       <thead>
         <tr>
           <th />

@@ -370,6 +370,15 @@ button:disabled {
   text-align: left;
 }
 
+/* 比較結果的摘要：「我」「參考」兩欄等寬，不隨內容長短（例如雙方都沒有死亡時）變得一寬一窄 */
+.compare-summary {
+  table-layout: fixed;
+}
+
+.compare-summary thead th:first-child {
+  width: 6em;
+}
+
 .summary-table thead th {
   font-size: 0.9em;
   border-bottom-width: 2px;
@@ -1674,6 +1683,16 @@ h3 {
   .player-option,
   .finder-option {
     gap: 4px;
+  }
+
+  /* 比較結果摘要：標籤欄與內距縮小，留空間給兩欄資料 */
+  .compare-summary thead th:first-child {
+    width: 4.5em;
+  }
+
+  .compare-summary th,
+  .compare-summary td {
+    padding: 6px 6px;
   }
 
   /* 分頁：等寬的 3 欄格線（技能使用次數有 6 個分頁，自然換行會排成參差的多列） */
