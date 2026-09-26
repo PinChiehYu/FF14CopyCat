@@ -26,12 +26,16 @@ export const CRAWL_DIFFICULTY = 101
 const PAGE_SIZE = 25
 // 每小時執行一次（wrangler.toml），每次最多 6 頁：每小時約 300 點列表＋傷害表，留大部分額度給訪客
 const PAGES_PER_RUN = 6
-// 每次掃描的時間窗（依報告開始時間）
+// 每次執行先掃最近這段時間的報告（近期擊殺最常被拿來參考，也涵蓋晚上傳的報告），再用剩下的頁數往回補舊資料
+const RECENT_MS = 2 * 24 * 3600_000
+// 還在補舊資料時，最近兩天最多用幾頁（其餘給補資料）；補完後全部頁數都給最近兩天
+const RECENT_PAGES_WHILE_BACKFILLING = 3
+// 補舊資料的時間窗（依報告開始時間）
 const WINDOW_MS = 24 * 3600_000
 // 第一次執行時往前補的天數
 const BACKFILL_MS = 60 * 24 * 3600_000
-// 追上現在後，重新掃描最近這段時間（晚上傳的報告）
-const RESCAN_MS = 2 * 24 * 3600_000
+// 補舊資料追上「最近兩天」的起點後就停止；落後超過這麼久（例如停擺過）才再補一次
+const BACKFILL_SLACK_MS = 12 * 3600_000
 // 這小時已用超過這麼多點就跳過，把額度留給訪客
 const POINTS_CEILING = 2000
 
@@ -137,79 +141,125 @@ function setState(db: DbLike, key: string, value: string): StatementLike {
 export interface CrawlResult {
   skipped?: string
   pages: number
+  /** 其中用在最近兩天的頁數 */
+  recentPages: number
   reports: number
   tcReports: number
   parses: number
 }
 
-/** 定時執行一次：依進度掃描一個時間窗內的報告，存入繁中服玩家的擊殺。 */
+/**
+ * 掃描一頁報告清單：未處理過的報告中，繁中服玩家的擊殺查傷害表存入 parses。
+ * 回傳是否還有下一頁；這小時的額度快用完時回傳 null（不處理）。進度狀態 `state` 與結果在同一批寫入。
+ */
+async function scanPage(
+  db: DbLike,
+  graphql: Graphql,
+  query: { zoneID: number; startTime: number; endTime: number; page: number },
+  now: number,
+  result: CrawlResult,
+  state: (hasMore: boolean) => StatementLike[],
+): Promise<boolean | null> {
+  const data = await graphql<{
+    rateLimitData?: { pointsSpentThisHour: number }
+    reportData?: { reports?: { has_more_pages: boolean; data: ListedReport[] } }
+  }>(LIST_QUERY, { ...query, limit: PAGE_SIZE })
+  if ((data?.rateLimitData?.pointsSpentThisHour ?? 0) > POINTS_CEILING) {
+    result.skipped = 'points'
+    return null
+  }
+  const listed = data?.reportData?.reports
+  result.pages++
+  const reports = listed?.data ?? []
+  result.reports += reports.length
+
+  const codes = reports.map((r) => r.code)
+  const scanned = new Set(
+    codes.length === 0
+      ? []
+      : (
+          await db
+            .prepare(`SELECT code FROM scanned_reports WHERE code IN (${codes.map(() => '?').join(',')})`)
+            .bind(...codes)
+            .all<{ code: string }>()
+        ).results.map((r) => r.code),
+  )
+  const writes: StatementLike[] = []
+  for (const report of reports.filter((r) => !scanned.has(r.code))) {
+    const kills = tcKills(report)
+    if (kills.length > 0) {
+      result.tcReports++
+      const tables = await graphql<{ reportData?: { report?: Record<string, { data?: { entries?: DamageEntry[] } }> } }>(
+        damageQuery(kills.map((f) => f.id)),
+        { code: report.code },
+      )
+      for (const fight of kills) {
+        const entries = tables?.reportData?.report?.[`f${fight.id}`]?.data?.entries ?? []
+        for (const p of parsesFromDamage(report, fight, entries)) {
+          result.parses++
+          writes.push(
+            db
+              .prepare(
+                'INSERT OR REPLACE INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, fight_start, fight_end, report_start) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              )
+              .bind(p.report, p.fight, p.actor, p.encounter, p.difficulty, p.job, p.name, p.server, p.dps, p.fightStart, p.fightEnd, p.reportStart),
+          )
+        }
+      }
+    }
+    writes.push(db.prepare('INSERT OR REPLACE INTO scanned_reports (code, scanned_at) VALUES (?, ?)').bind(report.code, now))
+  }
+  const hasMore = listed?.has_more_pages ?? false
+  await db.batch([...writes, ...state(hasMore)])
+  return hasMore
+}
+
+/**
+ * 定時執行一次，存入繁中服玩家的擊殺：
+ * 1. 先掃最近兩天（跨次執行逐頁輪完一輪；時間窗的起點在一輪開始時固定，新上傳的報告只會讓後面的頁往後移，不會漏掉）。
+ * 2. 剩下的頁數往回補舊資料（從 60 天前一天一天往後），追上最近兩天的起點就停止。
+ */
 export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zoneID = CRAWL_ZONES[0]): Promise<CrawlResult> {
-  const result: CrawlResult = { pages: 0, reports: 0, tcReports: 0, parses: 0 }
+  const result: CrawlResult = { pages: 0, recentPages: 0, reports: 0, tcReports: 0, parses: 0 }
   const prefix = `zone${zoneID}`
   let cursor = Number((await getState(db, `${prefix}:cursor`)) ?? now - BACKFILL_MS)
   let page = Number((await getState(db, `${prefix}:page`)) ?? 1)
+  let recentStart = Number((await getState(db, `${prefix}:recent_start`)) ?? now - RECENT_MS)
+  let recentPage = Number((await getState(db, `${prefix}:recent_page`)) ?? 1)
+  const backfillEnd = now - RECENT_MS
+  const backfilling = cursor < backfillEnd - BACKFILL_SLACK_MS || (page > 1 && cursor < backfillEnd)
 
-  for (let i = 0; i < PAGES_PER_RUN; i++) {
-    const windowEnd = Math.min(cursor + WINDOW_MS, now)
-    const data = await graphql<{
-      rateLimitData?: { pointsSpentThisHour: number }
-      reportData?: { reports?: { has_more_pages: boolean; data: ListedReport[] } }
-    }>(LIST_QUERY, { zoneID, startTime: cursor, endTime: windowEnd, page, limit: PAGE_SIZE })
-    if ((data?.rateLimitData?.pointsSpentThisHour ?? 0) > POINTS_CEILING) {
-      result.skipped = 'points'
+  // 1. 最近兩天：一輪掃完就停（下一輪留到下次執行，避免同一次重複列出相同的頁）
+  const recentBudget = backfilling ? RECENT_PAGES_WHILE_BACKFILLING : PAGES_PER_RUN
+  while (result.recentPages < recentBudget) {
+    const hasMore = await scanPage(db, graphql, { zoneID, startTime: recentStart, endTime: now, page: recentPage }, now, result, (more) => [
+      setState(db, `${prefix}:recent_start`, String(more ? recentStart : now - RECENT_MS)),
+      setState(db, `${prefix}:recent_page`, String(more ? recentPage + 1 : 1)),
+    ])
+    if (hasMore === null) return result
+    result.recentPages++
+    if (!hasMore) {
+      recentStart = now - RECENT_MS
+      recentPage = 1
       break
     }
-    const listed = data?.reportData?.reports
-    result.pages++
-    const reports = listed?.data ?? []
-    result.reports += reports.length
+    recentPage++
+  }
 
-    const codes = reports.map((r) => r.code)
-    const scanned = new Set(
-      codes.length === 0
-        ? []
-        : (
-            await db
-              .prepare(`SELECT code FROM scanned_reports WHERE code IN (${codes.map(() => '?').join(',')})`)
-              .bind(...codes)
-              .all<{ code: string }>()
-          ).results.map((r) => r.code),
-    )
-    const writes: StatementLike[] = []
-    for (const report of reports.filter((r) => !scanned.has(r.code))) {
-      const kills = tcKills(report)
-      if (kills.length > 0) {
-        result.tcReports++
-        const tables = await graphql<{ reportData?: { report?: Record<string, { data?: { entries?: DamageEntry[] } }> } }>(
-          damageQuery(kills.map((f) => f.id)),
-          { code: report.code },
-        )
-        for (const fight of kills) {
-          const entries = tables?.reportData?.report?.[`f${fight.id}`]?.data?.entries ?? []
-          for (const p of parsesFromDamage(report, fight, entries)) {
-            result.parses++
-            writes.push(
-              db
-                .prepare(
-                  'INSERT OR REPLACE INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, fight_start, fight_end, report_start) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                )
-                .bind(p.report, p.fight, p.actor, p.encounter, p.difficulty, p.job, p.name, p.server, p.dps, p.fightStart, p.fightEnd, p.reportStart),
-            )
-          }
-        }
-      }
-      writes.push(db.prepare('INSERT OR REPLACE INTO scanned_reports (code, scanned_at) VALUES (?, ?)').bind(report.code, now))
-    }
-
-    // 推進進度：同一時間窗還有下一頁就翻頁，否則前進到下一個時間窗；追上現在後回頭重掃最近兩天
-    if (listed?.has_more_pages) {
+  // 2. 補舊資料：同一時間窗還有下一頁就翻頁，否則前進到下一個時間窗
+  while (backfilling && result.pages < PAGES_PER_RUN && cursor < backfillEnd) {
+    const windowEnd = Math.min(cursor + WINDOW_MS, backfillEnd)
+    const hasMore = await scanPage(db, graphql, { zoneID, startTime: cursor, endTime: windowEnd, page }, now, result, (more) => [
+      setState(db, `${prefix}:cursor`, String(more ? cursor : windowEnd)),
+      setState(db, `${prefix}:page`, String(more ? page + 1 : 1)),
+    ])
+    if (hasMore === null) return result
+    if (hasMore) {
       page++
     } else {
       page = 1
-      cursor = windowEnd >= now ? now - RESCAN_MS : windowEnd
+      cursor = windowEnd
     }
-    writes.push(setState(db, `${prefix}:cursor`, String(cursor)), setState(db, `${prefix}:page`, String(page)))
-    await db.batch(writes)
   }
   return result
 }

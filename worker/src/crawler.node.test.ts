@@ -81,13 +81,60 @@ describe('crawl', () => {
     expect(again.calls.filter((c) => c === 'damage')).toHaveLength(0)
   })
 
-  it('advances through time windows and rescans recent days once caught up', async () => {
+  const DAY = 24 * 3600_000
+  const state = async (db: DbLike, key: string) =>
+    Number((await db.prepare('SELECT value FROM crawl_state WHERE key = ?').bind(`zone68:${key}`).first<{ value: string }>())!.value)
+
+  /** 記錄每次列出報告清單的時間窗，可指定哪些頁還有下一頁 */
+  function listingGraphql(hasMore: (q: { startTime: number; page: number }) => boolean) {
+    const lists: { startTime: number; endTime: number; page: number }[] = []
+    const graphql: Graphql = async <T>(_query: string, vars: Record<string, unknown>) => {
+      const q = vars as { startTime: number; endTime: number; page: number }
+      lists.push({ startTime: q.startTime, endTime: q.endTime, page: q.page })
+      return { rateLimitData: { pointsSpentThisHour: 10 }, reportData: { reports: { has_more_pages: hasMore(q), data: [] } } } as T
+    }
+    return { graphql, lists }
+  }
+
+  it('scans the last two days first, then backfills old days with the remaining pages', async () => {
     const db = memoryDb()
-    const now = 100 * 24 * 3600_000
-    await crawl(db, fakeGraphql([]).graphql, now, 68)
-    const cursor = Number((await db.prepare("SELECT value FROM crawl_state WHERE key = 'zone68:cursor'").first<{ value: string }>())!.value)
-    // 第一次從 60 天前開始，每頁（沒有下一頁）前進一天，一次執行 6 頁
-    expect(cursor).toBe(now - 54 * 24 * 3600_000)
+    const now = 100 * DAY
+    const { graphql, lists } = listingGraphql(() => false)
+    const result = await crawl(db, graphql, now, 68)
+    // 最近兩天一頁就掃完（沒有下一頁），剩下 5 頁從 60 天前一天一天往後補
+    expect(lists[0]).toEqual({ startTime: now - 2 * DAY, endTime: now, page: 1 })
+    expect(result).toMatchObject({ pages: 6, recentPages: 1 })
+    expect(await state(db, 'cursor')).toBe(now - 55 * DAY)
+  })
+
+  it('continues a recent-days round across runs and caps it while backfilling', async () => {
+    const db = memoryDb()
+    const now = 100 * DAY
+    // 最近兩天有 5 頁
+    const recent = (q: { startTime: number; page: number }) => q.startTime >= now - 2 * DAY && q.page < 5
+    const first = listingGraphql(recent)
+    expect(await crawl(db, first.graphql, now, 68)).toMatchObject({ pages: 6, recentPages: 3 })
+    expect(await state(db, 'recent_page')).toBe(4)
+
+    // 下一小時：同一輪繼續第 4、5 頁（起點不變），掃完後剩下的頁數補舊資料
+    const second = listingGraphql(recent)
+    expect(await crawl(db, second.graphql, now + 3600_000, 68)).toMatchObject({ pages: 6, recentPages: 2 })
+    expect(second.lists.slice(0, 2).map((l) => [l.startTime, l.page])).toEqual([
+      [now - 2 * DAY, 4],
+      [now - 2 * DAY, 5],
+    ])
+    expect(await state(db, 'recent_page')).toBe(1)
+    expect(await state(db, 'recent_start')).toBe(now + 3600_000 - 2 * DAY)
+  })
+
+  it('gives every page to the last two days once the backfill has caught up', async () => {
+    const db = memoryDb()
+    const now = 100 * DAY
+    await db.prepare("INSERT INTO crawl_state (key, value) VALUES ('zone68:cursor', ?)").bind(String(now - 2 * DAY - 3600_000)).run()
+    const { graphql, lists } = listingGraphql((q) => q.page < 10)
+    expect(await crawl(db, graphql, now, 68)).toMatchObject({ pages: 6, recentPages: 6 })
+    // 補舊資料只落後一小時：不補
+    expect(lists.every((l) => l.startTime === now - 2 * DAY)).toBe(true)
   })
 
   it('stops when the hourly points are mostly used', async () => {
