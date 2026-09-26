@@ -7,6 +7,7 @@ import { mechanicLabel, type MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
 import { MIRROR_LABELS, VARIANT_LEAD_MS, type Divergence, type TrackPoint } from './positions'
 import { formatFightTime } from './timeline'
+import { isPotionName } from '../fflogs/report'
 import type { WindowSummary } from './windows'
 
 export type Severity = 'high' | 'medium' | 'low'
@@ -68,7 +69,6 @@ function mechanicNote(input: AdviceInput, start: number, end: number): string {
   return `這段之前 Boss 的隨機機制不同（你：${names(m.mine, m.ref)}；參考：${names(m.ref, m.mine)}），差異可能是機制造成。`
 }
 
-const POTION_NAME = /Gemdraught|Tincture|Draught|Potion/i
 // 減傷／移動建議中最多列出幾個參考有用、我沒用的時間點
 const MAX_LISTED_TIMES = 5
 
@@ -225,7 +225,7 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUs
     const gcd = isGcd?.(u.abilityId) ?? false
     const fewer = u.ref - u.mine
 
-    if (POTION_NAME.test((englishName ?? abilityName)(u.abilityId))) {
+    if (isPotionName((englishName ?? abilityName)(u.abilityId))) {
       if (fewer > 0) {
         items.push({
           severity: 'high',

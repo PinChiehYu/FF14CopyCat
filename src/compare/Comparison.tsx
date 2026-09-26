@@ -14,10 +14,20 @@ import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { attachMechanics, attachVariants, compareTracks, distanceAt, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, fetchDamageSummary, type AbilityName, type DamageSummary } from '../fflogs/client'
-import { abilityMap, isUnnamedAbility } from '../fflogs/report'
+import { abilityMap, isPotionName, isUnnamedAbility } from '../fflogs/report'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
-import { clipSide, incompatibility, loadSide, withoutAbilities, withoutUnnamedBossCasts, type Selection, type SideData } from './load'
+import {
+  clipSide,
+  incompatibility,
+  loadSide,
+  MEDICATED,
+  unifyPotions,
+  withoutAbilities,
+  withoutUnnamedBossCasts,
+  type Selection,
+  type SideData,
+} from './load'
 import { AdviceList } from './AdviceList'
 import { Mechanics } from './Mechanics'
 import { Metrics } from './Metrics'
@@ -271,14 +281,11 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   const category = useMemo(() => (id: number) => abilityCategory(id, job), [job])
   // 沒有名稱的 Boss 技能（Boss 的演出動作等）只用來對齊時間軸，其餘都不顯示
   const alignment = useMemo(() => buildAlignment(mineLoaded.bossCasts, refLoaded.bossCasts), [mineLoaded, refLoaded])
-  const mine = useMemo(
-    () => withoutUnnamedBossCasts(withoutAbilities(mineLoaded, (id) => category(id) === 'ignored')),
-    [mineLoaded, category],
-  )
-  const reference = useMemo(
-    () => withoutUnnamedBossCasts(withoutAbilities(refLoaded, (id) => category(id) === 'ignored')),
-    [refLoaded, category],
-  )
+  // 兩邊的強化藥統一成同一個 ID（依使用後得到的強化藥效果判斷，見 unifyPotions）
+  const { mine, ref: reference, potionId } = useMemo(() => {
+    const prepare = (side: SideData) => withoutUnnamedBossCasts(withoutAbilities(side, (id) => category(id) === 'ignored'))
+    return unifyPotions(prepare(mineLoaded), prepare(refLoaded))
+  }, [mineLoaded, refLoaded, category])
   const zhNames = useAbilityNames(mine, reference)
   // 顯示用：有繁中名稱時取代 FFLogs 的英文名稱，英文保留在 englishName
   const abilities = useMemo(() => {
@@ -287,8 +294,15 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       const zh = zhNames.get(id)
       if (zh) merged.set(id, { ...ability, name: zh.name, englishName: ability.name })
     }
+    // 道具 ID 對不上遊戲資料時（例如強化藥記成武器），依效果判定的強化藥改以「強化藥」顯示
+    const potion = potionId === null ? undefined : merged.get(potionId)
+    if (potion && !isPotionName(potion.englishName ?? potion.name)) {
+      // 圖示也是錯的道具，改用強化藥效果的圖示
+      const icon = merged.get(MEDICATED)?.icon ?? potion.icon
+      merged.set(potionId!, { ...potion, name: '強化藥', englishName: `Potion (item #${potionId})`, icon })
+    }
     return merged
-  }, [mine, reference, zhNames])
+  }, [mine, reference, zhNames, potionId])
   const drifts = alignment.anchors.map((a) => (a.ref - a.mine) / 1000)
 
   // 比較範圍：兩場戰鬥都還在進行的時段（參考時間 0～較短一方結束）。

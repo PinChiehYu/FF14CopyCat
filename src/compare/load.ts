@@ -12,7 +12,7 @@ import {
 import type { PositionSample } from '../analysis/positions'
 import { toFightTime } from '../analysis/timeline'
 import { fetchFightEvents } from '../fflogs/client'
-import { abilityMap, isUnnamedAbility } from '../fflogs/report'
+import { abilityMap, isItemId, isUnnamedAbility } from '../fflogs/report'
 import { jobName } from '../jobs/names'
 import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
 
@@ -278,6 +278,37 @@ export function withoutAbilities(side: SideData, drop: (abilityId: number) => bo
 export function withoutUnnamedBossCasts(side: SideData): SideData {
   const abilities = abilityMap(side.selection.report)
   return { ...side, bossCasts: side.bossCasts.filter((c) => !isUnnamedAbility(abilities.get(c.abilityId)?.name)) }
+}
+
+// 強化藥的效果（Medicated，狀態 49）；使用道具後這麼久以內得到效果，就認定該道具是強化藥
+export const MEDICATED = 1_000_049
+const POTION_EFFECT_MS = 3000
+
+/** 一側用過的強化藥道具 ID：使用後不久得到強化藥效果的道具。 */
+export function potionIds(side: SideData): Set<number> {
+  const medicated = side.buffs.filter((b) => b.statusId === MEDICATED && !b.prepull)
+  return new Set(
+    side.playerCasts
+      .filter((c) => isItemId(c.abilityId) && medicated.some((b) => b.start >= c.t && b.start - c.t <= POTION_EFFECT_MS))
+      .map((c) => c.abilityId),
+  )
+}
+
+/**
+ * 兩邊的強化藥統一成同一個 ID 比較（沿用我的，我沒用過時用參考的），回傳統一後的兩邊與該 ID。
+ * 不同版本的藥（或 HQ／NQ）ID 不同；而且繁中服的道具 ID 不一定對得上遊戲資料（2026-08 的日誌吃藥記成道具 46026，
+ * 國際服資料為武器「典禮圓月輪」），不能依名稱判斷，改依使用後得到的強化藥效果。
+ */
+export function unifyPotions(mine: SideData, ref: SideData): { mine: SideData; ref: SideData; potionId: number | null } {
+  const minePotions = potionIds(mine)
+  const refPotions = potionIds(ref)
+  const potionId = [...minePotions, ...refPotions][0] ?? null
+  if (potionId === null) return { mine, ref, potionId }
+  const remap = (side: SideData, ids: Set<number>): SideData => ({
+    ...side,
+    playerCasts: side.playerCasts.map((c) => (ids.has(c.abilityId) ? { ...c, abilityId: potionId } : c)),
+  })
+  return { mine: remap(mine, minePotions), ref: remap(ref, refPotions), potionId }
 }
 
 /** 兩邊是否可比較；不行時回傳原因。 */

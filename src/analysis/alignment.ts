@@ -147,14 +147,32 @@ const SPIKE_NEIGHBORS = 3
  */
 function dropSpikes(anchors: Anchor[]): Anchor[] {
   const offset = (a: Anchor) => a.ref - a.mine
-  return anchors.filter((a, i) => {
-    const before = anchors.slice(Math.max(0, i - SPIKE_NEIGHBORS), i).map(offset)
-    const after = anchors.slice(i + 1, i + 1 + SPIKE_NEIGHBORS).map(offset)
-    if (before.length === 0 || after.length === 0) return true
+  // 與前後的差距（不是孤立錨點時為 0）
+  const deviation = (list: Anchor[], i: number) => {
+    const before = list.slice(Math.max(0, i - SPIKE_NEIGHBORS), i).map(offset)
+    const after = list.slice(i + 1, i + 1 + SPIKE_NEIGHBORS).map(offset)
+    if (before.length === 0 || after.length === 0) return 0
     const b = median(before)
     const c = median(after)
-    return !(Math.abs(offset(a) - b) >= SPIKE_MS && Math.abs(offset(a) - c) >= SPIKE_MS && Math.abs(b - c) < SPIKE_MS)
-  })
+    const d = Math.min(Math.abs(offset(list[i]) - b), Math.abs(offset(list[i]) - c))
+    return d >= SPIKE_MS && Math.abs(b - c) < SPIKE_MS ? d : 0
+  }
+  // 連續配錯好幾個時，它們彼此是鄰居、一次看不出來（M5S A 面／B 面相反時連續 3 個）：
+  // 每次去掉最離群的一個再重新判斷，直到沒有孤立錨點
+  let list = anchors
+  for (;;) {
+    let worst = -1
+    let worstDeviation = 0
+    list.forEach((_, i) => {
+      const d = deviation(list, i)
+      if (d > worstDeviation) {
+        worst = i
+        worstDeviation = d
+      }
+    })
+    if (worst < 0) return list
+    list = list.filter((_, i) => i !== worst)
+  }
 }
 
 /** 依 mine 排序的配對中，取 ref 嚴格遞增的最長子序列，去掉時間順序矛盾的錯誤配對。 */

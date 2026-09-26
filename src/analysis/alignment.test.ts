@@ -46,6 +46,16 @@ describe('buildAlignment', () => {
     expect(pushDifferences(anchors)).toEqual([])
   })
 
+  it('drops a run of several mismatched anchors', () => {
+    // 實例（M5S）：B 面的放入與播放（兩個 ID）連續 3 個錨點都配到參考早 20 秒的那一次
+    const common = [cast(10, 1), cast(15, 2), cast(20, 3), cast(65, 4), cast(75, 5), cast(80, 6)]
+    const mine = [...common, cast(27, 10), cast(47, 11), cast(58, 12), cast(59, 13)]
+    const ref = [...common, cast(27, 11), cast(38, 12), cast(39, 13), cast(47, 10)]
+    const { anchors, mineToRef } = buildAlignment(mine, ref)
+    expect(anchors.map((a) => a.abilityId)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(mineToRef(50_000)).toBe(50_000)
+  })
+
   it('keeps the anchors around a real push', () => {
     // 60 秒後參考都早 10 秒：前後兩邊的時間差不同，不是孤立錨點
     const mine = [cast(10, 1), cast(20, 2), cast(30, 3), cast(60, 4), cast(70, 5), cast(80, 6)]

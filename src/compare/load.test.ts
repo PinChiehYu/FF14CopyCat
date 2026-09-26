@@ -10,6 +10,7 @@ import {
   deaths,
   incompatibility,
   playerCasts,
+  unifyPotions,
   type Selection,
   type SideData,
 } from './load'
@@ -213,6 +214,45 @@ describe('clipSide', () => {
     expect(clipped.bossCasts).toHaveLength(1)
     expect(clipped.playerPositions).toHaveLength(1)
     expect(clipped.duration).toBe(5000)
+  })
+})
+
+describe('unifyPotions', () => {
+  const side = (casts: [number, number][], medicatedAt: number[]): SideData => ({
+    selection: {} as Selection,
+    playerCasts: casts.map(([t, abilityId]) => ({ t, abilityId })),
+    autoAttacks: [],
+    bossCasts: [],
+    playerPositions: [],
+    bossPositions: [],
+    buffs: medicatedAt.map((start) => ({ statusId: 1_000_049, start, end: start + 30_000, prepull: false, openEnded: false })),
+    prepull: [],
+    auras: [],
+    hp: [],
+    castBars: [],
+    deaths: [],
+    duration: 600_000,
+  })
+
+  it('treats items followed by the Medicated effect as the same potion on both sides', () => {
+    const potion = 0x2000000 + 1_045_995 // 剛力之寶藥 3 級 HQ
+    const chakrams = 0x2000000 + 1_046_026 // 繁中服 2026-08 的日誌吃藥時記成的道具（國際服資料為武器）
+    const food = 0x2000000 + 46_000
+    const { mine, ref, potionId } = unifyPotions(
+      side([[6000, potion], [360_000, potion]], [6500, 360_500]),
+      side([[6600, chakrams], [374_000, chakrams], [1000, food]], [7000, 374_300]),
+    )
+    expect(potionId).toBe(potion)
+    expect(mine.playerCasts.map((c) => c.abilityId)).toEqual([potion, potion])
+    // 沒有得到強化藥效果的道具（食物）不變
+    expect(ref.playerCasts.map((c) => c.abilityId)).toEqual([potion, potion, food])
+  })
+
+  it('uses the reference potion when I did not drink one', () => {
+    const chakrams = 0x2000000 + 1_046_026
+    const { mine, potionId } = unifyPotions(side([], []), side([[6600, chakrams]], [7000]))
+    expect(potionId).toBe(chakrams)
+    expect(mine.playerCasts).toEqual([])
   })
 })
 
