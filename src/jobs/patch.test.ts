@@ -9,16 +9,19 @@ describe('patchAt', () => {
     // 基準日誌：2026-08 的繁中服為 7.2，技能等同國際服 7.3
     expect(patchAt(at('2026-08-19T12:00:00Z'))).toEqual({ key: '7.2', rules: '7.3' })
     expect(patchAt(at('2026-09-25T12:00:00Z'))).toEqual({ key: '7.25', rules: '7.3' })
-    expect(patchAt(at('2026-05-01T12:00:00Z'))).toEqual({ key: '7.1', rules: '7.1' })
+    // 繁中服 7.0～7.15 的技能等同國際服 7.2
+    expect(patchAt(at('2026-05-01T12:00:00Z'))).toEqual({ key: '7.1', rules: '7.2' })
+    expect(patchAt(at('2026-01-01T12:00:00Z')).rules).toBe('7.2')
     expect(patchAt(at('2026-01-01T12:00:00Z')).key).toBe('7.0')
     // 改版當天台灣時間 00:00 起
     expect(patchAt(at('2026-07-27T15:59:00Z')).key).toBe('7.1')
     expect(patchAt(at('2026-07-27T16:00:00Z')).key).toBe('7.2')
   })
 
-  it('does not use the 7.2 Starry Muse rules for current TC logs', () => {
-    const starry = windowRules('Pictomancer', patchAt(at('2026-08-19T12:00:00Z')).rules)[0]
-    expect(starry.limitedActions).toBeDefined()
+  it('uses the 7.2 Starry Muse rules only for TC 7.0～7.15 logs', () => {
+    const starry = (iso: string) => windowRules('Pictomancer', patchAt(at(iso)).rules)[0]
+    expect(starry('2026-08-19T12:00:00Z').limitedActions).toBeDefined()
+    expect(starry('2026-05-01T12:00:00Z').limitedActions).toBeUndefined()
   })
 
   it('compares patch numbers', () => {

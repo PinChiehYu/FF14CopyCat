@@ -611,7 +611,7 @@ export const RULES: Record<string, WindowRule[]> = {
       expectedActions: [each([PCT.STAR_PRISM, PCT.RAINBOW_DRIP, PCT.COMET_IN_BLACK]), total(PCT.MOG_OR_MADEEN, 1)],
       source: 'pct/StarryMuse',
       patches: { from: '7.2', before: '7.3' },
-      patchNote: '國際服 7.2 的規則：不要求 3 次重錘、可使用加色系技能，改檢查 GCD 數 9 個（繁中服目前的技能等同國際服 7.3，不適用）',
+      patchNote: '國際服 7.2 的規則：不要求 3 次重錘、可使用加色系技能，改檢查 GCD 數 9 個（繁中服 7.0～7.15 適用）',
     },
     {
       key: 'starry-muse',
