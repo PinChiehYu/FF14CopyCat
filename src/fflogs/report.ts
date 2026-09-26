@@ -9,6 +9,14 @@ export function isStatusId(id: number): boolean {
   return id >= 1_000_000 && id < 2_000_000
 }
 
+/**
+ * 遊戲資料沒有名稱的技能：FFLogs 以 `unknown_<16 進位 ID>` 表示（遊戲資料各語言的名稱都是空的）。
+ * 例如熱舞綠光的 #42693（`unknown_a6c5`）是 Boss 對環境施放、沒有傷害的演出動作，對使用者沒有意義。
+ */
+export function isUnnamedAbility(name: string | undefined): boolean {
+  return !name || /^unknown_[0-9a-f]+$/i.test(name)
+}
+
 export function abilityMap(report: Report): Map<number, Ability> {
   return new Map(report.masterData.abilities.map((a) => [a.gameID, a]))
 }

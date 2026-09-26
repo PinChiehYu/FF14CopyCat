@@ -507,6 +507,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
 
+### 2026-09-27 隱藏沒有名稱的 Boss 技能
+- 資料：熱舞綠光的 #42693 在 FFLogs 顯示為 `unknown_a6c5`（`unknown_` ＋ 16 進位 ID）；遊戲資料 Action 表的名稱在英、日、簡中、繁中都是空字串（ActionCategory 為 Ability），`/abilities` 查不到名稱。實際為 Boss 對 `Environment` 施放、沒有傷害的動作，出現在下一個機制開始前約 2 秒（`BF76r8yKh4wGaYkm` #1：0:21 放入A面前、1:11 迪斯可地獄前、2:22 大合奏前），應為演出或移動。
+- 變更：`fflogs/report.ts` 新增 `isUnnamedAbility()`；`Comparison.tsx` 以含無名技能的 Boss 施放建立對齊（仍是有用的錨點），之後以 `load.ts` 的 `withoutUnnamedBossCasts()` 移除，機制差異、站位卡片與建議、當下狀態、時間軸都不顯示；`abilityName()` 遇到這類名稱顯示「無名稱技能」。
+
 ### 2026-09-27 站位差異附上隨機機制差異
 - 變更：`positions.ts` 新增 `Divergence.variant` 與 `attachVariants()`（區段期間或開始前 `VARIANT_LEAD_MS` 10 秒內的 `kind === 'variant'` 機制差異；建議的 `mechanicNote()` 共用同一個常數）；`Comparison.tsx` 先算 `mechanicDifferences()` 再算站位；`advice.ts` 的 `positionAdvice()` 排除有 `variant` 的段、合併成一則；`Positions.tsx` 顯示「機制不同」。
 - 實測：熱舞綠光 `BF76r8yKh4wGaYkm` #1 vs `YAzxqkpVfBNmcMwj` #1 的 7 段站位差異中，3:58–4:15 標為機制不同（我 4 拍節奏／參考 8 拍節奏）；開場 A 面／B 面期間兩人相距未超過 8 yalm，沒有站位差異。

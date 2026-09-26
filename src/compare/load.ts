@@ -12,6 +12,7 @@ import {
 import type { PositionSample } from '../analysis/positions'
 import { toFightTime } from '../analysis/timeline'
 import { fetchFightEvents } from '../fflogs/client'
+import { abilityMap, isUnnamedAbility } from '../fflogs/report'
 import { jobName } from '../jobs/names'
 import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
 
@@ -269,6 +270,14 @@ export function clipSide(side: SideData, endMs: number): SideData {
 /** 移除不需紀錄的技能（例如坦克的挑釁、退避、坦姿開關），時間軸、技能次數與建議都不顯示。 */
 export function withoutAbilities(side: SideData, drop: (abilityId: number) => boolean): SideData {
   return { ...side, playerCasts: side.playerCasts.filter((c) => !drop(c.abilityId)) }
+}
+
+/**
+ * 移除沒有名稱的 Boss 技能（見 isUnnamedAbility）：只用來對齊時間軸，機制差異、站位、當下狀態與時間軸都不顯示。
+ */
+export function withoutUnnamedBossCasts(side: SideData): SideData {
+  const abilities = abilityMap(side.selection.report)
+  return { ...side, bossCasts: side.bossCasts.filter((c) => !isUnnamedAbility(abilities.get(c.abilityId)?.name)) }
 }
 
 /** 兩邊是否可比較；不行時回傳原因。 */

@@ -14,10 +14,10 @@ import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { attachMechanics, attachVariants, compareTracks, distanceAt, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, fetchDamageSummary, type AbilityName, type DamageSummary } from '../fflogs/client'
-import { abilityMap } from '../fflogs/report'
+import { abilityMap, isUnnamedAbility } from '../fflogs/report'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
-import { clipSide, incompatibility, loadSide, withoutAbilities, type Selection, type SideData } from './load'
+import { clipSide, incompatibility, loadSide, withoutAbilities, withoutUnnamedBossCasts, type Selection, type SideData } from './load'
 import { AdviceList } from './AdviceList'
 import { Mechanics } from './Mechanics'
 import { Metrics } from './Metrics'
@@ -269,9 +269,16 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   const damage = useDamageSummaries(mineLoaded.selection, refLoaded.selection)
   // 不需紀錄的技能（挑釁、退避、坦姿開關）一開始就移除
   const category = useMemo(() => (id: number) => abilityCategory(id, job), [job])
-  const mine = useMemo(() => withoutAbilities(mineLoaded, (id) => category(id) === 'ignored'), [mineLoaded, category])
-  const reference = useMemo(() => withoutAbilities(refLoaded, (id) => category(id) === 'ignored'), [refLoaded, category])
-  const alignment = useMemo(() => buildAlignment(mine.bossCasts, reference.bossCasts), [mine, reference])
+  // 沒有名稱的 Boss 技能（Boss 的演出動作等）只用來對齊時間軸，其餘都不顯示
+  const alignment = useMemo(() => buildAlignment(mineLoaded.bossCasts, refLoaded.bossCasts), [mineLoaded, refLoaded])
+  const mine = useMemo(
+    () => withoutUnnamedBossCasts(withoutAbilities(mineLoaded, (id) => category(id) === 'ignored')),
+    [mineLoaded, category],
+  )
+  const reference = useMemo(
+    () => withoutUnnamedBossCasts(withoutAbilities(refLoaded, (id) => category(id) === 'ignored')),
+    [refLoaded, category],
+  )
   const zhNames = useAbilityNames(mine, reference)
   // 顯示用：有繁中名稱時取代 FFLogs 的英文名稱，英文保留在 englishName
   const abilities = useMemo(() => {
@@ -344,7 +351,12 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   }, [mineInRange, refInRange, reference, alignment, compareEnd, mechanics])
   // 報告技能清單中沒有的（兩邊都沒用過）也用查到的繁中名稱
   const abilityName = useCallback(
-    (id: number) => abilities.get(id)?.name ?? zhNames.get(id)?.name ?? `#${id}`,
+    (id: number) => {
+      const name = abilities.get(id)?.name ?? zhNames.get(id)?.name
+      if (name === undefined) return `#${id}`
+      // FFLogs 的 unknown_<16 進位 ID>：遊戲資料沒有名稱
+      return isUnnamedAbility(name) ? '無名稱技能' : name
+    },
     [abilities, zhNames],
   )
   // 技能窗口（xivanalysis 式的職業規則）：兩邊各自評分，只看比較範圍內
