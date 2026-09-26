@@ -1676,6 +1676,21 @@ h3 {
     gap: 4px;
   }
 
+  /* 分頁：等寬的 3 欄格線（技能使用次數有 6 個分頁，自然換行會排成參差的多列） */
+  .tab-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .tab {
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 4px;
+    font-size: 0.9em;
+    white-space: nowrap;
+  }
+
   /* 排名選項：省略名次、戰鬥長度與「DPS」字樣（PR 已表示名次，其餘在滑鼠提示），留空間給玩家名稱 */
   .finder-option {
     grid-template-columns: 3.8em minmax(0, 1fr) auto;
