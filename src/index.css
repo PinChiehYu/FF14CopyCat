@@ -1853,9 +1853,50 @@ h3 {
   }
 
   /* 機制差異表：縮小間距 */
+  /* 機制差異表：每列拆成兩行——「時間｜類型」、下方「我的 Boss｜參考的 Boss」各佔一半，
+     表頭只留兩個 Boss 欄；避免四欄擠在一起讓表頭與技能名稱斷行 */
+  .metrics-table.mechanics,
+  .metrics-table.mechanics thead,
+  .metrics-table.mechanics tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .metrics-table.mechanics tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 8px;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+
   .metrics-table.mechanics th,
   .metrics-table.mechanics td {
-    padding: 4px 6px;
+    padding: 3px 2px;
+    border-bottom: none;
+  }
+
+  .metrics-table.mechanics thead th:nth-child(-n + 2) {
+    display: none;
+  }
+
+  .metrics-table.mechanics tbody th {
+    padding-top: 6px;
+  }
+
+  .metrics-table.mechanics tbody th button {
+    padding: 1px 8px;
+    font-size: 0.9em;
+  }
+
+  .metrics-table.mechanics td.mech-kind {
+    padding-top: 6px;
+    font-size: 0.85em;
+    color: var(--text-muted);
+  }
+
+  .metrics-table.mechanics tbody td:not(.mech-kind) {
+    padding-bottom: 6px;
   }
 
   /* 技能使用次數：一列兩張卡片，數據排成 2×2 */
