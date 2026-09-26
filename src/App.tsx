@@ -152,7 +152,7 @@ function ReportSelector({
         placeholder={fightNote ?? '請選擇戰鬥'}
         disabled={fightNote !== null}
         disabledTitle={fightNote ?? undefined}
-        lockLabel={null}
+        showLock={false}
         // 換戰鬥時角色回到自動選擇
         onChange={(fightId) => setOverrides({ fightId, playerId: null })}
       />
@@ -164,7 +164,7 @@ function ReportSelector({
         placeholder={note ?? '請選擇角色'}
         disabled={locked || noMatch}
         disabledTitle={noMatch ? (note ?? undefined) : '這場戰鬥只有這位與你同職業的玩家'}
-        lockLabel={noMatch ? null : '已鎖定'}
+        showLock={!noMatch}
         onChange={(playerId) => setOverrides((o) => ({ ...o, playerId }))}
       />
     </div>

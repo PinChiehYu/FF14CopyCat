@@ -162,7 +162,7 @@ h1 {
   min-width: 0;
 }
 
-/* 鎖定時不淡化（瀏覽器預設會把 disabled 的文字變灰），只改游標並顯示「已鎖定」 */
+/* 鎖定時不淡化（瀏覽器預設會把 disabled 的文字變灰），只改游標並以鎖頭圖示取代箭頭 */
 .dropdown-button:disabled {
   cursor: default;
   color: var(--text);
@@ -173,9 +173,11 @@ h1 {
   border-color: var(--border);
 }
 
+/* 與箭頭佔相同寬度，徽章位置不因鎖定而移動 */
 .dropdown-lock {
   flex: none;
-  font-size: 0.8em;
+  width: 14px;
+  height: 14px;
   color: var(--text-muted);
 }
 

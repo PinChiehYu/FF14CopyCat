@@ -16,7 +16,7 @@ export function Dropdown<T>({
   placeholder = '請選擇',
   disabled = false,
   disabledTitle,
-  lockLabel = '已鎖定',
+  showLock = true,
   onChange,
 }: {
   label: ReactNode
@@ -27,8 +27,8 @@ export function Dropdown<T>({
   disabled?: boolean
   /** 鎖定時滑鼠停留的說明 */
   disabledTitle?: string
-  /** 鎖定時右側的標示；null 不顯示 */
-  lockLabel?: string | null
+  /** 鎖定時右側顯示鎖頭圖示（取代箭頭）；停用但不是鎖定（例如沒有可選項目）時設為 false */
+  showLock?: boolean
   onChange: (value: T) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -105,7 +105,12 @@ export function Dropdown<T>({
           {selected ? selected.content : <span className="dropdown-placeholder">{placeholder}</span>}
         </span>
         {disabled ? (
-          lockLabel && <span className="dropdown-lock">{lockLabel}</span>
+          showLock && (
+            <svg className="dropdown-lock" viewBox="0 0 16 16" role="img" aria-label="已鎖定">
+              <rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="currentColor" />
+              <path d="M5.25 7V5a2.75 2.75 0 0 1 5.5 0v2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+          )
         ) : (
           <span className="dropdown-arrow" aria-hidden="true" />
         )}
