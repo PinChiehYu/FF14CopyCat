@@ -10,8 +10,8 @@ import { loadBossCasts, type Selection } from './load'
 
 // 同時比對機制的請求數（Worker 每 IP 每分鐘 60 次）
 const MECHANIC_CONCURRENCY = 3
-// 最多列出（並比對機制）的筆數
-const MAX_LISTED = 20
+// 最多列出（並比對機制）的筆數：同一人常有多場，列多一點才找得到機制相同的
+const MAX_LISTED = 40
 
 type MechanicState = { status: 'loading' } | { status: 'done'; variants: number } | { status: 'error' }
 
@@ -175,7 +175,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
                 label={
                   <span className="finder-summary">
                     <span
-                      title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，每人取最好的一場，依 DPS 排序；列出 PR 範圍內的前 ${MAX_LISTED} 筆`}
+                      title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，PR 依每人最好的一場計算；列出 PR 範圍內玩家的所有擊殺（重複上傳的只留一筆），依 DPS 排序的前 ${MAX_LISTED} 筆`}
                     >
                       共 {result.count} 人，列出 {result.rows.length} 筆
                     </span>

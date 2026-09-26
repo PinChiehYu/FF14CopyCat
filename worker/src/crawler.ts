@@ -285,8 +285,8 @@ export function percentile(rank: number, count: number): number {
 }
 
 /**
- * 某 Boss、某職業的繁中服排名：每位玩家（名稱＋伺服器）只取最好的一場，依 DPS 由高到低，
- * 回傳 PR 在 [minPr, maxPr] 之間的前 limit 筆與總人數。
+ * 某 Boss、某職業的繁中服排名：玩家（名稱＋伺服器）的名次與 PR 依每人最好的一場計算，
+ * 回傳 PR 在 [minPr, maxPr] 之間的玩家的所有擊殺（依 DPS 由高到低，重複上傳的只留一筆）前 limit 筆與總人數。
  */
 export async function tcRankings(
   db: DbLike,
@@ -297,12 +297,11 @@ export async function tcRankings(
   maxPr: number,
   limit = 100,
 ): Promise<{ count: number; rankings: RankedParse[] }> {
-  // SQLite：GROUP BY 搭配 MAX() 時，其他欄位取自最大值那一列
   const { results } = await db
     .prepare(
-      `SELECT report, fight, actor, name, server, MAX(dps) AS dps, fight_start, fight_end, report_start
+      `SELECT report, fight, actor, name, server, dps, fight_start, fight_end, report_start
        FROM parses WHERE encounter = ? AND difficulty = ? AND job = ?
-       GROUP BY name, server ORDER BY dps DESC`,
+       ORDER BY dps DESC, report_start, report`,
     )
     .bind(encounter, difficulty, job)
     .all<{
@@ -316,11 +315,25 @@ export async function tcRankings(
       fight_end: number
       report_start: number
     }>()
-  const count = results.length
-  const rankings = results
-    .map((r, i) => ({
-      rank: i + 1,
-      pr: percentile(i + 1, count),
+  // 玩家的名次與 PR 以每人最好的一場計算（依 DPS 由高到低，第一次出現即最好的一場）
+  const player = (r: { name: string; server: string }) => `${r.name}@${r.server}`
+  const ranks = new Map<string, number>()
+  for (const r of results) if (!ranks.has(player(r))) ranks.set(player(r), ranks.size + 1)
+  const count = ranks.size
+  // 列出 PR 範圍內玩家的所有擊殺：好的玩家常有多場，找得到隨機機制與我相同的機率較高。
+  // 同一場戰鬥被不同人重複上傳（不同報告、DPS 與戰鬥長度相同）只留一筆
+  const seen = new Set<string>()
+  const rankings: RankedParse[] = []
+  for (const r of results) {
+    const rank = ranks.get(player(r))!
+    const pr = percentile(rank, count)
+    if (pr < minPr || pr > maxPr) continue
+    const duplicate = `${player(r)}|${Math.round(r.dps)}|${Math.round((r.fight_end - r.fight_start) / 1000)}`
+    if (seen.has(duplicate)) continue
+    seen.add(duplicate)
+    rankings.push({
+      rank,
+      pr,
       report: r.report,
       fight: r.fight,
       actor: r.actor,
@@ -330,8 +343,8 @@ export async function tcRankings(
       fightStart: r.fight_start,
       fightEnd: r.fight_end,
       reportStart: r.report_start,
-    }))
-    .filter((r) => r.pr >= minPr && r.pr <= maxPr)
-    .slice(0, limit)
+    })
+    if (rankings.length >= limit) break
+  }
   return { count, rankings }
 }

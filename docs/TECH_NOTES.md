@@ -126,7 +126,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
   - 這小時已用超過 2,000 點就跳過，把額度留給訪客。
   - 掃描的副本：`CRAWL_ZONES = [68]`、`CRAWL_DIFFICULTY = 101`，**換季時要更新**。
 - 資料表：`parses`（主鍵 report＋fight＋actor；另存戰鬥在報告中的開始／結束，供前端抓 Boss 施放比對機制）、`scanned_reports`、`crawl_state`。
-- `tcRankings()`：`GROUP BY name, server` 搭配 `MAX(dps)`（SQLite 會取最大值那一列的其他欄位）取每人最好的一場，依 DPS 排序，`PR = floor((人數 − 名次) ÷ (人數 − 1) × 100)`，再依 PR 範圍篩選。
+- `tcRankings()`：取出該 Boss／職業的所有紀錄依 DPS 排序（同 DPS 以較早的報告優先），每位玩家（名稱＋伺服器）第一次出現的順序即名次，`PR = floor((人數 − 名次) ÷ (人數 − 1) × 100)`；回傳 PR 在範圍內的玩家的所有紀錄（每筆帶該玩家的名次與 PR）。D1 中同一場擊殺常被隊伍中不同人重複上傳（例：劍十三@巴哈姆特 32973 DPS 同時在 `nQY4gy78XCRdTAWH` #24 與 `2Apm4MrbCR3jB7qT` #8，也有同一場 3 份的），以「玩家＋四捨五入的 DPS＋戰鬥長度（秒）」去重。前端最多列 40 筆（勾「機制相同」時逐筆抓 Boss 施放，3 個並行，在 Worker 每 IP 每分鐘 60 次限制內）。
 - 實測（2026-09-27）：
   - 第一次執行從 60 天前（7 月底）開始，35 份報告都沒有繁中服擊殺（該副本那時可能還沒有繁中服紀錄）。
   - 暫時把進度移到最近兩天驗證：50 份報告收錄 192 筆，涵蓋本季 4 隻 Boss（97～100）與 20 個職業；最高 DPS 為利維坦的忍者 Wqw 約 3.8 萬。
@@ -503,6 +503,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 原因：依 xivanalysis 的職業規則做技能窗口分析，並顯示開打前的效果（見 DESIGN.md）。
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
+
+### 2026-09-27 排名回傳每人所有擊殺
+- 變更：	cRankings() 不再 GROUP BY name, server，改在程式中計算每人最好一場的名次與 PR，回傳範圍內玩家的所有紀錄並去除重複上傳；ReferenceFinder 的 MAX_LISTED 20 → 40。Worker 已部署。
+- 原因：只取最好一場時常找不到隨機機制相同的參考（見 DESIGN.md）。
 
 ### 2026-09-26 MT／ST 查詢端點；隊伍位置排序
 - 變更：Worker 新增 `/reports/:code/auto-attacks-taken`（`table` 查詢，DamageTaken＋名稱過濾）；`jobs/names.ts` 新增 `sortByPartySlot()`、`isStandardParty()`；`Dropdown` 新增 `lockLabel`。Worker 已部署。

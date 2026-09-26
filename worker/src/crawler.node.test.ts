@@ -146,7 +146,7 @@ describe('crawl', () => {
 })
 
 describe('tcRankings', () => {
-  it('ranks each character by their best parse and filters by PR', async () => {
+  it('ranks characters by their best parse and lists all their kills', async () => {
     const db = memoryDb()
     const insert = (report: string, name: string, dps: number, job = 'Samurai') =>
       db
@@ -160,6 +160,8 @@ describe('tcRankings', () => {
     await insert('C', '乙', 29_000)
     await insert('D', '丙', 28_000)
     await insert('E', '丁', 20_000)
+    await insert('H', '乙', 29_000) // 同一場被另一人重複上傳：只留一筆
+    await insert('I', '丙', 25_000) // 同一人較差的一場：沿用最好一場的名次與 PR
     // 其他職業不列入人數與名次（包括同一人玩其他職業）
     await insert('F', '戊', 40_000, 'Ninja')
     await insert('G', '丁', 35_000, 'Ninja')
@@ -168,12 +170,15 @@ describe('tcRankings', () => {
     expect(all.count).toBe(4)
     expect(all.rankings.map((r) => [r.name, r.report, r.rank, r.pr])).toEqual([
       ['甲', 'B', 1, 100],
+      ['甲', 'A', 1, 100],
       ['乙', 'C', 2, 66],
       ['丙', 'D', 3, 33],
+      ['丙', 'I', 3, 33],
       ['丁', 'E', 4, 0],
     ])
     const mid = await tcRankings(db, 100, 101, 'Samurai', 30, 70)
-    expect(mid.rankings.map((r) => r.name)).toEqual(['乙', '丙'])
+    expect(mid.rankings.map((r) => r.report)).toEqual(['C', 'D', 'I'])
+    expect((await tcRankings(db, 100, 101, 'Samurai', 0, 100, 2)).rankings.map((r) => r.report)).toEqual(['B', 'A'])
     const ninja = await tcRankings(db, 100, 101, 'Ninja', 0, 100)
     expect(ninja.rankings.map((r) => [r.name, r.rank, r.pr])).toEqual([
       ['戊', 1, 100],
