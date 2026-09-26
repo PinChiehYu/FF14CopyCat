@@ -36,7 +36,6 @@ export interface TcRanking {
   actor: number
   name: string
   server: string
-  dps: number
   /** 排名依據（FFLogs 的 rDPS） */
   rdps: number
   /** 戰鬥在報告中的開始與結束（毫秒，相對於報告開始） */

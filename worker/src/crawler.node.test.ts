@@ -72,29 +72,12 @@ describe('crawl', () => {
     // 只有繁中服的報告查傷害表；非繁中服、非零式、非玩家不存
     expect(result).toMatchObject({ tcReports: 1, parses: 1 })
     expect(calls.filter((c) => c === 'damage')).toHaveLength(1)
-    const rows = await db.prepare('SELECT report, fight, actor, job, dps, rdps FROM parses').all()
-    expect(rows.results).toEqual([{ report: 'TC1', fight: 3, actor: 1, job: 'Samurai', dps: 25_000, rdps: 30_000 }])
+    const rows = await db.prepare('SELECT report, fight, actor, job, rdps FROM parses').all()
+    expect(rows.results).toEqual([{ report: 'TC1', fight: 3, actor: 1, job: 'Samurai', rdps: 30_000 }])
 
     // 再掃一次：已處理過的報告不再查傷害表
     const again = fakeGraphql([tcReport, globalReport])
     await crawl(db, again.graphql, 10 * 24 * 3600_000 + 1, 68)
-    expect(again.calls.filter((c) => c === 'damage')).toHaveLength(0)
-  })
-
-  it('fills rDPS for parses stored before the column existed', async () => {
-    const db = memoryDb()
-    await db
-      .prepare(
-        "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, fight_start, fight_end, report_start) VALUES ('TC1', 3, 1, 100, 101, 'Samurai', '席德', '泰坦', 25000, 10000, 110000, 0)",
-      )
-      .run()
-    const { graphql, calls } = fakeGraphql([])
-    expect(await crawl(db, graphql, 10 * 24 * 3600_000, 68)).toMatchObject({ rdpsFilled: 1 })
-    expect(calls.filter((c) => c === 'damage')).toHaveLength(1)
-    expect(await db.prepare('SELECT rdps FROM parses').first()).toEqual({ rdps: 30_000 })
-    // 補完後不再查
-    const again = fakeGraphql([])
-    expect(await crawl(db, again.graphql, 10 * 24 * 3600_000 + 1, 68)).toMatchObject({ rdpsFilled: 0 })
     expect(again.calls.filter((c) => c === 'damage')).toHaveLength(0)
   })
 
@@ -165,22 +148,23 @@ describe('crawl', () => {
 describe('tcRankings', () => {
   it('ranks characters by the rDPS of their best parse and lists all their kills', async () => {
     const db = memoryDb()
-    // rdps 為排名依據；dps 預設與 rdps 相同
-    const insert = (report: string, name: string, rdps: number | null, job = 'Samurai', dps = rdps ?? 0) =>
+    // 戰鬥的實際開始時間＝報告開始＋戰鬥在報告中的開始；預設每份報告不同
+    const insert = (report: string, name: string, rdps: number, job = 'Samurai', reportStart = report.charCodeAt(0) * 3600_000, fightStart = 0) =>
       db
         .prepare(
-          'INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, dps, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, ?, ?, ?, ?, ?, 0, 1, 0)',
+          'INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, ?, ?, ?, ?, ?, ?, ?)',
         )
-        .bind(report, job, name, '泰坦', dps, rdps)
+        .bind(report, job, name, '泰坦', rdps, fightStart, fightStart + 600_000, reportStart)
         .run()
     await insert('A', '甲', 30_000)
     await insert('B', '甲', 31_000) // 同一人較好的一場
-    await insert('C', '乙', 29_000)
+    await insert('C', '乙', 29_000, 'Samurai', 1_000_000, 50_000)
     await insert('D', '丙', 28_000)
-    await insert('E', '丁', 20_000, 'Samurai', 33_000) // DPS 最高但 rDPS 最低：依 rDPS 排最後
-    await insert('J', '己', null, 'Samurai', 50_000) // 還沒補上 rDPS：不列入
-    await insert('H', '乙', 29_000) // 同一場被另一人重複上傳：只留一筆
+    await insert('E', '丁', 20_000)
+    // 同一場被另一人重複上傳（報告開始時間不同，但戰鬥的實際開始時間相同）：只留一筆
+    await insert('H', '乙', 29_000, 'Samurai', 1_020_000, 30_000)
     await insert('I', '丙', 25_000) // 同一人較差的一場：沿用最好一場的名次與 PR
+    await insert('K', '丙', 25_000) // rDPS 相同但是另一場：保留
     // 其他職業不列入人數與名次（包括同一人玩其他職業）
     await insert('F', '戊', 40_000, 'Ninja')
     await insert('G', '丁', 35_000, 'Ninja')
@@ -193,10 +177,11 @@ describe('tcRankings', () => {
       ['乙', 'C', 2, 66],
       ['丙', 'D', 3, 33],
       ['丙', 'I', 3, 33],
+      ['丙', 'K', 3, 33],
       ['丁', 'E', 4, 0],
     ])
     const mid = await tcRankings(db, 100, 101, 'Samurai', 30, 70)
-    expect(mid.rankings.map((r) => r.report)).toEqual(['C', 'D', 'I'])
+    expect(mid.rankings.map((r) => r.report)).toEqual(['C', 'D', 'I', 'K'])
     expect((await tcRankings(db, 100, 101, 'Samurai', 0, 100, 2)).rankings.map((r) => r.report)).toEqual(['B', 'A'])
     const ninja = await tcRankings(db, 100, 101, 'Ninja', 0, 100)
     expect(ninja.rankings.map((r) => [r.name, r.rank, r.pr])).toEqual([

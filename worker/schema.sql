@@ -10,10 +10,9 @@ CREATE TABLE IF NOT EXISTS parses (
   job TEXT NOT NULL,
   name TEXT NOT NULL,
   server TEXT NOT NULL,
-  dps REAL NOT NULL,
-  -- FFLogs 傷害表的 rDPS（繁中服日誌不排名，但仍有計算）；排名依此排序。舊資料為 NULL，由 crawl() 逐次補上
-  -- 既有資料庫加欄位：ALTER TABLE parses ADD COLUMN rdps REAL; 並建立下方的 parses_rdps 索引
-  rdps REAL,
+  -- FFLogs 傷害表的 rDPS（繁中服日誌不排名，但仍有計算）；排名依此排序
+  -- （正式資料庫的這個欄位是後來以 ALTER TABLE 加上的，沒有 NOT NULL 限制）
+  rdps REAL NOT NULL,
   -- 戰鬥在報告中的開始與結束（毫秒，相對於報告開始），供前端抓 Boss 施放比對機制
   fight_start INTEGER NOT NULL,
   fight_end INTEGER NOT NULL,
@@ -21,7 +20,6 @@ CREATE TABLE IF NOT EXISTS parses (
   report_start INTEGER NOT NULL,
   PRIMARY KEY (report, fight, actor)
 );
-CREATE INDEX IF NOT EXISTS parses_rank ON parses (encounter, difficulty, job, dps DESC);
 CREATE INDEX IF NOT EXISTS parses_rdps ON parses (encounter, difficulty, job, rdps DESC);
 
 -- 已處理過的報告（避免重複計算）
