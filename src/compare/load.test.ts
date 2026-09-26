@@ -3,6 +3,7 @@ import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
 import {
   actorPositions,
   autoAttacks,
+  bossPositions,
   castBars,
   clipSide,
   deathAt,
@@ -26,6 +27,34 @@ describe('actorPositions', () => {
       { t: 1000, x: 100, y: 100 },
       { t: 2000, x: 105, y: 98 },
     ])
+  })
+})
+
+describe('bossPositions', () => {
+  const fight = { startTime: 0 } as Fight
+  const enemy = (id: number, subType: string): Actor => ({ id, name: 'Howling Blade', type: 'NPC', subType, server: null, petOwner: null, gameID: 0 })
+  // 84 號是隱形的機制施放者（施放最多、subType NPC），80、107 號是兩個階段的 Boss 本體
+  const actors = [enemy(84, 'NPC'), enemy(80, 'Boss'), enemy(107, 'Boss')]
+  const enemyEvents: FFLogsEvent[] = [
+    { timestamp: 1000, type: 'cast', sourceID: 84, sourceResources: { x: 10000, y: 10000 } },
+    { timestamp: 2000, type: 'cast', sourceID: 84, sourceResources: { x: 10000, y: 10000 } },
+    { timestamp: 3000, type: 'cast', sourceID: 84, sourceResources: { x: 10000, y: 10000 } },
+    { timestamp: 1500, type: 'cast', sourceID: 80, sourceResources: { x: 10000, y: 9000 } },
+    { timestamp: 9000, type: 'cast', sourceID: 107, sourceResources: { x: 11000, y: 10000 } },
+  ]
+  // 玩家攻擊 Boss 的事件：目標位置
+  const playerEvents: FFLogsEvent[] = [{ timestamp: 2500, type: 'damage', sourceID: 6, targetID: 80, targetResources: { x: 10100, y: 9000 } }]
+
+  it('uses the actors whose subType is Boss, from boss casts and player events', () => {
+    expect(bossPositions(actors, enemyEvents, playerEvents, fight)).toEqual([
+      { t: 1500, x: 100, y: 90 },
+      { t: 2500, x: 101, y: 90 },
+      { t: 9000, x: 110, y: 100 },
+    ])
+  })
+
+  it('falls back to the enemy with the most casts when no actor is a Boss', () => {
+    expect(bossPositions([enemy(84, 'NPC')], enemyEvents, [], fight).map((p) => p.t)).toEqual([1000, 2000, 3000])
   })
 })
 

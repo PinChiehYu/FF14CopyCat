@@ -23,16 +23,79 @@ function nearest(track: TrackPoint[], t: number): TrackPoint | undefined {
   return track[Math.min(track.length - 1, Math.max(0, Math.round(t / step)))]
 }
 
-function bounds(samples: PositionSample[][]): { minX: number; minY: number; size: number } {
-  const all = samples.flat()
-  if (all.length === 0) return { minX: 80, minY: 80, size: 40 }
-  const xs = all.map((p) => p.x)
-  const ys = all.map((p) => p.y)
-  const minX = Math.min(...xs)
-  const minY = Math.min(...ys)
-  // 正方形、留邊
-  const size = Math.max(Math.max(...xs) - minX, Math.max(...ys) - minY, 20) + 6
-  return { minX: minX - 3, minY: minY - 3, size }
+// Boss 位置取這個百分位範圍納入圖的範圍（排除轉場跳走等少數極端位置）
+const BOSS_RANGE_QUANTILE = 0.05
+// 邊緣箭頭離圖邊的距離
+const EDGE_INSET = 12
+
+function quantile(sorted: number[], q: number): number {
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * q)))]
+}
+
+// 圖的範圍取游標前後這段時間內的位置：跟著目前的場地（M7S 等會換場的戰鬥，整場範圍會大到看不清楚）
+const VIEW_WINDOW_MS = 10_000
+// 圖至少涵蓋這麼大（yalm）
+const MIN_VIEW_YALM = 30
+// 範圍對齊到這個格距（yalm），播放時不會一直微幅縮放
+const VIEW_STEP_YALM = 5
+
+/**
+ * 圖的範圍（正方形、置中）：游標前後 10 秒內兩位玩家的位置，加上 Boss 在這段時間大部分所在的位置
+ * （排除少數極端位置）；這段時間沒有資料時以時間上最接近的資料為準。
+ */
+function bounds(players: PositionSample[][], boss: PositionSample[], cursor: number): { minX: number; minY: number; size: number } {
+  const near = (s: PositionSample[], t: number) => s.filter((p) => Math.abs(p.t - t) <= VIEW_WINDOW_MS)
+  let pts = players.flatMap((s) => near(s, cursor))
+  let bossPts = near(boss, cursor)
+  if (pts.length === 0 && bossPts.length === 0) {
+    // 附近沒有資料（例如另一方的戰鬥已結束）：改以時間上最接近的資料為準
+    const all = [...players.flat(), ...boss]
+    if (all.length > 0) {
+      const closest = all.reduce((a, b) => (Math.abs(b.t - cursor) < Math.abs(a.t - cursor) ? b : a)).t
+      pts = players.flatMap((s) => near(s, closest))
+      bossPts = near(boss, closest)
+    }
+  }
+  const xs = pts.map((p) => p.x)
+  const ys = pts.map((p) => p.y)
+  if (bossPts.length > 0) {
+    const bx = bossPts.map((p) => p.x).sort((a, b) => a - b)
+    const by = bossPts.map((p) => p.y).sort((a, b) => a - b)
+    xs.push(quantile(bx, BOSS_RANGE_QUANTILE), quantile(bx, 1 - BOSS_RANGE_QUANTILE))
+    ys.push(quantile(by, BOSS_RANGE_QUANTILE), quantile(by, 1 - BOSS_RANGE_QUANTILE))
+  }
+  if (xs.length === 0) return { minX: 80, minY: 80, size: 40 }
+  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+  const step = VIEW_STEP_YALM
+  // 留邊後取 5 yalm 的倍數，中心也對齊 5 yalm
+  const size = Math.ceil((Math.max(maxX - minX, maxY - minY, MIN_VIEW_YALM) + 6) / (step * 2)) * step * 2
+  const cx = Math.round((minX + maxX) / 2 / step) * step
+  const cy = Math.round((minY + maxY) / 2 / step) * step
+  return { minX: cx - size / 2, minY: cy - size / 2, size }
+}
+
+/** Boss 在圖外時，在圖邊畫指向它的箭頭（從圖中心往 Boss 方向與內縮邊框的交點）。 */
+function EdgeArrow({ target, label }: { target: Point; label: string }) {
+  const c = MAP_SIZE / 2
+  const dx = target.x - c
+  const dy = target.y - c
+  const half = c - EDGE_INSET
+  const k = half / Math.max(Math.abs(dx), Math.abs(dy))
+  const x = c + dx * k
+  const y = c + dy * k
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI
+  // 文字放在箭頭往圖內一點的位置，並夾在圖內
+  const len = Math.hypot(dx, dy)
+  const tx = Math.min(MAP_SIZE - 40, Math.max(40, x - (dx / len) * 26))
+  const ty = Math.min(MAP_SIZE - 8, Math.max(14, y - (dy / len) * 22 + 4))
+  return (
+    <g className="edge-arrow">
+      <polygon points="9,0 -6,-7 -6,7" transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${angle.toFixed(1)})`} />
+      <text x={tx.toFixed(1)} y={ty.toFixed(1)} textAnchor="middle">
+        {label}
+      </text>
+    </g>
+  )
 }
 
 function Arena({
@@ -40,13 +103,15 @@ function Arena({
   cursor,
   mineSamples,
   refSamples,
+  bossSamples,
 }: {
   track: TrackPoint[]
   cursor: number
   mineSamples: PositionSample[]
   refSamples: PositionSample[]
+  bossSamples: PositionSample[]
 }) {
-  const { minX, minY, size } = bounds([mineSamples, refSamples])
+  const { minX, minY, size } = bounds([mineSamples, refSamples], bossSamples, cursor)
   const scale = MAP_SIZE / size
   const px = (p: Point) => ({ x: (p.x - minX) * scale, y: (p.y - minY) * scale })
   const trail = (key: 'mine' | 'ref') =>
@@ -56,6 +121,12 @@ function Arena({
       .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
       .join(' ')
   const now = nearest(track, cursor)
+  const bossPx = now?.boss ? px(now.boss) : null
+  const bossInside = bossPx !== null && bossPx.x >= 0 && bossPx.x <= MAP_SIZE && bossPx.y >= 0 && bossPx.y <= MAP_SIZE
+  // 圖外的 Boss：標示離我多遠（沒有我的位置時用參考）
+  const from = now?.mine ?? now?.ref
+  const bossDistance =
+    now?.boss && from ? `${Math.hypot(now.boss.x - from.x, now.boss.y - from.y).toFixed(0)} yalm` : ''
   // 每 5 yalm 一條格線
   const grid = Array.from({ length: Math.ceil(size / 5) + 1 }, (_, i) => Math.ceil(minX / 5) * 5 + i * 5)
   const gridY = Array.from({ length: Math.ceil(size / 5) + 1 }, (_, i) => Math.ceil(minY / 5) * 5 + i * 5)
@@ -70,7 +141,12 @@ function Arena({
       ))}
       <polyline className="trail ref" points={trail('ref')} />
       <polyline className="trail mine" points={trail('mine')} />
-      {now?.boss && <circle className="boss-dot" cx={px(now.boss).x} cy={px(now.boss).y} r={9} />}
+      {bossPx &&
+        (bossInside ? (
+          <circle className="boss-dot" cx={bossPx.x} cy={bossPx.y} r={9} />
+        ) : (
+          <EdgeArrow target={bossPx} label={`Boss ${bossDistance}`} />
+        ))}
       {now?.ref && <circle className="dot ref" cx={px(now.ref).x} cy={px(now.ref).y} r={6} />}
       {now?.mine && <circle className="dot mine" cx={px(now.mine).x} cy={px(now.mine).y} r={6} />}
       <text className="north" x={MAP_SIZE - 14} y={16}>
@@ -141,6 +217,7 @@ export function Positions({
   divergences,
   mineSamples,
   refSamples,
+  bossSamples,
   threshold,
   duration,
   cursor,
@@ -156,6 +233,8 @@ export function Positions({
   /** 已換算成參考時間 */
   mineSamples: PositionSample[]
   refSamples: PositionSample[]
+  /** 參考日誌的 Boss 位置（決定俯視圖的範圍） */
+  bossSamples: PositionSample[]
   threshold: number
   duration: number
   cursor: number
@@ -198,10 +277,12 @@ export function Positions({
       />
       <div className="positions-body">
         <div className="arena-panel">
-          <Arena track={track} cursor={cursor} mineSamples={mineSamples} refSamples={refSamples} />
+          <Arena track={track} cursor={cursor} mineSamples={mineSamples} refSamples={refSamples} bossSamples={bossSamples} />
           <p className="arena-caption">
             <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
-            <span className="legend boss">● Boss</span>
+            <span className="legend boss" title={now?.boss ? undefined : '這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）'}>
+              ● Boss{now?.boss ? '' : '（不在場）'}
+            </span>
             {now?.distance != null && `　相距 ${now.distance.toFixed(1)} yalm`}
           </p>
         </div>

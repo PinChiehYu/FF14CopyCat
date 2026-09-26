@@ -401,6 +401,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         divergences={positions.divergences}
         mineSamples={positions.mineSamples}
         refSamples={refInRange.playerPositions}
+        bossSamples={refInRange.bossPositions}
         threshold={DIVERGENCE_YALM}
         duration={compareEnd}
         cursor={cursor}

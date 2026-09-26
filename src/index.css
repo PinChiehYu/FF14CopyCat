@@ -1286,6 +1286,19 @@ h3 {
   font-size: 12px;
 }
 
+/* Boss 在圖外：邊緣的箭頭與距離 */
+.arena .edge-arrow polygon {
+  fill: var(--text-muted);
+}
+
+.arena .edge-arrow text {
+  fill: var(--text-muted);
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+}
+
 /* 播放列：固定在比較結果區的畫面底部 */
 .playback {
   position: sticky;

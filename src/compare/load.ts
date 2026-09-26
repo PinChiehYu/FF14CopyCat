@@ -65,13 +65,31 @@ export function actorPositions(events: FFLogsEvent[], fight: Fight, actorId: num
   return samples.filter((s, i) => i === 0 || s.t !== samples[i - 1].t)
 }
 
-/** 施放次數最多的敵人視為主要 Boss。 */
+/** 施放次數最多的敵人（沒有 subType 為 Boss 的角色時才用）。 */
 function mainEnemy(events: FFLogsEvent[]): number | undefined {
   const counts = new Map<number, number>()
   for (const e of events) {
     if (e.type === 'cast' && e.sourceID !== undefined) counts.set(e.sourceID, (counts.get(e.sourceID) ?? 0) + 1)
   }
   return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0]
+}
+
+/**
+ * Boss 本體的位置取樣。施放最多的敵人常是隱形的機制施放者（例如 M8S 的 84 號，subType NPC），
+ * 位置不是 Boss；Boss 本體是 masterData 中 subType 為 Boss 的角色（M8S 第一、二階段分別是 80、107 號）。
+ * 取樣來自 Boss 的施放與玩家事件（攻擊 Boss、被 Boss 攻擊）中的位置，後者密集得多。
+ */
+export function bossPositions(
+  actors: Actor[],
+  enemyEvents: FFLogsEvent[],
+  playerEvents: FFLogsEvent[],
+  fight: Fight,
+): PositionSample[] {
+  const bosses = actors.filter((a) => a.subType === 'Boss').map((a) => a.id)
+  const ids = bosses.length > 0 ? bosses : [mainEnemy(enemyEvents)].filter((id): id is number => id !== undefined)
+  const samples = ids.flatMap((id) => [...actorPositions(enemyEvents, fight, id), ...actorPositions(playerEvents, fight, id)])
+  samples.sort((a, b) => a.t - b.t)
+  return samples.filter((s, i) => i === 0 || s.t !== samples[i - 1].t)
 }
 
 /** 某場戰鬥的 Boss 施放（找參考日誌時比對隨機機制用）。 */
@@ -203,14 +221,13 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     fetchFightEvents(report.code, fight, { sourceId: player.id, dataType: 'All' }, signal),
     fetchFightEvents(report.code, fight, { hostility: 'Enemies', dataType: 'Casts' }, signal),
   ])
-  const boss = mainEnemy(bossEvents)
   return {
     selection,
     playerCasts: playerCasts(playerEvents, fight, player.id),
     autoAttacks: autoAttacks(playerEvents, fight, player.id),
     bossCasts: toCasts(bossEvents, fight),
     playerPositions: actorPositions(playerEvents, fight, player.id),
-    bossPositions: boss === undefined ? [] : actorPositions(bossEvents, fight, boss),
+    bossPositions: bossPositions(report.masterData.actors, bossEvents, playerEvents, fight),
     // 自身效果與施加在敵人身上的效果（效果 ID 不重複，放在一起供技能窗口使用）
     buffs: [...selfBuffWindows(playerEvents, fight, player.id), ...enemyDebuffWindows(playerEvents, fight, player.id)].sort(
       (a, b) => a.start - b.start,

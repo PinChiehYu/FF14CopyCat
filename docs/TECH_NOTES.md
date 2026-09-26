@@ -401,6 +401,16 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技術變更紀錄
 
+### 2026-09-27 Boss 本體位置與俯視圖範圍
+- 變更：`load.ts` 新增 `bossPositions()`：Boss 位置取 masterData 中 subType 為 Boss 的角色（沒有時退回施放最多的敵人），取樣來自敵方施放與玩家事件（攻擊 Boss 的 `targetResources`、被 Boss 攻擊的 `sourceResources`）。`Positions.tsx` 的 `bounds()` 改為游標前後 10 秒（`VIEW_WINDOW_MS`）、最小 30 yalm、對齊 5 yalm；新增 `EdgeArrow`。
+- 資料（M8S `pwTF16cgnB9G7fWM` #29、M7S `dbN4HXY3QPzMRvDw` #4／`YbakGgfzPQjJ4MK7` #5）：
+  - 施放最多的敵人是隱形的機制施放者（M8S 84 號 325 次、M7S 14／37 號 320 次，subType `NPC`），不是 Boss 本體；Boss 本體為 subType `Boss`（M8S 第一階段 80 號、第二階段 107 號；M7S 11／35 號）。原本以施放最多者為 Boss，俯視圖的 Boss 與以 Boss 為中心的對稱判斷都用錯位置。
+  - 玩家事件中的 Boss 位置取樣遠多於 Boss 的施放（M8S 安祖卡：80 號 1116 筆、107 號 1310 筆；Boss 施放 45＋38 次）。
+  - 敵方位置（含分身、小怪）分布約 53 yalm，因此範圍只納入 Boss，並取 5%～95% 百分位。
+- 俯視圖範圍實測（每秒取樣）：
+  - M7S：前後 30 秒時換場前後約 60 秒放大到 110～160 yalm，改為 10 秒後大部分為 40～60 yalm，超過 100 yalm 只剩換場擊飛的約 18 秒；範圍整場切換約 34 次。Boss 只有 6:04 的 1 秒在圖外（顯示邊緣箭頭）。
+  - M8S（武士基準）：範圍 40～50 yalm；沒有 Boss 位置只剩 3:12～3:55（Boss 無法選取、打小狼）與 6:52～7:18（轉場）。
+  - 舊版（整場固定、只依玩家）：M8S 兩組基準 Boss 在圖外各 1～2 個時間點，另有約 30 個時間點沒有 Boss 位置。
 ### 2026-09-27 極限技 ID
 - 變更：`gen-job-data.mjs` 多抓 `ActionCategory`，產生 `LIMIT_BREAK_IDS`（ActionCategory 9 與 15 都是 Limit Break、非 PvP）；`abilityUsage()` 排除這些 ID。
 - 資料：極限技以玩家本人為施放者記錄（不是 `LimitBreak` 假角色），例如 FXLkqaK32PhQH8Ac #1 席德的 Doom of the Living（2 次）、pwTF16cgnB9G7fWM #29 忍者的 Chimatsuri、WATKBdHRh7m8PNQt #11 的 Big Shot 與 Last Bastion。
