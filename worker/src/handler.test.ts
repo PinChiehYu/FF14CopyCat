@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { StatementLike } from './crawler'
 import { handleRequest, resetTokenCache, type Env } from './handler'
 
 const ORIGIN = 'https://pinchiehyu.github.io'
@@ -213,6 +214,23 @@ describe('handleRequest', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({})
     expect(put.mock.calls[0][1].headers.get('Cache-Control')).toBe('public, max-age=60')
+  })
+
+  it('serves Traditional Chinese rankings from the database with validated parameters', async () => {
+    const row = { report: 'A', fight: 1, actor: 2, name: '甲', server: '泰坦', dps: 30000, fight_start: 0, fight_end: 1, report_start: 0 }
+    const statement: StatementLike = {
+      bind: () => statement,
+      all: async <T,>() => ({ results: [row as T] }),
+      first: async () => null,
+      run: async () => ({}),
+    }
+    const withDb: Env = { ...env, DB: { prepare: () => statement, batch: async () => [] } }
+    const res = await handleRequest(get('/tc-rankings?encounter=100&difficulty=101&job=Samurai&minPr=90&maxPr=100'), withDb, ctx, null)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ count: 1, rankings: [{ name: '甲', pr: 100, rank: 1 }] })
+    for (const path of ['/tc-rankings?encounter=100&difficulty=101&job=S%20a', '/tc-rankings?encounter=100&difficulty=101&job=Samurai&minPr=90&maxPr=80']) {
+      expect((await handleRequest(get(path), withDb, ctx, null)).status, path).toBe(400)
+    }
   })
 
   it('validates npc names', async () => {

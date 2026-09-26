@@ -14,3 +14,13 @@ namespace_id = "1001"
   [ratelimits.simple]
   limit = 60
   period = 60
+
+# 繁中服排名資料庫（FFLogs 不替繁中服排名，由定時掃描自建；結構見 schema.sql）
+[[d1_databases]]
+binding = "DB"
+database_name = "ff14-copycat-rankings"
+database_id = "44fe769b-0d5b-413c-9613-f9595c61af56"
+
+# 每小時掃描一次新的公開報告（crawler.ts）；這個專案不需要高頻更新
+[triggers]
+crons = ["7 * * * *"]

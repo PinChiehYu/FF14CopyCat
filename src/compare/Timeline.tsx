@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Alignment, TimedCast } from '../analysis/alignment'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
@@ -44,6 +44,7 @@ export function Timeline({
   windows = [],
   focus = null,
   cursor,
+  follow = false,
   onSeek,
   compareEnd,
 }: {
@@ -60,6 +61,8 @@ export function Timeline({
   focus?: { t: number } | null
   /** 目前檢視的參考時間，畫成直線 */
   cursor?: number
+  /** 播放中：游標超出可見範圍時自動捲動 */
+  follow?: boolean
   /** 點擊時間尺時移動游標 */
   onSeek?: (t: number) => void
   /** 比較範圍結束（參考時間）；之後的部分標示為範圍外 */
@@ -79,17 +82,24 @@ export function Timeline({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [focus])
 
+  // 播放中讓游標保持在可見範圍（游標接近右緣時往後捲，停在左側四分之一處）
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!follow || cursor === undefined || !el) return
+    const cx = (cursor / 1000) * pxPerSec
+    if (cx < el.scrollLeft + 40 || cx > el.scrollLeft + el.clientWidth - 80) {
+      el.scrollLeft = Math.max(0, cx - el.clientWidth * 0.25)
+    }
+  }, [follow, cursor, pxPerSec])
+
   const mineEnd = alignment.mineToRef(mine.duration)
   const totalMs = Math.max(ref.duration, mineEnd)
   const width = x(totalMs) + 40
-  const anchorRefTimes = new Set(alignment.anchors.map((a) => a.ref))
 
-  const allLanes = [
-    ...lanes(ref, '參考', 'ref', job, (t) => t),
-    ...lanes(mine, '我', 'mine', job, alignment.mineToRef),
-  ]
-  const name = (id: number) => abilities.get(id)?.name ?? `#${id}`
-  const ticks = Array.from({ length: Math.floor(totalMs / 10_000) + 1 }, (_, i) => i * 10_000)
+  const allLanes = useMemo(
+    () => [...lanes(ref, '參考', 'ref', job, (t) => t), ...lanes(mine, '我', 'mine', job, alignment.mineToRef)],
+    [ref, mine, job, alignment],
+  )
 
   return (
     <div className="timeline" ref={rootRef}>
@@ -126,6 +136,56 @@ export function Timeline({
                 比較範圍外
               </span>
             )}
+            <TimelineLanes
+              mine={mine}
+              reference={ref}
+              alignment={alignment}
+              abilities={abilities}
+              allLanes={allLanes}
+              highlights={highlights}
+              windows={windows}
+              pxPerSec={pxPerSec}
+              totalMs={totalMs}
+              onSeek={onSeek}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 時間尺、Boss 列與玩家的技能列（不隨游標變動；播放時不重繪）。 */
+function TimelineLanesImpl({
+  mine,
+  reference: ref,
+  alignment,
+  abilities,
+  allLanes,
+  highlights,
+  windows,
+  pxPerSec,
+  totalMs,
+  onSeek,
+}: {
+  mine: SideData
+  reference: SideData
+  alignment: Alignment
+  abilities: Map<number, Ability>
+  allLanes: Lane[]
+  highlights: { start: number; end: number }[]
+  windows: (TimelineWindow & { side: 'mine' | 'ref' })[]
+  pxPerSec: number
+  totalMs: number
+  onSeek?: (t: number) => void
+}) {
+  const x = (ms: number) => (ms / 1000) * pxPerSec
+  const mineEnd = alignment.mineToRef(mine.duration)
+  const anchorRefTimes = new Set(alignment.anchors.map((a) => a.ref))
+  const name = (id: number) => abilities.get(id)?.name ?? `#${id}`
+  const ticks = Array.from({ length: Math.floor(totalMs / 10_000) + 1 }, (_, i) => i * 10_000)
+  return (
+    <>
             <div
               className="lane ruler"
               title="點擊以移動站位圖的時間"
@@ -201,9 +261,8 @@ export function Timeline({
                 )}
               </div>
             ))}
-          </div>
-        </div>
-      </div>
-    </div>
+    </>
   )
 }
+
+const TimelineLanes = memo(TimelineLanesImpl)

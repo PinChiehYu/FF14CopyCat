@@ -6,6 +6,7 @@ import {
   type PositionSample,
   type TrackPoint,
 } from '../analysis/positions'
+import type { ReactNode } from 'react'
 import { formatFightTime } from '../analysis/timeline'
 
 // 地圖上顯示游標前多久的移動軌跡
@@ -145,7 +146,10 @@ export function Positions({
   cursor,
   onSeek,
   onJump,
+  status,
 }: {
+  /** 顯示在站位圖旁的當下狀態（血量、Buff） */
+  status?: ReactNode
   abilityName: (id: number) => string
   track: TrackPoint[]
   divergences: Divergence[]
@@ -198,22 +202,13 @@ export function Positions({
       <div className="positions-body">
         <div className="arena-panel">
           <Arena track={track} cursor={cursor} mineSamples={mineSamples} refSamples={refSamples} />
-          <input
-            type="range"
-            className="scrubber"
-            min={0}
-            max={duration}
-            step={500}
-            value={cursor}
-            onChange={(e) => onSeek(Number(e.target.value))}
-            aria-label="時間"
-          />
           <p className="arena-caption">
             <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
             <span className="legend boss">● Boss</span>　{formatFightTime(cursor)}
             {now?.distance != null && `　距離 ${now.distance.toFixed(1)} yalm`}
           </p>
         </div>
+        {status}
         <ul className="divergence-list">
           {divergences.map((d) => (
             <li key={d.start} className={d.mechanics.length > 0 ? 'at-mechanic' : undefined}>

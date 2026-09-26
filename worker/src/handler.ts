@@ -1,4 +1,5 @@
 import { abilityNames, gameRow } from './abilityNames'
+import { tcRankings, type DbLike, type Graphql } from './crawler'
 import { npcNames } from './npcNames'
 import { AUTO_ATTACKS_TAKEN_QUERY, EVENTS_QUERY, REPORT_QUERY } from './queries'
 
@@ -7,6 +8,8 @@ export interface Env {
   FFLOGS_CLIENT_SECRET: string
   ALLOWED_ORIGINS: string
   RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> }
+  /** 繁中服排名資料庫（D1） */
+  DB?: DbLike
 }
 
 export interface CacheLike {
@@ -24,6 +27,8 @@ const CACHE_SECONDS = 600
 // 技能名稱只隨遊戲版本改變，快取一天
 const NAME_CACHE_SECONDS = 86_400
 const MAX_ABILITY_IDS = 500
+// 繁中服排名每 15 分鐘更新一次
+const TC_RANKINGS_CACHE_SECONDS = 300
 const MAX_NPC_NAMES = 20
 // Boss 英文名稱：字母、數字、空白與常見標點
 const NPC_NAME = /^[A-Za-z0-9 '\-.,:!&]{1,80}$/
@@ -79,7 +84,7 @@ async function getToken(env: Env): Promise<string> {
   return cachedToken.value
 }
 
-async function queryReport(env: Env, query: string, variables: Record<string, unknown>): Promise<unknown> {
+async function queryGraphql<T>(env: Env, query: string, variables: Record<string, unknown>): Promise<T | undefined> {
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: {
@@ -91,12 +96,19 @@ async function queryReport(env: Env, query: string, variables: Record<string, un
   if (res.status === 429) throw new HttpError(503, 'FFLogs API rate limit reached, try again later')
   if (!res.ok) throw new HttpError(502, `FFLogs API error: ${res.status}`)
 
-  const body = (await res.json()) as {
-    data?: { reportData?: { report?: unknown } }
-    errors?: { message: string }[]
-  }
+  const body = (await res.json()) as { data?: T; errors?: { message: string }[] }
   if (body.errors?.length) throw new HttpError(400, body.errors.map((e) => e.message).join('; '))
-  const report = body.data?.reportData?.report
+  return body.data
+}
+
+/** 定時掃描用的 GraphQL 查詢函式。 */
+export function graphqlFor(env: Env): Graphql {
+  return (query, variables) => queryGraphql(env, query, variables)
+}
+
+async function queryReport(env: Env, query: string, variables: Record<string, unknown>): Promise<unknown> {
+  const data = await queryGraphql<{ reportData?: { report?: unknown } }>(env, query, variables)
+  const report = data?.reportData?.report
   if (!report) throw new HttpError(404, 'Report not found')
   return report
 }
@@ -144,7 +156,23 @@ function npcNameParams(params: URLSearchParams): string[] {
   return names
 }
 
+const JOB_NAME = /^[A-Za-z]{2,20}$/
+
+/** `GET /tc-rankings?encounter&difficulty&job&minPr&maxPr`：繁中服排名（自建資料庫）中 PR 在範圍內的紀錄。 */
+async function tcRankingsRoute(params: URLSearchParams, env: Env): Promise<unknown> {
+  if (!env.DB) throw new HttpError(503, 'Rankings database unavailable')
+  const job = params.get('job') ?? ''
+  if (!JOB_NAME.test(job)) throw new HttpError(400, 'Invalid job')
+  const minPr = optionalInt(params, 'minPr') ?? 0
+  const maxPr = optionalInt(params, 'maxPr') ?? 100
+  if (minPr > 100 || maxPr > 100 || minPr > maxPr) throw new HttpError(400, 'Invalid PR range')
+  return tcRankings(env.DB, requiredInt(params, 'encounter'), requiredInt(params, 'difficulty'), job, minPr, maxPr)
+}
+
 async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds: number }> {
+  if (url.pathname.replace(/\/$/, '') === '/tc-rankings') {
+    return { data: await tcRankingsRoute(url.searchParams, env), cacheSeconds: TC_RANKINGS_CACHE_SECONDS }
+  }
   if (url.pathname.replace(/\/$/, '') === '/npc-names') {
     const { names, complete } = await npcNames(npcNameParams(url.searchParams))
     // 有名稱查詢失敗時只短暫快取，之後可再重查

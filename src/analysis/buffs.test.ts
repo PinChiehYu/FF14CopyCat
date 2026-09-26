@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FFLogsEvent, Fight } from '../fflogs/types'
-import { enemyDebuffWindows, prepullEffects, selfBuffWindows } from './buffs'
+import { aurasAt, enemyDebuffWindows, hpAt, hpSamples, playerAuras, prepullEffects, selfBuffWindows } from './buffs'
 
 const fight = { id: 1, startTime: 10_000, endTime: 70_000 } as Fight
 const me = 6
@@ -27,6 +27,44 @@ describe('buffs', () => {
 
   it('lists self-applied effects present at the pull', () => {
     expect(prepullEffects(events, me)).toEqual([1_001_233, 1_000_048])
+  })
+
+  it('collects every aura on the player: own, from party members and debuffs from enemies', () => {
+    const auras = playerAuras(
+      [
+        ...events,
+        { timestamp: 35_000, type: 'removebuff', sourceID: 8, targetID: me, abilityGameID: 1_000_125 },
+        { timestamp: 40_000, type: 'applydebuff', sourceID: 99, targetID: me, abilityGameID: 1_002_941 },
+        { timestamp: 45_000, type: 'removedebuff', sourceID: 99, targetID: me, abilityGameID: 1_002_941 },
+      ],
+      fight,
+      me,
+    )
+    // 戰鬥時間 22 秒：開打前就有的進食、隊友的盾（開打前）與隊友 8 給的 Buff（20～25 秒）
+    expect(aurasAt(auras, 22_000).map((a) => [a.statusId, a.sourceId, a.debuff])).toEqual([
+      [1_000_048, me, false],
+      [1_002_609, 11, false],
+      [1_000_125, 8, false],
+    ])
+    // 敵人給的 Debuff：戰鬥時間 30～35 秒
+    expect(aurasAt(auras, 32_000).find((a) => a.debuff)).toMatchObject({ statusId: 1_002_941, sourceId: 99, start: 30_000, end: 35_000 })
+  })
+
+  it('reads HP samples and finds the latest one at a time', () => {
+    const samples = hpSamples(
+      [
+        { timestamp: 12_000, type: 'damage', sourceID: 99, targetID: me, targetResources: { hitPoints: 80, maxHitPoints: 100, absorb: 5 } },
+        { timestamp: 11_000, type: 'cast', sourceID: me, targetID: 99, sourceResources: { hitPoints: 100, maxHitPoints: 100 } },
+      ],
+      fight,
+      me,
+    )
+    expect(samples.map((s) => [s.t, s.hp])).toEqual([
+      [1000, 100],
+      [2000, 80],
+    ])
+    expect(hpAt(samples, 1500)?.hp).toBe(100)
+    expect(hpAt(samples, 500)).toBeUndefined()
   })
 
   it('merges debuffs the player applies to several enemies', () => {

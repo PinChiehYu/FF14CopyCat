@@ -10,7 +10,8 @@
 瀏覽器 ──► GitHub Pages（前端，靜態）
    │
    └──► Cloudflare Worker 代理 ──► FFLogs API v2（GraphQL，client credentials）
-                               └─► Boilmaster 鏡像 xivapi-v2.xivcdn.com（技能繁中／簡中名稱）
+            │                  └─► Boilmaster 鏡像 xivapi-v2.xivcdn.com（技能繁中／簡中名稱）
+            └── D1 資料庫 ff14-copycat-rankings（繁中服排名）◄── 定時觸發（每 15 分鐘掃描公開報告）
 ```
 
 - **前端**：Vite + React + TypeScript，GitHub Pages 專案站台；`vite.config.ts` 的 `base` 由建置時的 `BASE_PATH`（repo 名稱）決定。Pages Source 必須為 GitHub Actions。
@@ -29,6 +30,7 @@
 | `GET /abilities?ids=1,2,3` | 技能、效果（Buff）與道具的繁中名稱（見「技能繁中名稱」） | 1 天 |
 | `GET /npc-names?name=A&name=B` | Boss（NPC）繁中名稱（見「Boss 繁中名稱」） | 1 天 |
 | `GET /reports/:code/auto-attacks-taken?fight=` | 每位玩家承受的敵方普通攻擊總傷害 `{ 角色 ID: 傷害 }`，判斷 MT／ST（見「MT／ST 判斷」） | 10 分鐘 |
+| `GET /tc-rankings?encounter&difficulty&job&minPr&maxPr` | 繁中服排名（D1）中 PR 在範圍內的紀錄 `{ count, rankings }`，最多 100 筆（見「繁中服排名」） | 5 分鐘 |
 
 - 保護：`ALLOWED_ORIGINS`（`wrangler.toml`）檢查 Origin 並回 CORS 標頭；Cloudflare Rate Limiting 綁定 `RATE_LIMITER`（每 IP 60 次／分）；成功回應以不含 Origin 的網址為鍵放入 `caches.default`。
 - client credentials 權杖在同一 isolate 內快取重用。所有訪客共用一組 FFLogs API 配額。
@@ -98,6 +100,40 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 名稱晚到會換掉 `Selection` 物件，`Comparison.tsx` 的 `useSides()` 只依選擇的鍵（報告／戰鬥／角色 ID）重新載入，避免重抓事件。
 - 第一版在報告載入時等待翻譯才顯示，名稱未快取時約 7 秒（騎士基準報告 4 個名稱），正式站上曾停在「載入報告中」，因此改為不阻擋。
 - 實測：Howling Blade→呼嘯之劍、Dancing Green→熱舞綠光、Sugar Riot→糖彩狂潮、Brute Abombinator→野蠻憎惡、Valigarmanda→艷翼蛇鳥、living liquid→有生命活水、Cruise Chaser→巡航驅逐者、Queen Eternal→永恆女王；Striking Dummy 查不到（保留英文）。
+
+## 繁中服排名（2026-09-27）
+
+### 調查：FFLogs 沒有繁中服排名
+- `worldData.regions` 只有 NA、EU、JP、OC、CN、KR（各有子區域），**沒有繁中服**；`characterRankings(serverRegion: "TW")` 回「Invalid region specified」。
+- 繁中服的報告在 FFLogs 上被標成其他區域（hqNYDGK9A4pmWVXB 為 JP、FXLkqaK32PhQH8Ac 為 CN），玩家的 `server` 是繁中服名稱（泰坦、奧汀、利維坦、迦樓羅、伊弗利特、鳳凰、巴哈姆特）。
+- 繁中服報告的 `report.rankings(fightIDs)` 回傳 `{"data":[]}`：**不排名、沒有 PR、沒有 rDPS**。國際服報告同樣查詢會回傳每位玩家的 `rankPercent`、`rank`（例如 `~811`）。
+- `characterRankings` 回傳 `{ page, hasMorePages, count, rankings }`，`count` 是該頁筆數（100）而非總人數，也沒有 PR；每筆有 `name`、`server {name, region}`、`amount`、`duration`、`report {code, fightID, startTime}`、`bracketData`（例如 7.3）。
+- `reportData.reports(zoneID, startTime, endTime, page, limit)` 不需公會或使用者即可列出公開報告，但沒有區域篩選；`total`／`last_page` 為 -1。
+
+### 額度量測（`rateLimitData`）
+- 每小時 3,600 點，所有訪客共用。
+- 列出 25 份報告並含 `fights(killType: Kills)` 與 `masterData.actors(type: "Player")`：約 50 點；一次 100 份會超過查詢複雜度上限（50000）。
+- 一場戰鬥的傷害表（`table(dataType: DamageDone)`）：約 2 點。
+- 抽樣 zone 68（AAC Cruiserweight）100 份報告：67 份有繁中服玩家、189 場擊殺（含其他難度）。
+
+### 實作（`worker/src/crawler.ts`、`worker/schema.sql`、D1 `ff14-copycat-rankings`，APAC）
+- 定時觸發（`wrangler.toml` 的 `crons = ["7 * * * *"]`，每小時一次；`index.ts` 的 `scheduled`）執行 `crawl()`：
+  - 依 `crawl_state` 的進度，查一個時間窗（依報告開始時間，每窗 1 天）的報告，每次最多 6 頁（每頁 25 份）。第一次從 60 天前開始往後補，追上現在後回頭重掃最近 2 天（晚上傳的報告）。
+  - 跳過 `scanned_reports` 中已處理的報告；有繁中服玩家的報告，把零式（`difficulty` 101）擊殺的傷害表合成一個查詢（以 `f{fightID}:` 別名），`DPS = total ÷ 戰鬥秒數`，只存繁中服玩家（排除極限技等非玩家）。
+  - 這小時已用超過 2,000 點就跳過，把額度留給訪客。
+  - 掃描的副本：`CRAWL_ZONES = [68]`、`CRAWL_DIFFICULTY = 101`，**換季時要更新**。
+- 資料表：`parses`（主鍵 report＋fight＋actor；另存戰鬥在報告中的開始／結束，供前端抓 Boss 施放比對機制）、`scanned_reports`、`crawl_state`。
+- `tcRankings()`：`GROUP BY name, server` 搭配 `MAX(dps)`（SQLite 會取最大值那一列的其他欄位）取每人最好的一場，依 DPS 排序，`PR = floor((人數 − 名次) ÷ (人數 − 1) × 100)`，再依 PR 範圍篩選。
+- 實測（2026-09-27）：
+  - 第一次執行從 60 天前（7 月底）開始，35 份報告都沒有繁中服擊殺（該副本那時可能還沒有繁中服紀錄）。
+  - 暫時把進度移到最近兩天驗證：50 份報告收錄 192 筆，涵蓋本季 4 隻 Boss（97～100）與 20 個職業；最高 DPS 為利維坦的忍者 Wqw 約 3.8 萬。
+  - 最近兩天的時間窗翻到第 3 頁，推估每天約 50～100 份報告。
+  - 驗證後把進度移回補舊資料的位置。
+- 更新頻率：原為每 15 分鐘 2 頁，依使用者意見（專案不需要高頻更新）改為每小時 6 頁：
+  - 每小時最多約 300 點列表＋少量傷害表，留大部分額度給訪客。
+  - 補完 60 天約需 5 天。
+- 測試：`crawler.node.test.ts` 以 Node 24 內建的 `node:sqlite` 套用同一份 `schema.sql` 模擬 D1；這個檔案使用 Node 內建模組，Worker 的 tsconfig 排除它、改由 `tsconfig.node.json` 檢查。
+- 前端：`compare/ReferenceFinder.tsx`；`loadBossCasts()`（`load.ts`）只需戰鬥的 ID 與開始／結束，直接用資料庫存的時間抓 Boss 施放；`analysis/mechanicMatch.ts` 的 `variantCount()` 以時間軸對齊後的「不同變化」數量判斷機制是否相同。比對同時最多 3 個請求（Worker 每 IP 每分鐘 60 次）。
 
 ## MT／ST 判斷（`AUTO_ATTACKS_TAKEN_QUERY`）
 
@@ -354,6 +390,24 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-27 播放列與當下狀態
+- 變更：
+  - `analysis/buffs.ts` 新增 `playerAuras()`、`aurasAt()`、`hpSamples()`、`hpAt()`；`SideData` 新增 `auras`、`hp`（不裁切）。
+  - 新增 `compare/Playback.tsx`、`compare/StatusPanel.tsx`（只列 `sourceId` 為玩家自己、非 Debuff 的效果）；`Timeline` 新增 `follow`，並把技能列拆成 `memo` 的 `TimelineLanes`。
+- 資料：玩家的全部事件（`sourceID` 為玩家）中也包含別人對玩家的事件，別人給的 Buff、敵人給的 Debuff 都在其中。以騎士基準為例：隊友給的 `applybuff` 225 筆、敵人給的 `applydebuff` 61 筆（魔法／物理受傷加重、傷害降低等）。血量取自 `source／targetResources` 的 `hitPoints`、`maxHitPoints`、`absorb`。
+- 效能：
+  - 播放時游標最多每 50 ms 更新一次。
+  - 不隨游標變動的區塊（建議、技能窗口、機制差異、指標）以 `useMemo` 包成 JSX；時間軸的技能列為 `memo` 元件（其標示陣列在 `Comparison` 以 `useMemo` 固定）。這樣游標更新時只重繪游標線、站位圖與當下狀態。
+- 注意：播放以 `requestAnimationFrame` 推進，瀏覽器分頁被遮住或隱藏時不會前進（開發時在隱藏的瀏覽器面板中無法驗證播放）。
+
+### 2026-09-27 繁中服掃描改為每小時
+- 變更：`crons` 改為 `7 * * * *`，`PAGES_PER_RUN` 改為 6。
+- 原因：使用者表示專案不需要高頻更新；實測每天的報告量不大（見「繁中服排名」）。
+
+### 2026-09-27 繁中服排名資料庫
+- 變更：建立 Cloudflare D1 `ff14-copycat-rankings`（綁定 `DB`）與定時觸發；新增 `worker/src/crawler.ts`、`worker/schema.sql`、`/tc-rankings` 端點；Worker 的 GraphQL 呼叫整理為 `queryGraphql()`；`fetchFightEvents()` 的戰鬥參數只需 ID 與起訖時間。
+- 原因：FFLogs 不替繁中服排名，自建排名以支援「從繁中服排名找參考日誌」（見 DESIGN.md）。過程中曾加入國際服排名端點與暫時的探索查詢，確認不適用後都已移除。
 
 ### 2026-09-27 連結保存在本頁網址
 - 變更：新增 `src/pageQuery.ts`（`readLogParam()`／`writeLogParam()`，以 `history.replaceState` 更新 `?mine=`、`?ref=`，不增加瀏覽紀錄）與 `fflogs/url.ts` 的 `reportUrl()`；`LogPicker` 以網址參數為初始值，輸入時寫回，選好戰鬥與角色時改寫為 `reportUrl(code, fight, source)`（只改網址，不改輸入框，避免 `ReportSelector` 的 key 改變而重設手動選擇）。

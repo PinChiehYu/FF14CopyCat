@@ -26,6 +26,33 @@ export function fetchReport(code: string, signal?: AbortSignal): Promise<Report>
   return get(`/reports/${encodeURIComponent(code)}`, signal)
 }
 
+/** 繁中服排名（Worker 定時掃描公開報告自建）中的一筆：每位玩家最好的一場。 */
+export interface TcRanking {
+  rank: number
+  /** 繁中服內的百分位（最高 100） */
+  pr: number
+  report: string
+  fight: number
+  actor: number
+  name: string
+  server: string
+  dps: number
+  /** 戰鬥在報告中的開始與結束（毫秒，相對於報告開始） */
+  fightStart: number
+  fightEnd: number
+  /** 報告開始時間（Unix 毫秒） */
+  reportStart: number
+}
+
+/** 查詢繁中服排名中某 Boss、某職業 PR 在範圍內的紀錄（由高到低）。 */
+export function fetchTcRankings(
+  query: { encounter: number; difficulty: number; job: string; minPr: number; maxPr: number },
+  signal?: AbortSignal,
+): Promise<{ count: number; rankings: TcRanking[] }> {
+  const params = new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)]))
+  return get(`/tc-rankings?${params}`, signal)
+}
+
 /** 每位玩家承受的敵方普通攻擊總傷害（角色 ID → 傷害），用來判斷誰在坦 Boss。 */
 export async function fetchAutoAttacksTaken(code: string, fightId: number, signal?: AbortSignal): Promise<Map<number, number>> {
   const result: Record<string, unknown> = await get(
@@ -125,7 +152,7 @@ const MAX_PAGES = 50
 /** 取得整場戰鬥的事件，自動依 nextPageTimestamp 翻頁。 */
 export async function fetchFightEvents(
   code: string,
-  fight: Fight,
+  fight: Pick<Fight, 'id' | 'startTime' | 'endTime'>,
   query: EventQuery = {},
   signal?: AbortSignal,
 ): Promise<FFLogsEvent[]> {

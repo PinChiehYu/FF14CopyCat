@@ -512,6 +512,99 @@ button:disabled {
   border-inline: 1px solid color-mix(in srgb, var(--error) 60%, transparent);
 }
 
+/* 從繁中服排名找參考日誌 */
+.finder {
+  margin: 8px 0 4px;
+}
+
+.finder > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.finder-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 8px 0;
+  font-size: 0.9em;
+}
+
+.log-input .finder-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: normal;
+}
+
+.log-input .finder-controls input[type='number'] {
+  width: 4.5em;
+  margin: 0;
+  padding: 4px 6px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.finder-list {
+  display: grid;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9em;
+}
+
+.finder-list button {
+  display: grid;
+  grid-template-columns: 3.2em 4.2em minmax(0, 1fr) auto auto auto auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.finder-list button:hover {
+  border-color: var(--accent);
+}
+
+.finder-rank,
+.finder-meta {
+  color: var(--text-muted);
+}
+
+.finder-pr {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.finder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finder-mech {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
 /* 技能窗口：GCD 列底部的色條（綠：合格、紅：有問題、灰：不評分） */
 .window-bar {
   position: absolute;
@@ -984,9 +1077,164 @@ h3 {
   font-size: 12px;
 }
 
-.scrubber {
-  width: 100%;
-  margin: 8px 0 0;
+/* 播放列：固定在比較結果區的畫面底部 */
+.playback {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px -8px 0;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 -4px 16px rgb(0 0 0 / 0.12);
+  font-variant-numeric: tabular-nums;
+}
+
+.playback button,
+.playback select {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 0.9em;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.playback .playback-play {
+  min-width: 2.6em;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.playback-scrubber {
+  flex: 1;
+  min-width: 80px;
+}
+
+.playback-time {
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+/* 當下狀態：兩邊玩家的血量、Buff／Debuff 與 Boss 施放 */
+.status-panel {
+  flex: 1;
+  min-width: 260px;
+  max-width: 420px;
+  display: grid;
+  gap: 10px;
+}
+
+.boss-now {
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.side-status {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.side-status-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-status-head .mine {
+  color: var(--mine);
+}
+
+.side-status-head .ref {
+  color: var(--ref);
+}
+
+.hp-bar {
+  position: relative;
+  height: 14px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+}
+
+.hp-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--kill);
+  transition: width 0.1s linear;
+}
+
+.hp-shield {
+  position: absolute;
+  inset: auto auto 0 0;
+  height: 4px;
+  background: #f5c542;
+}
+
+.hp-text {
+  position: relative;
+  display: block;
+  font-size: 0.75em;
+  line-height: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.aura-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-height: 24px;
+  align-items: center;
+}
+
+.aura {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.aura-wrap {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+/* 剩餘秒數，疊在圖示下緣 */
+.aura-time {
+  position: absolute;
+  right: 0;
+  bottom: -2px;
+  left: 0;
+  font-size: 0.65em;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+  font-variant-numeric: tabular-nums;
+}
+
+.aura-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6em;
+  background: var(--bg);
+  border-color: var(--border);
 }
 
 .arena-caption {

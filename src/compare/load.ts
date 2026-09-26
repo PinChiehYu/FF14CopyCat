@@ -1,5 +1,14 @@
 import type { TimedCast } from '../analysis/alignment'
-import { enemyDebuffWindows, prepullEffects, selfBuffWindows, type BuffWindow } from '../analysis/buffs'
+import {
+  enemyDebuffWindows,
+  hpSamples,
+  playerAuras,
+  prepullEffects,
+  selfBuffWindows,
+  type Aura,
+  type BuffWindow,
+  type HpSample,
+} from '../analysis/buffs'
 import type { PositionSample } from '../analysis/positions'
 import { toFightTime } from '../analysis/timeline'
 import { fetchFightEvents } from '../fflogs/client'
@@ -27,6 +36,9 @@ export interface SideData {
   buffs: BuffWindow[]
   /** 開打當下玩家自己施加、身上已有的效果 ID（推知開打前用過的技能） */
   prepull: number[]
+  /** 玩家身上所有效果（任何來源）與血量：當下狀態面板用，不裁切 */
+  auras: Aura[]
+  hp: HpSample[]
   /** 戰鬥長度（毫秒） */
   duration: number
 }
@@ -59,7 +71,17 @@ function mainEnemy(events: FFLogsEvent[]): number | undefined {
   return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0]
 }
 
-function toCasts(events: FFLogsEvent[], fight: Fight): TimedCast[] {
+/** 某場戰鬥的 Boss 施放（找參考日誌時比對隨機機制用）。 */
+export async function loadBossCasts(
+  code: string,
+  fight: Pick<Fight, 'id' | 'startTime' | 'endTime'>,
+  signal?: AbortSignal,
+): Promise<TimedCast[]> {
+  const events = await fetchFightEvents(code, fight, { hostility: 'Enemies', dataType: 'Casts' }, signal)
+  return toCasts(events, fight)
+}
+
+function toCasts(events: FFLogsEvent[], fight: Pick<Fight, 'startTime'>): TimedCast[] {
   // 詠唱技能另有 begincast 事件，只取實際施放的 cast
   return events
     .filter((e) => e.type === 'cast' && e.abilityGameID !== undefined)
@@ -124,6 +146,8 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
       (a, b) => a.start - b.start,
     ),
     prepull: prepullEffects(playerEvents, player.id),
+    auras: playerAuras(playerEvents, fight, player.id),
+    hp: hpSamples(playerEvents, fight, player.id),
     duration: fight.endTime - fight.startTime,
   }
 }

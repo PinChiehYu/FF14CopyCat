@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
 import { fetchAutoAttacksTaken, fetchFightNames, fetchReport, translateReport } from './fflogs/client'
 import { playersInFight } from './fflogs/report'
 import { isStandardParty, jobName, jobRole, sortByPartySlot } from './jobs/names'
 import { Comparison } from './compare/Comparison'
+import { ReferenceFinder } from './compare/ReferenceFinder'
 import type { Selection } from './compare/load'
 import type { Actor, Fight, Report } from './fflogs/types'
 import { parseReportUrl, reportUrl, type ReportRef } from './fflogs/url'
@@ -174,15 +175,31 @@ function LogPicker({
   storageKey,
   preferred,
   onChange,
+  picked,
+  children,
 }: {
   label: string
   /** 保存在本頁網址的參數名稱 */
   storageKey: LogKey
   preferred?: Preference
   onChange: (selection: Selection | null) => void
+  /** 從外部選定的連結（例如從排名找參考）；每次傳入新物件就套用一次 */
+  picked?: { url: string } | null
+  /** 顯示在輸入框下方（例如找參考日誌） */
+  children?: ReactNode
 }) {
   // 重新整理後從本頁網址還原輸入的連結
   const [url, setUrl] = useState(() => readLogParam(storageKey))
+  const applyUrl = (next: string) => {
+    setUrl(next)
+    writeLogParam(storageKey, next)
+  }
+  // 從外部選定連結時套用一次（網址參數由選定的一方寫入）
+  const [lastPicked, setLastPicked] = useState(picked)
+  if (picked !== lastPicked) {
+    setLastPicked(picked)
+    if (picked) setUrl(picked.url)
+  }
   const ref = url.trim() ? parseReportUrl(url) : null
   const code = useDebounced(ref?.reportCode ?? null, 400)
   const state = useReport(code)
@@ -210,12 +227,10 @@ function LogPicker({
           type="url"
           placeholder="https://www.fflogs.com/reports/..."
           value={url}
-          onChange={(e) => {
-            setUrl(e.target.value)
-            writeLogParam(storageKey, e.target.value)
-          }}
+          onChange={(e) => applyUrl(e.target.value)}
         />
       </label>
+      {children}
       {url.trim() && !ref && <p className="error">無法辨識的 FFLogs 報告連結</p>}
       {state.status === 'loading' && <p>載入報告中…</p>}
       {state.status === 'error' && <p className="error">{state.message}</p>}
@@ -236,6 +251,8 @@ function LogPicker({
 export default function App() {
   const [mine, setMine] = useState<Selection | null>(null)
   const [reference, setReference] = useState<Selection | null>(null)
+  // 從繁中服排名選的參考日誌連結
+  const [picked, setPicked] = useState<{ url: string } | null>(null)
   // 參考日誌依我選的 Boss 與職業自動選擇戰鬥與角色
   const preferred = mine
     ? { encounterID: mine.fight.encounterID, bossName: mine.fight.name, subType: mine.player.subType }
@@ -248,7 +265,21 @@ export default function App() {
 
       <div className="logs">
         <LogPicker label="我的日誌" storageKey="mine" onChange={setMine} />
-        <LogPicker label="參考日誌（高階玩家）" storageKey="ref" preferred={preferred} onChange={setReference} />
+        <LogPicker
+          label="參考日誌（高階玩家）"
+          storageKey="ref"
+          preferred={preferred}
+          onChange={setReference}
+          picked={picked}
+        >
+          <ReferenceFinder
+            mine={mine}
+            onPick={(url) => {
+              writeLogParam('ref', url)
+              setPicked({ url })
+            }}
+          />
+        </LogPicker>
       </div>
 
       {mine && reference && (

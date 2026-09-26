@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { evaluateWindows, timelineWindow } from '../analysis/windows'
 import { ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows'
+import { Playback } from './Playback'
+import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
 import { buildAlignment } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
@@ -61,6 +63,8 @@ function useAbilityNames(mine: SideData, reference: SideData): Map<number, Abili
         // 效果（開打前、技能窗口）
         ...s.prepull,
         ...s.buffs.map((b) => b.statusId),
+        // 當下狀態面板：角色自身的效果
+        ...s.auras.filter((a) => a.sourceId === s.selection.player.id).map((a) => a.statusId),
       ]),
       // 技能窗口規則中的技能：兩邊都沒用過的（例如「缺少」的技能）不在報告的技能清單中
       ...windowRules(reference.selection.player.subType).flatMap(ruleIds),
@@ -265,14 +269,54 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     [compareEnd, gcd, lost, usage, positions, abilities, abilityName, job, category, alignment, mineInRange, mechanics, windows, mine, reference],
   )
 
-  // 目前檢視的參考時間（站位圖、時間軸游標）
+  // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)
   // 每次點擊都產生新物件，讓時間軸即使捲到同一時間也會重新捲動
   const [focus, setFocus] = useState<{ t: number } | null>(null)
-  const jumpTo = (t: number) => {
+  const [playing, setPlaying] = useState(false)
+  // 預設 2 倍速播放
+  const [speed, setSpeed] = useState(2)
+  const jumpTo = useCallback((t: number) => {
     setCursor(t)
     setFocus({ t })
-  }
+  }, [setCursor, setFocus])
+  const playbackEnd = Math.max(reference.duration, alignment.mineToRef(mine.duration))
+  // 時間軸的標示：固定下來，時間軸的技能列才不會在播放時重繪
+  const timelineHighlights = useMemo(() => lost.map((w) => ({ start: w.refStart, end: w.refEnd })), [lost])
+  const timelineWindows = useMemo(
+    () =>
+      windows.flatMap(({ mine: m, ref: r }) => [
+        ...m.windows.map((w) => ({ ...timelineWindow(w, ruleName(m.rule, abilityName)), side: 'mine' as const })),
+        ...r.windows.map((w) => ({ ...timelineWindow(w, ruleName(r.rule, abilityName)), side: 'ref' as const })),
+      ]),
+    [windows, abilityName],
+  )
+
+  // 不隨游標變動的區塊先做好，播放時游標每秒更新多次，不必跟著重繪
+  const staticSections = useMemo(
+    () => (
+      <>
+        <h3>建議</h3>
+        <AdviceList advice={advice} onJump={jumpTo} />
+        {windows.length > 0 && (
+          <>
+            <h3>技能窗口</h3>
+            <Windows
+              windows={windows}
+              abilities={abilities}
+              abilityName={abilityName}
+              mineToRef={alignment.mineToRef}
+              onJump={jumpTo}
+            />
+          </>
+        )}
+        <h3>Boss 機制差異</h3>
+        <Mechanics differences={mechanics} abilityName={abilityName} onJump={jumpTo} />
+        <Metrics gcd={gcd} usage={usage} abilities={abilities} job={job} category={category} lost={lost} onFocus={jumpTo} />
+      </>
+    ),
+    [advice, jumpTo, windows, abilities, abilityName, alignment, mechanics, gcd, usage, job, category, lost],
+  )
 
   return (
     <>
@@ -291,32 +335,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       </p>
       {alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
-      <h3>建議</h3>
-      <AdviceList advice={advice} onJump={jumpTo} />
-      {windows.length > 0 && (
-        <>
-          <h3>技能窗口</h3>
-          <Windows
-            windows={windows}
-            abilities={abilities}
-            abilityName={abilityName}
-            mineToRef={alignment.mineToRef}
-            onJump={jumpTo}
-          />
-        </>
-      )}
-      <h3>Boss 機制差異</h3>
-      <Mechanics differences={mechanics} abilityName={abilityName} onJump={jumpTo} />
-      <Metrics
-        gcd={gcd}
-        usage={usage}
-        abilities={abilities}
-        job={job}
-        category={category}
-        lost={lost}
-        onFocus={jumpTo}
-      />
-      <h3>站位比較</h3>
+      {staticSections}
+      <h3>站位與當下狀態</h3>
       <Positions
         abilityName={abilityName}
         track={positions.track}
@@ -328,6 +348,17 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         cursor={cursor}
         onSeek={setCursor}
         onJump={jumpTo}
+        status={
+          <StatusPanel
+            mine={mine}
+            reference={reference}
+            cursor={cursor}
+            refToMine={alignment.refToMine}
+            bossCasts={reference.bossCasts}
+            abilities={abilities}
+            abilityName={abilityName}
+          />
+        }
       />
       <h3>時間軸</h3>
       <Timeline
@@ -336,15 +367,23 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         alignment={alignment}
         abilities={abilities}
         job={job}
-        highlights={lost.map((w) => ({ start: w.refStart, end: w.refEnd }))}
-        windows={windows.flatMap(({ mine: m, ref: r }) => [
-          ...m.windows.map((w) => ({ ...timelineWindow(w, ruleName(m.rule, abilityName)), side: 'mine' as const })),
-          ...r.windows.map((w) => ({ ...timelineWindow(w, ruleName(r.rule, abilityName)), side: 'ref' as const })),
-        ])}
+        highlights={timelineHighlights}
+        windows={timelineWindows}
         focus={focus}
         cursor={cursor}
+        follow={playing}
         onSeek={setCursor}
         compareEnd={compareEnd}
+      />
+      {/* 固定在畫面底部的播放列：捲到哪裡都能操作 */}
+      <Playback
+        cursor={cursor}
+        duration={playbackEnd}
+        playing={playing}
+        speed={speed}
+        onSeek={setCursor}
+        onPlayingChange={setPlaying}
+        onSpeedChange={setSpeed}
       />
     </>
   )

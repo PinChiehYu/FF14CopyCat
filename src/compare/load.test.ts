@@ -108,6 +108,8 @@ describe('clipSide', () => {
         { statusId: 1_001_233, start: 6000, end: 8000, prepull: false, openEnded: false },
       ],
       prepull: [],
+      auras: [],
+      hp: [],
       duration: 10_000,
     }
     const clipped = clipSide(side, 5000)
