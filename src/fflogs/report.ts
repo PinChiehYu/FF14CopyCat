@@ -4,6 +4,11 @@ export function abilityIconUrl(icon: string): string {
   return `https://assets.rpglogs.com/img/ff/abilities/${icon}`
 }
 
+/** FFLogs 的效果（Status）ID＝1,000,000＋狀態 ID；效果圖示為 24×32 直式，顯示時要維持比例 */
+export function isStatusId(id: number): boolean {
+  return id >= 1_000_000 && id < 2_000_000
+}
+
 export function abilityMap(report: Report): Map<number, Ability> {
   return new Map(report.masterData.abilities.map((a) => [a.gameID, a]))
 }

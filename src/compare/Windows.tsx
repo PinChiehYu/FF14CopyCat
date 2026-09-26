@@ -1,6 +1,6 @@
 import { formatFightTime } from '../analysis/timeline'
 import { windowState, windowTitle, type WindowSummary } from '../analysis/windows'
-import { abilityIconUrl } from '../fflogs/report'
+import { abilityIconUrl, isStatusId } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import { ruleDisplayId, ruleName } from '../jobs/windows'
 
@@ -61,11 +61,19 @@ export function Windows({
       </thead>
       <tbody>
         {windows.map(({ mine, ref }) => {
-          const icon = abilities.get(ruleDisplayId(mine.rule))
+          const displayId = ruleDisplayId(mine.rule)
+          const icon = abilities.get(displayId)
           return (
             <tr key={mine.rule.key}>
               <th title={icon?.englishName}>
-                {icon && <img className="usage-icon" src={abilityIconUrl(icon.icon)} alt="" loading="lazy" />}
+                {icon && (
+                  <img
+                    className={`usage-icon${isStatusId(displayId) ? ' status-icon' : ''}`}
+                    src={abilityIconUrl(icon.icon)}
+                    alt=""
+                    loading="lazy"
+                  />
+                )}
                 {ruleName(mine.rule, abilityName)}
               </th>
               <td>

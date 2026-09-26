@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { playersInFight } from './report'
+import { isStatusId, playersInFight } from './report'
 import type { Actor, Fight, Report } from './types'
 
 function actor(id: number, name: string, subType: string, type = 'Player'): Actor {
@@ -39,5 +39,13 @@ const report: Report = {
 describe('playersInFight', () => {
   it('returns real players in the fight, excluding limit break pseudo-actors', () => {
     expect(playersInFight(report, fight).map((a) => a.id)).toEqual([2, 34])
+  })
+})
+
+describe('isStatusId', () => {
+  it('matches status IDs only', () => {
+    expect(isStatusId(1_001_233)).toBe(true) // 明鏡止水
+    expect(isStatusId(7499)).toBe(false) // 技能
+    expect(isStatusId(0x2000000 + 44162)).toBe(false) // 道具
   })
 })

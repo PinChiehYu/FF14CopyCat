@@ -799,6 +799,13 @@ h3 {
   border-radius: 3px;
 }
 
+/* 效果圖示原圖 24×32 直式：同高時寬度縮為 3/4 */
+.usage-icon.status-icon {
+  width: 18px;
+  height: 24px;
+  margin: -2px 6px -2px 0;
+}
+
 .tag {
   margin-left: 6px;
   padding: 0 4px;
