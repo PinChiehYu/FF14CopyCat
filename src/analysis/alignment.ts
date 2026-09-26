@@ -137,52 +137,57 @@ function occurrences(casts: TimedCast[], dedupeMs: number): { list: Occurrence[]
   return { list, counts }
 }
 
-// 孤立錨點：時間差和前、後各幾個錨點都差這麼多以上（而前後兩邊彼此一致）
-const SPIKE_MS = 3000
-const SPIKE_NEIGHBORS = 3
+// 時間差（ref − mine）相差這麼多以上就算不同的一段
+const LEVEL_MS = 3000
+// 跳開又跳回的一段在我的時間上最長多久（更長的視為真的不同，不去掉）
+const DETOUR_MAX_MS = 30_000
+// 第一段或最後一段少於這麼多個錨點、而相鄰那段至少這麼多個時，視為配錯
+const EDGE_MIN_ANCHORS = 3
 
-/**
- * 去掉孤立的錨點：隨機順序的機制（例如熱舞綠光開場的 A 面／B 面先後隨機）會讓「同一技能的第 n 次」配錯，
- * 這種錨點的時間差和前後都不同，會扭曲時間軸並被誤判成推進差距。真正的推進是前後兩邊的時間差不同，不會被去掉。
- */
-function dropSpikes(anchors: Anchor[]): Anchor[] {
+/** 依時間差把連續的錨點分段：與目前這段時間差的中位數相差 LEVEL_MS 以上就開始新的一段。 */
+function levels(anchors: Anchor[]): Anchor[][] {
   const offset = (a: Anchor) => a.ref - a.mine
-  // 與前後的差距（不是孤立錨點時為 0）
-  const deviation = (list: Anchor[], i: number) => {
-    const before = list.slice(Math.max(0, i - SPIKE_NEIGHBORS), i).map(offset)
-    const after = list.slice(i + 1, i + 1 + SPIKE_NEIGHBORS).map(offset)
-    if (before.length === 0 && after.length === 0) return 0
-    // 第一個或最後一個錨點只有一側：那一側的錨點彼此一致、而它差很多才算（M5S 尾聲 4 拍／8 拍節奏隨機，
-    // 參考之後才出現的 4 拍節奏配到我最後一次，時間差 +18.9 秒，被當成推進差距）
-    if (before.length === 0 || after.length === 0) {
-      const side = before.length > 0 ? before : after
-      if (side.length < SPIKE_NEIGHBORS || Math.max(...side) - Math.min(...side) >= SPIKE_MS) return 0
-      const d = Math.abs(offset(list[i]) - median(side))
-      return d >= SPIKE_MS ? d : 0
-    }
-    const b = median(before)
-    const c = median(after)
-    const d = Math.min(Math.abs(offset(list[i]) - b), Math.abs(offset(list[i]) - c))
-    return d >= SPIKE_MS && Math.abs(b - c) < SPIKE_MS ? d : 0
+  const out: Anchor[][] = []
+  for (const a of anchors) {
+    const current = out.at(-1)
+    if (current && Math.abs(offset(a) - median(current.map(offset))) < LEVEL_MS) current.push(a)
+    else out.push([a])
   }
-  // 連續配錯好幾個時，它們彼此是鄰居、一次看不出來（M5S A 面／B 面相反時連續 3 個）：
-  // 每次去掉最離群的一個再重新判斷，直到沒有孤立錨點
-  let list = anchors
-  for (;;) {
-    let worst = -1
-    let worstDeviation = 0
-    list.forEach((_, i) => {
-      const d = deviation(list, i)
-      if (d > worstDeviation) {
-        worst = i
-        worstDeviation = d
-      }
-    })
-    if (worst < 0) return list
-    list = list.filter((_, i) => i !== worst)
-  }
+  return out
 }
 
+/**
+ * 去掉配錯的錨點：隨機順序的機制（例如熱舞綠光開場的 A 面／B 面先後、尾聲的 4 拍／8 拍節奏）會讓
+ * 「同一技能的第 n 次」配到另一段機制，時間差「跳開又跳回」，扭曲時間軸並被誤判成推進差距。
+ * 依時間差分段後，去掉：
+ * - 夾在兩段之間、前後兩段時間差一致、而且在我的時間上不超過 30 秒的一段（連續配錯好幾個也能整段去掉：
+ *   M5S 開場 B 面整段 5 個錨點都差 −20 秒）
+ * - 第一段或最後一段錨點很少、而相鄰那段錨點夠多時（尾聲配錯，後面沒有錨點可以「跳回」）
+ * 每次去掉一段後重新分段。真正的推進是跳過去就不回來（前後兩段不同），不會被去掉。
+ */
+function dropDetours(anchors: Anchor[]): Anchor[] {
+  const offset = (a: Anchor) => a.ref - a.mine
+  const level = (l: Anchor[]) => median(l.map(offset))
+  const span = (l: Anchor[]) => l[l.length - 1].mine - l[0].mine
+  let list = anchors
+  for (;;) {
+    const ls = levels(list)
+    // 先找中間跳開又跳回的段；都沒有了才看首尾（否則開場只有兩個正確錨點時，會先被當成配錯的首段）
+    let detour = ls.findIndex(
+      (l, k) =>
+        k > 0 && k < ls.length - 1 && Math.abs(level(ls[k - 1]) - level(ls[k + 1])) < LEVEL_MS && span(l) <= DETOUR_MAX_MS,
+    )
+    if (detour < 0 && ls.length >= 2) {
+      const edge = (k: number, neighbor: number) => ls[k].length < EDGE_MIN_ANCHORS && ls[neighbor].length >= EDGE_MIN_ANCHORS
+      // 開打時兩邊同步（隱含的 (0, 0) 錨點），時間差接近 0 的第一段不算配錯
+      if (Math.abs(level(ls[0])) >= LEVEL_MS && edge(0, 1)) detour = 0
+      else if (edge(ls.length - 1, ls.length - 2)) detour = ls.length - 1
+    }
+    if (detour < 0) return list
+    const drop = new Set(ls[detour])
+    list = list.filter((a) => !drop.has(a))
+  }
+}
 /** 依 mine 排序的配對中，取 ref 嚴格遞增的最長子序列，去掉時間順序矛盾的錯誤配對。 */
 function longestIncreasing(pairs: Anchor[]): Anchor[] {
   const tails: number[] = []
@@ -228,7 +233,7 @@ export function buildAlignment(
   }
   // 同一時間點多個技能只留第一個，確保內插區段長度 > 0
   // 去掉孤立錨點後兩邊仍嚴格遞增（只刪除，不改順序）
-  const anchors = dropSpikes(longestIncreasing(candidates).filter((a, i, all) => i === 0 || a.mine > all[i - 1].mine))
+  const anchors = dropDetours(longestIncreasing(candidates).filter((a, i, all) => i === 0 || a.mine > all[i - 1].mine))
   const points = [{ mine: 0, ref: 0 }, ...anchors]
   // LIS 保證 ref 嚴格遞增、上面的過濾保證 mine 嚴格遞增，因此兩個方向都能分段內插
   const forward = points.map((p) => ({ from: p.mine, to: p.ref }))

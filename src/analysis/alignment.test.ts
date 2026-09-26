@@ -56,6 +56,17 @@ describe('buildAlignment', () => {
     expect(mineToRef(50_000)).toBe(50_000)
   })
 
+  it('drops a longer detour of mismatched anchors that returns to the same offset', () => {
+    // 實例（M5S）：B 面整段 5 個錨點都配到參考早 20 秒的那段，之後回到原本的時間差
+    const common = [cast(10, 1), cast(14, 2), cast(18, 3), cast(80, 4), cast(90, 5), cast(100, 6)]
+    const bSide = [40, 42, 44, 46, 48].map((s, i) => cast(s, 10 + i))
+    const mine = [...common, ...bSide]
+    const ref = [...common, ...bSide.map((c) => ({ ...c, t: c.t - 20_000 }))]
+    const { anchors } = buildAlignment(mine, ref)
+    expect(anchors.map((a) => a.abilityId)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(pushDifferences(anchors)).toEqual([])
+  })
+
   it('drops a mismatched last anchor', () => {
     // 尾聲的隨機機制不同（我 4 拍、參考 8 拍），參考較晚才出現的 4 拍配到我最後一次
     const common = [cast(10, 1), cast(20, 2), cast(30, 3), cast(40, 4)]
