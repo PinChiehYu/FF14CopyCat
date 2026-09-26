@@ -817,10 +817,13 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+/* 時間標籤一律排在分數右側、在剩下的寬度內換行：不限寬時，標籤多的列會整塊換到分數下一行，
+   標籤少的列（例如強化藥）卻在同一行，各列排版不一致 */
 .window-chips {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 4px;
+  max-width: calc(100% - 3.2em);
   vertical-align: top;
 }
 
@@ -2013,6 +2016,7 @@ h3 {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(2.4em, 1fr));
     gap: 3px;
+    max-width: none;
   }
 
   .window-chip {
