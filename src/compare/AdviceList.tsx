@@ -10,15 +10,16 @@ const GROUPS: { severity: Severity; label: string }[] = [
 function AdviceItem({ advice, onJump }: { advice: Advice; onJump: (t: number) => void }) {
   return (
     <li className={`advice ${advice.severity}`}>
-      <div>
+      {/* 「查看」與標題同一列，說明文字用滿整個寬度 */}
+      <div className="advice-head">
         <strong>{advice.title}</strong>
-        <p>{advice.detail}</p>
+        {advice.at !== undefined && (
+          <button type="button" onClick={() => onJump(advice.at!)}>
+            查看
+          </button>
+        )}
       </div>
-      {advice.at !== undefined && (
-        <button type="button" onClick={() => onJump(advice.at!)}>
-          查看
-        </button>
-      )}
+      <p>{advice.detail}</p>
     </li>
   )
 }

@@ -66,7 +66,7 @@ export function Mechanics({
                     {formatFightTime(d.t)}
                   </button>
                 </th>
-                <td>{KIND_LABELS[d.kind]}</td>
+                <td className="mech-kind">{KIND_LABELS[d.kind]}</td>
                 {cell(d.mine, variants)}
                 {cell(d.ref, variants)}
               </tr>
