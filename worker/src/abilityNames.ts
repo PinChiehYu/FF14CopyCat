@@ -12,9 +12,17 @@ const MAX_ITEM_ID = 2 * HQ_OFFSET
 // 簡中轉台灣正體（字元與異體字，不改用詞）
 const toTraditional = Converter({ from: 'cn', to: 'tw' })
 
-/** FFLogs 的技能 ID 轉成要查詢的遊戲資料表與列；不是技能也不是道具時回傳 null。 */
-export function gameRow(id: number): { sheet: 'Action' | 'Item'; row: number; hq: boolean } | null {
+// FFLogs 以「1,000,000 + 狀態 ID」表示效果（Buff／Debuff）
+const STATUS_OFFSET = 1_000_000
+const MAX_STATUS_ID = 100_000
+
+type Sheet = 'Action' | 'Item' | 'Status'
+
+/** FFLogs 的技能 ID 轉成要查詢的遊戲資料表與列；不是技能、效果或道具時回傳 null。 */
+export function gameRow(id: number): { sheet: Sheet; row: number; hq: boolean } | null {
   if (id > 0 && id < HQ_OFFSET) return { sheet: 'Action', row: id, hq: false }
+  const status = id - STATUS_OFFSET
+  if (status > 0 && status < MAX_STATUS_ID) return { sheet: 'Status', row: status, hq: false }
   const item = id - ITEM_OFFSET
   if (item > 0 && item < MAX_ITEM_ID) {
     const hq = item >= HQ_OFFSET
@@ -28,7 +36,7 @@ function usable(name: unknown): name is string {
   return typeof name === 'string' && name.trim() !== '' && !name.startsWith('_rsv_')
 }
 
-async function fetchNames(sheet: 'Action' | 'Item', rows: number[], language: 'tc' | 'chs'): Promise<Map<number, string>> {
+async function fetchNames(sheet: Sheet, rows: number[], language: 'tc' | 'chs'): Promise<Map<number, string>> {
   const names = new Map<number, string>()
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE)
@@ -42,7 +50,7 @@ async function fetchNames(sheet: 'Action' | 'Item', rows: number[], language: 't
 }
 
 /** 同一張表：優先官方繁中，沒有時查簡中轉繁體。 */
-async function sheetNames(sheet: 'Action' | 'Item', rows: number[]): Promise<Map<number, AbilityName>> {
+async function sheetNames(sheet: Sheet, rows: number[]): Promise<Map<number, AbilityName>> {
   const result = new Map<number, AbilityName>()
   if (rows.length === 0) return result
   const tc = await fetchNames(sheet, rows, 'tc')
@@ -63,20 +71,23 @@ export interface AbilityName {
 }
 
 /**
- * 查詢技能（Action 表）或道具（Item 表，例如爆發藥）的繁中名稱：優先用官方繁中，
+ * 查詢技能（Action 表）、效果（Status 表）或道具（Item 表，例如爆發藥）的繁中名稱：優先用官方繁中，
  * 沒有（佔位或空白）時以簡中轉繁體。都沒有的不回傳，由前端沿用 FFLogs 的名稱。
  * @param ids FFLogs 的技能 ID
  */
 export async function abilityNames(ids: number[]): Promise<Record<number, AbilityName>> {
   const targets = ids.map((id) => ({ id, target: gameRow(id) })).filter((t) => t.target !== null)
-  const rowsOf = (sheet: 'Action' | 'Item') => [
-    ...new Set(targets.filter((t) => t.target!.sheet === sheet).map((t) => t.target!.row)),
-  ]
-  const [actions, items] = await Promise.all([sheetNames('Action', rowsOf('Action')), sheetNames('Item', rowsOf('Item'))])
+  const rowsOf = (sheet: Sheet) => [...new Set(targets.filter((t) => t.target!.sheet === sheet).map((t) => t.target!.row))]
+  const [actions, items, statuses] = await Promise.all([
+    sheetNames('Action', rowsOf('Action')),
+    sheetNames('Item', rowsOf('Item')),
+    sheetNames('Status', rowsOf('Status')),
+  ])
+  const bySheet = { Action: actions, Item: items, Status: statuses }
 
   const result: Record<number, AbilityName> = {}
   for (const { id, target } of targets) {
-    const found = (target!.sheet === 'Action' ? actions : items).get(target!.row)
+    const found = bySheet[target!.sheet].get(target!.row)
     if (found) result[id] = target!.hq ? { ...found, name: `${found.name}（HQ）` } : found
   }
   return result

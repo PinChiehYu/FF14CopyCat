@@ -1,4 +1,5 @@
 import type { TimedCast } from '../analysis/alignment'
+import { prepullEffects, selfBuffWindows, type BuffWindow } from '../analysis/buffs'
 import type { PositionSample } from '../analysis/positions'
 import { toFightTime } from '../analysis/timeline'
 import { fetchFightEvents } from '../fflogs/client'
@@ -22,6 +23,10 @@ export interface SideData {
   playerPositions: PositionSample[]
   /** 主要 Boss（施放最多次的敵人）的位置 */
   bossPositions: PositionSample[]
+  /** 玩家自己給自己的效果時段（技能窗口分析用） */
+  buffs: BuffWindow[]
+  /** 開打當下玩家自己施加、身上已有的效果 ID（推知開打前用過的技能） */
+  prepull: number[]
   /** 戰鬥長度（毫秒） */
   duration: number
 }
@@ -114,6 +119,8 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     bossCasts: toCasts(bossEvents, fight),
     playerPositions: actorPositions(playerEvents, fight, player.id),
     bossPositions: boss === undefined ? [] : actorPositions(bossEvents, fight, boss),
+    buffs: selfBuffWindows(playerEvents, fight, player.id),
+    prepull: prepullEffects(playerEvents, player.id),
     duration: fight.endTime - fight.startTime,
   }
 }
@@ -131,6 +138,10 @@ export function clipSide(side: SideData, endMs: number): SideData {
     bossCasts: before(side.bossCasts),
     playerPositions: before(side.playerPositions),
     bossPositions: before(side.bossPositions),
+    // 比較範圍外才開始的窗口不計；跨過結束點的窗口視為未結束（不評分）
+    buffs: side.buffs
+      .filter((b) => b.start <= endMs)
+      .map((b) => (b.end > endMs ? { ...b, end: endMs, openEnded: true } : b)),
     duration: Math.min(side.duration, endMs),
   }
 }

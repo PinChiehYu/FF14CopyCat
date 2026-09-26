@@ -26,7 +26,7 @@
 |---|---|---|
 | `GET /reports/:code` | 報告標題、fights、masterData.actors、masterData.abilities（技能名稱與圖示） | 10 分鐘 |
 | `GET /reports/:code/events?fight&start&end[&source][&dataType][&hostility]` | 一頁事件（`includeResources: true`、`limit: 10000`），前端 `fetchFightEvents()` 依 `nextPageTimestamp` 翻頁 | 10 分鐘 |
-| `GET /abilities?ids=1,2,3` | 技能繁中名稱（見「技能繁中名稱」） | 1 天 |
+| `GET /abilities?ids=1,2,3` | 技能、效果（Buff）與道具的繁中名稱（見「技能繁中名稱」） | 1 天 |
 | `GET /npc-names?name=A&name=B` | Boss（NPC）繁中名稱（見「Boss 繁中名稱」） | 1 天 |
 | `GET /reports/:code/auto-attacks-taken?fight=` | 每位玩家承受的敵方普通攻擊總傷害 `{ 角色 ID: 傷害 }`，判斷 MT／ST（見「MT／ST 判斷」） | 10 分鐘 |
 
@@ -156,7 +156,8 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
   - 黑魔 春風醒：Preferred World Bonus（source 0）、Well Fed、Galvanize、Peloton。
   - 已經消失的效果（例如開打前用掉的爆發藥以外的短效果）不會出現。
 - **開打前詠唱的技能**：只有 0:00 後的 `cast`、沒有 `begincast`（Lavid Holy Spirit 0.36 秒、春風醒 Fire III 1.25 秒）；`playerCasts()` 因此以 `cast` 時間畫出。
-- 尚未驗證：不帶 `fightIDs`、只給報告時間範圍（`fight.startTime - 30000` 到 `fight.startTime`）的事件查詢是否有開打前的施放。需要 Worker 新增端點才能測。
+- **不帶 `fightIDs` 也拿不到**（2026-09-27 實驗）：暫時在 Worker 加了只給報告時間範圍（`fight.startTime - 30000` 到 `fight.startTime`）、不指定戰鬥的查詢，五組基準都只回傳 1 筆 `combatantinfo`，沒有任何施放事件。FFLogs 不保留戰鬥以外的事件，開打前的確切時間無法取得；實驗端點已移除。
+- 實作（`src/analysis/buffs.ts`）：`prepullEffects()` 取 `combatantinfo.auras` 中 `source` 為玩家自己的效果（排除別人給的與 source 0 的 Preferred World Bonus）；`selfBuffWindows()` 把這些效果視為從 0:00 開始的窗口。
 - 狀態 ID 對應技能：要查遊戲 Status 表（名稱）；對應回 Action 需另建表（多數同名，例如 Meikyo Shisui 技能 7499／狀態 1233）。
 
 ## xivanalysis 規則移植評估（2026-09-26）
@@ -168,6 +169,20 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 本站可用的資料：玩家事件已抓 `dataType=All`，包含 `applybuff`／`removebuff`（身上的效果）、`damage`（可判斷身位 `hitType`／方向相關欄位需再確認）、`resources`；Boss 事件另有。多數規則**不需要新的 FFLogs 請求**。
 - 移植方式：不直接引用 xivanalysis 的框架（依賴其事件管線與資料表），而是在 `src/jobs/` 以本站的 `TimedCast` 與 Buff 事件重寫規則；技能／狀態 ID 以遊戲資料查證。先做共用的 Buff 窗口與冷卻漂移，再逐職業加規則。
 - 比較方式：兩邊各自套規則得到窗口結果，再依對齊後時間配對；時間軸標示窗口與不合格處。
+
+## 技能窗口（2026-09-27 實作）
+
+- 資料：`selfBuffWindows()`（`src/analysis/buffs.ts`）從玩家全部事件取 `sourceID` 與 `targetID` 都是玩家自己的 `applybuff`／`removebuff`，重複施加視為同一段；開打前已有的效果從 0:00 起算，到戰鬥結束仍未移除的標 `openEnded`。`clipSide()` 會移除比較範圍外才開始的窗口，並把跨過結束點的截斷、標為 `openEnded`（不評分）。
+- 規則：`src/jobs/windows.ts` 的 `windowRules(subType)`，欄位有 `statusId`（效果 ID＝狀態 ID＋1,000,000）、`expectedGcds`、`trackedGcds`、`allowedGcds`、`expectedActions`（`each` 每個各 N 次／`total` 合計 N 次）、`ignoredGcds`，並記錄出處 `source`（xivanalysis 模組）。
+- 評估：`evaluateWindows()`（`src/analysis/windows.ts`）以開始施放時間判斷技能是否在窗口內（`start ≤ t ≤ end + 100 ms`：最後一個 GCD 常在效果移除的同一時間施放）。
+- 規則的 ID（Action／Status 表查證，2026-09-27）：
+  - 武士：明鏡止水 狀態 1233（技能 7499）；刃風 7477、曉風 36963、陣風 7478、士風 7479、風光 25780、月光 7481、花車 7482、雪風 7480、滿月 7484、櫻花 7485。
+  - 騎士：戰逃反應 狀態 76（技能 20）、安魂祈禱 狀態 1368（Imperator 36921 也施加）；瀝血劍 3538、悔罪 16459、信念之劍 25748、真理之劍 25749、英勇之劍 25750、王權劍 3539、贖罪劍 16460、祈告劍 36918、葬送劍 36919、聖靈 7384、榮耀之劍 36922、償贖劍 25747（英文資料拼作 Expiacion）、厄運流轉 23、調停 16461、深仁厚澤 3541。
+- **修正：明鏡止水只計連擊技**。第一版把窗口內所有 GCD 都算進去，結果武士兩邊幾乎全部不合格（1/16、2/17）：居合術、燕返、奧義斬浪不消耗明鏡止水，窗口常延續到這些技能之後。改為 `trackedGcds` 只看連擊技（與 xivanalysis 的 `ONLY_SHOW` 相同）後，兩邊都 16/16、17/17。
+- 基準結果：
+  - 騎士 hqNYDGK9A4pmWVXB #18：戰逃反應 1/13，其中 12 次缺調停；另有數次「其他 GCD」不足 3 個或 GCD 不足 8 個。安魂祈禱 12/13（8:34 缺英勇之劍，窗口長達 31 秒）。
+  - 騎士 khNfTaMtYwKBd36b #10：戰逃反應 13/13、安魂祈禱 13/13。
+- 效果名稱：Worker `/abilities` 的 `gameRow()` 把 1,000,000～1,099,999 對應到 Status 表（例如 1001233 → 明鏡止水、1000076 → 戰逃反應、Iron Will 1000079 → 鋼鐵信念）。
 
 ## 外部資料來源調查：技能繁中名稱（2026-09-25）
 
@@ -293,6 +308,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-27 技能窗口與開打前效果
+- 變更：新增 `analysis/buffs.ts`（自身效果窗口、開打前效果）、`analysis/windows.ts`（窗口評估）、`jobs/windows.ts`（武士、騎士規則）、`compare/Windows.tsx`；`SideData` 新增 `buffs`、`prepull`；`Timeline` 新增 `windows`；Worker `/abilities` 支援 Status 表。Worker 已部署。
+- 原因：依 xivanalysis 的職業規則做技能窗口分析，並顯示開打前的效果（見 DESIGN.md）。
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
 

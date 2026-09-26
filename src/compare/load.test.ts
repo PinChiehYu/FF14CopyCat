@@ -102,9 +102,20 @@ describe('clipSide', () => {
         { t: 6000, x: 100, y: 100 },
       ],
       bossPositions: [],
+      buffs: [
+        { statusId: 1_001_233, start: 1000, end: 3000, prepull: false, openEnded: false },
+        { statusId: 1_001_233, start: 4000, end: 7000, prepull: false, openEnded: false },
+        { statusId: 1_001_233, start: 6000, end: 8000, prepull: false, openEnded: false },
+      ],
+      prepull: [],
       duration: 10_000,
     }
     const clipped = clipSide(side, 5000)
+    // 跨過結束點的窗口截斷並標為未結束，之後才開始的不計
+    expect(clipped.buffs.map((b) => [b.end, b.openEnded])).toEqual([
+      [3000, false],
+      [5000, true],
+    ])
     expect(clipped.playerCasts).toEqual([{ t: 1000, abilityId: 1 }])
     expect(clipped.autoAttacks).toEqual([])
     expect(clipped.bossCasts).toHaveLength(1)

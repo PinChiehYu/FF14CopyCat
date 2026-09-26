@@ -223,9 +223,21 @@ describe('handleRequest', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('looks up status (buff) names in the Status sheet', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      const rows = url.pathname.endsWith('/Status') ? [{ row_id: 1233, fields: { Name: '明鏡止水' } }] : []
+      return Response.json({ rows })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    // 1001233 = 1,000,000 + 狀態 1233
+    const res = await handleRequest(get('/abilities?ids=1001233'), env, ctx, null)
+    expect(await res.json()).toEqual({ 1001233: { name: '明鏡止水', source: 'tc' } })
+  })
+
   it('validates ability ids', async () => {
     const fetchMock = mockFflogs({})
-    // 5000000 既不在技能也不在道具的 ID 範圍
+    // 5000000 不在技能、效果或道具的 ID 範圍
     for (const path of ['/abilities', '/abilities?ids=1,x', '/abilities?ids=5000000']) {
       expect((await handleRequest(get(path), env, ctx, null)).status, path).toBe(400)
     }

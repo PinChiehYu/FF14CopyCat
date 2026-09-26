@@ -5,6 +5,7 @@ import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import type { JobModule } from '../jobs'
 import type { SideData } from './load'
+import type { TimelineWindow } from '../analysis/windows'
 
 const ZOOM_LEVELS = [10, 20, 40, 80] // 每秒像素
 
@@ -40,6 +41,7 @@ export function Timeline({
   abilities,
   job,
   highlights = [],
+  windows = [],
   focus = null,
   cursor,
   onSeek,
@@ -52,6 +54,8 @@ export function Timeline({
   job: JobModule | undefined
   /** 以參考時間標示的區段（例如少打 GCD 的時段），畫在我的列上 */
   highlights?: { start: number; end: number }[]
+  /** 技能窗口（各側自己的戰鬥時間），畫在該側 GCD 列的底部 */
+  windows?: (TimelineWindow & { side: 'mine' | 'ref' })[]
   /** 要捲動到的參考時間；每次傳入新物件就會捲動一次 */
   focus?: { t: number } | null
   /** 目前檢視的參考時間，畫成直線 */
@@ -145,8 +149,24 @@ export function Timeline({
               ))}
             </div>
 
-            {allLanes.map((lane) => (
+            {allLanes.map((lane, laneIndex) => (
               <div key={lane.label} className={`lane ${lane.side}`}>
+                {/* 技能窗口畫在每側的第一列（GCD 列）底部 */}
+                {allLanes.findIndex((l) => l.side === lane.side) === laneIndex &&
+                  windows
+                    .filter((w) => w.side === lane.side)
+                    .map((w) => {
+                      const toRef = lane.side === 'mine' ? alignment.mineToRef : (t: number) => t
+                      const start = toRef(w.start)
+                      return (
+                        <span
+                          key={`${w.start}-${w.title}`}
+                          className={`window-bar ${w.state}`}
+                          style={{ left: x(start), width: Math.max(2, x(toRef(w.end) - start)) }}
+                          title={w.title}
+                        />
+                      )
+                    })}
                 {lane.side === 'mine' &&
                   highlights.map((h) => (
                     <span

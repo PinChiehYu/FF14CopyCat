@@ -1,4 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { evaluateWindows, timelineWindow } from '../analysis/windows'
+import { windowRules } from '../jobs/windows'
+import { Windows } from './Windows'
 import { buildAlignment } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
 import { mechanicDifferences } from '../analysis/mechanics'
@@ -52,7 +55,12 @@ function useSides(mine: Selection, reference: Selection) {
 function useAbilityNames(mine: SideData, reference: SideData): Map<number, AbilityName> {
   const [names, setNames] = useState<Map<number, AbilityName>>(new Map())
   useEffect(() => {
-    const ids = [mine, reference].flatMap((s) => [...s.playerCasts, ...s.autoAttacks, ...s.bossCasts].map((c) => c.abilityId))
+    const ids = [mine, reference].flatMap((s) => [
+      ...[...s.playerCasts, ...s.autoAttacks, ...s.bossCasts].map((c) => c.abilityId),
+      // 效果（開打前、技能窗口）
+      ...s.prepull,
+      ...s.buffs.map((b) => b.statusId),
+    ])
     const controller = new AbortController()
     fetchAbilityNames(ids, controller.signal)
       .then(setNames)
@@ -69,12 +77,14 @@ function SummaryTable({
   reference,
   mineEnd,
   refEnd,
+  abilityName,
 }: {
   mine: SideData
   reference: SideData
   /** 各自時間下的比較範圍結束點 */
   mineEnd: number
   refEnd: number
+  abilityName: (id: number) => string
 }) {
   const sides = [
     { key: 'mine', label: '我', side: mine, end: mineEnd },
@@ -92,6 +102,25 @@ function SummaryTable({
           )}
         </>
       ),
+    },
+    {
+      // FFLogs 沒有開打前的施放事件，以開打當下身上的自身效果推知；對方沒有的效果標示出來
+      label: '開打前',
+      cell: (s) => {
+        const other = s === mine ? reference : mine
+        if (s.prepull.length === 0) return <span className="hint-inline">—</span>
+        return s.prepull.map((id, i) => (
+          <span key={id}>
+            {i > 0 && '、'}
+            <span
+              className={other.prepull.includes(id) ? undefined : 'prepull-only'}
+              title={other.prepull.includes(id) ? undefined : `${s === mine ? '參考' : '你'}開打時沒有這個效果`}
+            >
+              {abilityName(id)}
+            </span>
+          </span>
+        ))
+      },
     },
   ]
   return (
@@ -192,6 +221,15 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     [mine, reference, alignment],
   )
   const abilityName = (id: number) => abilities.get(id)?.name ?? `#${id}`
+  // 技能窗口（xivanalysis 式的職業規則）：兩邊各自評分，只看比較範圍內
+  const windows = useMemo(() => {
+    if (!job) return []
+    const name = (id: number) => abilities.get(id)?.name ?? `#${id}`
+    return windowRules(job.subType).map((rule) => ({
+      mine: evaluateWindows(rule, mineInRange.buffs, mineInRange.playerCasts, job.isGcd, name),
+      ref: evaluateWindows(rule, refInRange.buffs, refInRange.playerCasts, job.isGcd, name),
+    }))
+  }, [job, mineInRange, refInRange, abilities])
   const advice = useMemo(
     () =>
       generateAdvice({
@@ -211,8 +249,10 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         category,
         mineToRef: alignment.mineToRef,
         firstUse: (id) => mineInRange.playerCasts.find((c) => c.abilityId === id)?.t,
+        windows,
+        prepull: { mine: mine.prepull, ref: reference.prepull },
       }),
-    [compareEnd, gcd, lost, usage, positions, abilities, job, category, alignment, mineInRange, mechanics],
+    [compareEnd, gcd, lost, usage, positions, abilities, job, category, alignment, mineInRange, mechanics, windows, mine, reference],
   )
 
   // 目前檢視的參考時間（站位圖、時間軸游標）
@@ -226,7 +266,13 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
 
   return (
     <>
-      <SummaryTable mine={mine} reference={reference} mineEnd={mineInRange.duration} refEnd={compareEnd} />
+      <SummaryTable
+        mine={mine}
+        reference={reference}
+        mineEnd={mineInRange.duration}
+        refEnd={compareEnd}
+        abilityName={abilityName}
+      />
       <p className="hint">
         時間軸以 Boss 技能對齊：錨點 {alignment.anchors.length} 個
         {drifts.length > 0 &&
@@ -237,6 +283,12 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
       <h3>建議</h3>
       <AdviceList advice={advice} onJump={jumpTo} />
+      {windows.length > 0 && (
+        <>
+          <h3>技能窗口</h3>
+          <Windows windows={windows} abilities={abilities} mineToRef={alignment.mineToRef} onJump={jumpTo} />
+        </>
+      )}
       <h3>Boss 機制差異</h3>
       <Mechanics differences={mechanics} abilityName={abilityName} onJump={jumpTo} />
       <Metrics
@@ -269,6 +321,10 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         abilities={abilities}
         job={job}
         highlights={lost.map((w) => ({ start: w.refStart, end: w.refEnd }))}
+        windows={windows.flatMap(({ mine: m, ref: r }) => [
+          ...m.windows.map((w) => ({ ...timelineWindow(w, abilityName(m.rule.statusId)), side: 'mine' as const })),
+          ...r.windows.map((w) => ({ ...timelineWindow(w, abilityName(r.rule.statusId)), side: 'ref' as const })),
+        ])}
         focus={focus}
         cursor={cursor}
         onSeek={setCursor}

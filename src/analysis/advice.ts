@@ -3,6 +3,7 @@ import { mechanicLabel, type MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
 import { MIRROR_LABELS, type Divergence, type TrackPoint } from './positions'
 import { formatFightTime } from './timeline'
+import type { WindowSummary } from './windows'
 
 export type Severity = 'high' | 'medium' | 'low'
 
@@ -35,6 +36,10 @@ export interface AdviceInput {
   firstUse: (abilityId: number) => number | undefined
   /** Boss 機制不同的時間點 */
   mechanics?: MechanicDifference[]
+  /** 技能窗口（jobs/windows.ts 的規則）評估結果，兩邊依規則順序對應 */
+  windows?: { mine: WindowSummary; ref: WindowSummary }[]
+  /** 開打當下身上已有的自身效果（推知開打前用過的技能） */
+  prepull?: { mine: number[]; ref: number[] }
 }
 
 // 機制差異發生在時段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
@@ -285,11 +290,65 @@ function positionAdvice(input: AdviceInput): Advice[] {
   return items
 }
 
+// 合格率比參考低這麼多以上列為優先
+const WINDOW_HIGH_GAP = 0.3
+// 常見問題最多列出幾項
+const MAX_WINDOW_ISSUES = 2
+
+/** 技能窗口（例如明鏡止水、戰逃反應期間該做的事）合格率比參考低時提出，並列出最常見的問題。 */
+function windowAdvice(input: AdviceInput): Advice[] {
+  const items: Advice[] = []
+  for (const { mine, ref } of input.windows ?? []) {
+    if (mine.judged === 0) continue
+    const mineRate = mine.passed / mine.judged
+    const refRate = ref.judged > 0 ? ref.passed / ref.judged : 1
+    if (mineRate >= refRate || mine.passed === mine.judged) continue
+    const failed = mine.windows.filter((w) => w.judged && w.issues.length > 0)
+    const counts = new Map<string, number>()
+    for (const w of failed) for (const issue of w.issues) counts.set(issue, (counts.get(issue) ?? 0) + 1)
+    const common = [...counts]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_WINDOW_ISSUES)
+      .map(([issue, n]) => `${issue}（${n} 次）`)
+      .join('；')
+    const name = input.abilityName(mine.rule.statusId)
+    items.push({
+      severity: refRate - mineRate >= WINDOW_HIGH_GAP ? 'high' : 'medium',
+      title: `${name}：你 ${mine.judged} 次中 ${mine.passed} 次合格，參考 ${ref.judged} 次中 ${ref.passed} 次`,
+      detail: `常見問題：${common}。對照時間軸上${name}期間參考使用的技能。`,
+      at: input.mineToRef(failed[0].start),
+    })
+  }
+  return items
+}
+
+/** 參考開打前有用、我沒有的自身效果（例如開打前的明鏡止水、坦姿、進食）。 */
+function prepullAdvice(input: AdviceInput): Advice[] {
+  if (!input.prepull) return []
+  const missing = input.prepull.ref.filter((id) => !input.prepull!.mine.includes(id))
+  if (missing.length === 0) return []
+  return [
+    {
+      severity: 'medium',
+      title: `開打前參考有使用：${missing.map(input.abilityName).join('、')}`,
+      detail: '開打當下參考身上已有這些自身效果，你沒有；可能是開打前的準備（技能、坦姿或進食）不同。',
+      at: 0,
+    },
+  ]
+}
+
 const ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2 }
 
 /** 依各階段的分析結果產生規則式建議，依重要性排序。 */
 export function generateAdvice(input: AdviceInput): Advice[] {
-  const items = [...lostGcdAdvice(input), ...gcdSpeedAdvice(input), ...usageAdvice(input), ...positionAdvice(input)]
-  // 穩定排序：同等級維持產生順序（停手 → GCD 速度 → 技能 → 站位）
+  const items = [
+    ...lostGcdAdvice(input),
+    ...gcdSpeedAdvice(input),
+    ...windowAdvice(input),
+    ...prepullAdvice(input),
+    ...usageAdvice(input),
+    ...positionAdvice(input),
+  ]
+  // 穩定排序：同等級維持產生順序（停手 → GCD 速度 → 技能窗口 → 開打前 → 技能 → 站位）
   return items.map((a, i) => ({ a, i })).sort((x, y) => ORDER[x.a.severity] - ORDER[y.a.severity] || x.i - y.i).map((x) => x.a)
 }

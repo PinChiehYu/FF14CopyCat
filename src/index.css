@@ -512,6 +512,77 @@ button:disabled {
   border-inline: 1px solid color-mix(in srgb, var(--error) 60%, transparent);
 }
 
+/* 技能窗口：GCD 列底部的色條（綠：合格、紅：有問題、灰：不評分） */
+.window-bar {
+  position: absolute;
+  bottom: 0;
+  height: 4px;
+  border-radius: 2px;
+  z-index: 1;
+}
+
+.window-bar.ok,
+.window-chip.ok {
+  --window-color: var(--kill);
+}
+
+.window-bar.bad,
+.window-chip.bad {
+  --window-color: var(--error);
+}
+
+.window-bar.unjudged,
+.window-chip.unjudged {
+  --window-color: var(--text-muted);
+}
+
+.window-bar {
+  background: var(--window-color);
+}
+
+.windows-table td {
+  vertical-align: top;
+}
+
+.window-score {
+  display: inline-block;
+  min-width: 3.2em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.window-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  vertical-align: top;
+}
+
+.window-chip {
+  padding: 0 6px;
+  font: inherit;
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.7;
+  color: var(--window-color);
+  background: color-mix(in srgb, var(--window-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--window-color) 40%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.window-chip:hover {
+  background: color-mix(in srgb, var(--window-color) 22%, transparent);
+}
+
+/* 開打前：對方沒有的效果 */
+.prepull-only {
+  color: var(--mine);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
 h3 {
   font-size: 1.05em;
   margin: 24px 0 8px;
