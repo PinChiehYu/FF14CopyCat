@@ -151,7 +151,15 @@ function dropSpikes(anchors: Anchor[]): Anchor[] {
   const deviation = (list: Anchor[], i: number) => {
     const before = list.slice(Math.max(0, i - SPIKE_NEIGHBORS), i).map(offset)
     const after = list.slice(i + 1, i + 1 + SPIKE_NEIGHBORS).map(offset)
-    if (before.length === 0 || after.length === 0) return 0
+    if (before.length === 0 && after.length === 0) return 0
+    // 第一個或最後一個錨點只有一側：那一側的錨點彼此一致、而它差很多才算（M5S 尾聲 4 拍／8 拍節奏隨機，
+    // 參考之後才出現的 4 拍節奏配到我最後一次，時間差 +18.9 秒，被當成推進差距）
+    if (before.length === 0 || after.length === 0) {
+      const side = before.length > 0 ? before : after
+      if (side.length < SPIKE_NEIGHBORS || Math.max(...side) - Math.min(...side) >= SPIKE_MS) return 0
+      const d = Math.abs(offset(list[i]) - median(side))
+      return d >= SPIKE_MS ? d : 0
+    }
     const b = median(before)
     const c = median(after)
     const d = Math.min(Math.abs(offset(list[i]) - b), Math.abs(offset(list[i]) - c))

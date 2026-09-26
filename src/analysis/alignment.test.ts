@@ -56,6 +56,16 @@ describe('buildAlignment', () => {
     expect(mineToRef(50_000)).toBe(50_000)
   })
 
+  it('drops a mismatched last anchor', () => {
+    // 尾聲的隨機機制不同（我 4 拍、參考 8 拍），參考較晚才出現的 4 拍配到我最後一次
+    const common = [cast(10, 1), cast(20, 2), cast(30, 3), cast(40, 4)]
+    const mine = [...common, cast(50, 10)]
+    const ref = [...common, cast(50, 11), cast(70, 10)]
+    const { anchors } = buildAlignment(mine, ref)
+    expect(anchors.map((a) => a.abilityId)).toEqual([1, 2, 3, 4])
+    expect(pushDifferences(anchors)).toEqual([])
+  })
+
   it('keeps the anchors around a real push', () => {
     // 60 秒後參考都早 10 秒：前後兩邊的時間差不同，不是孤立錨點
     const mine = [cast(10, 1), cast(20, 2), cast(30, 3), cast(60, 4), cast(70, 5), cast(80, 6)]
