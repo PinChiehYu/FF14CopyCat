@@ -227,22 +227,33 @@ function SummaryTable({
         ),
     },
     {
-      // FFLogs 沒有開打前的施放事件，以開打當下身上的自身效果推知；對方沒有的效果標示出來
+      // FFLogs 沒有開打前的施放事件，以開打當下身上的自身效果推知；只列對方沒有的效果，兩邊都有的放在滑鼠提示
       label: '開打前',
       cell: (s) => {
         const other = s === mine ? reference : mine
         if (s.prepull.length === 0) return <span className="hint-inline">—</span>
-        return s.prepull.map((id, i) => (
-          <span key={id}>
-            {i > 0 && '、'}
-            <span
-              className={other.prepull.includes(id) ? undefined : 'prepull-only'}
-              title={other.prepull.includes(id) ? undefined : `${s === mine ? '參考' : '你'}開打時沒有這個效果`}
-            >
-              {abilityName(id)}
+        const shared = s.prepull.filter((id) => other.prepull.includes(id))
+        const only = s.prepull.filter((id) => !other.prepull.includes(id))
+        const sharedTitle = shared.length > 0 ? `兩邊都有：${shared.map(abilityName).join('、')}` : undefined
+        if (only.length === 0) {
+          // 兩邊完全相同才寫「相同」；對方多了效果時這邊沒有可列的
+          const same = other.prepull.every((id) => s.prepull.includes(id))
+          return (
+            <span className="hint-inline" title={sharedTitle}>
+              {same ? '相同' : '—'}
             </span>
+          )
+        }
+        return (
+          <span title={[`${s === mine ? '參考' : '你'}開打時沒有這些效果`, sharedTitle].filter(Boolean).join('\n')}>
+            {only.map((id, i) => (
+              <span key={id}>
+                {i > 0 && '、'}
+                <span className="prepull-only">{abilityName(id)}</span>
+              </span>
+            ))}
           </span>
-        ))
+        )
       },
     },
   ]
