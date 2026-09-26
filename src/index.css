@@ -1146,163 +1146,6 @@ h3 {
   margin: 0;
 }
 
-/* 窄螢幕：拉桿獨佔一列，按鈕與時間在下一列 */
-/* ---- 手機（窄螢幕）版面 ---- */
-@media (max-width: 560px) {
-  /* 播放列：拉桿獨佔一列，其餘控制收在下一列 */
-  .playback {
-    gap: 6px;
-    padding: 6px 8px;
-  }
-
-  .playback-scrubber {
-    flex-basis: 100%;
-    order: -1;
-  }
-
-  .playback button,
-  .playback select {
-    padding: 4px 8px;
-  }
-
-  .playback-time {
-    flex: 1;
-    font-size: 0.8em;
-    text-align: center;
-  }
-
-  /* 戰鬥選單：縮窄編號、長度、結果欄，留空間給 Boss 名稱 */
-  .fight-option,
-  .player-option,
-  .finder-option {
-    gap: 4px;
-  }
-
-  /* 排名選項：省略名次、戰鬥長度與「DPS」字樣（PR 已表示名次，其餘在滑鼠提示），留空間給玩家名稱 */
-  .finder-option {
-    grid-template-columns: 3.8em minmax(0, 1fr) auto;
-  }
-
-  .finder-option.with-mech {
-    grid-template-columns: 3.8em minmax(0, 1fr) auto 4.2em;
-  }
-
-  .finder-rank,
-  .finder-time,
-  .finder-unit {
-    display: none;
-  }
-
-  .player-option {
-    grid-template-columns: 2.2em minmax(0, 1fr) auto;
-  }
-
-  .fight-option {
-    grid-template-columns: 2.2em minmax(0, 1fr) 4.2em 3.2em;
-  }
-
-  .dropdown-button {
-    padding: 8px 10px;
-  }
-
-  /* 建議：縮小內距與「查看」按鈕 */
-  .advice {
-    padding: 8px 10px;
-  }
-
-  .advice-head > button {
-    padding: 2px 8px;
-    font-size: 0.85em;
-  }
-
-  /* 技能窗口：名稱欄縮小、時間標籤縮小，一列放得下更多 */
-  .windows-table th,
-  .windows-table td {
-    padding: 6px 4px;
-  }
-
-  .windows-table tbody th {
-    width: 4.5em;
-    font-size: 0.8em;
-    white-space: normal;
-  }
-
-  .windows-table tbody th .usage-icon {
-    display: block;
-    margin-bottom: 2px;
-  }
-
-  .window-chip {
-    padding: 0 4px;
-    font-size: 0.72em;
-  }
-
-  .window-chips {
-    gap: 3px;
-  }
-
-  /* 機制差異表：縮小間距 */
-  .metrics-table.mechanics th,
-  .metrics-table.mechanics td {
-    padding: 4px 6px;
-  }
-
-  /* 技能使用次數：一列兩張卡片，數據排成 2×2 */
-  .usage-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .usage-card {
-    padding: 6px 8px;
-  }
-
-  .usage-stats {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  /* 當下狀態：兩位玩家左右並排，播放時一個畫面看得到 */
-  .status-panel {
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    max-width: none;
-    min-width: 0;
-  }
-
-  .boss-now {
-    grid-column: 1 / -1;
-  }
-
-  .side-status {
-    min-width: 0;
-    padding: 6px;
-  }
-
-  .side-status-head {
-    font-size: 0.85em;
-  }
-
-  .recent-action {
-    width: 20px;
-    height: 20px;
-  }
-
-  .aura {
-    width: 18px;
-    height: 18px;
-  }
-
-  /* 時間軸：縮窄左側標籤欄 */
-  .timeline-labels {
-    width: 64px;
-  }
-
-  .lane-label {
-    padding: 0 4px;
-    font-size: 0.72em;
-  }
-}
-
 .playback-time {
   font-size: 0.9em;
   white-space: nowrap;
@@ -1381,13 +1224,14 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
-  min-height: 24px;
+  min-height: 32px;
   align-items: center;
 }
 
+/* 狀態圖示原圖為 24×32 直式，維持比例 */
 .aura {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 32px;
   border-radius: 3px;
   border: 1px solid transparent;
 }
@@ -1595,4 +1439,165 @@ h3 {
 .divergence-list button {
   padding: 1px 8px;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- 手機（窄螢幕）版面：放在檔案最後，才能覆寫前面同權重的規則 ---- */
+@media (max-width: 560px) {
+  /* 播放列：拉桿獨佔一列，其餘控制收在下一列 */
+  .playback {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .playback-scrubber {
+    flex-basis: 100%;
+    order: -1;
+  }
+
+  .playback button,
+  .playback select {
+    padding: 4px 8px;
+  }
+
+  .playback-time {
+    flex: 1;
+    font-size: 0.8em;
+    text-align: center;
+  }
+
+  /* 戰鬥選單：縮窄編號、長度、結果欄，留空間給 Boss 名稱 */
+  .fight-option,
+  .player-option,
+  .finder-option {
+    gap: 4px;
+  }
+
+  /* 排名選項：省略名次、戰鬥長度與「DPS」字樣（PR 已表示名次，其餘在滑鼠提示），留空間給玩家名稱 */
+  .finder-option {
+    grid-template-columns: 3.8em minmax(0, 1fr) auto;
+  }
+
+  .finder-option.with-mech {
+    grid-template-columns: 3.8em minmax(0, 1fr) auto 4.2em;
+  }
+
+  .finder-rank,
+  .finder-time,
+  .finder-unit {
+    display: none;
+  }
+
+  .player-option {
+    grid-template-columns: 2.2em minmax(0, 1fr) auto;
+  }
+
+  .fight-option {
+    grid-template-columns: 2.2em minmax(0, 1fr) 4.2em 3.2em;
+  }
+
+  .dropdown-button {
+    padding: 8px 10px;
+  }
+
+  /* 建議：縮小內距與「查看」按鈕 */
+  .advice {
+    padding: 8px 10px;
+  }
+
+  .advice-head > button {
+    padding: 2px 8px;
+    font-size: 0.85em;
+  }
+
+  /* 技能窗口：名稱欄縮小、時間標籤縮小，一列放得下更多 */
+  .windows-table th,
+  .windows-table td {
+    padding: 6px 4px;
+  }
+
+  .windows-table tbody th {
+    width: 4.5em;
+    font-size: 0.8em;
+    white-space: normal;
+  }
+
+  .windows-table tbody th .usage-icon {
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .window-chip {
+    padding: 0 4px;
+    font-size: 0.72em;
+  }
+
+  .window-chips {
+    gap: 3px;
+  }
+
+  /* 機制差異表：縮小間距 */
+  .metrics-table.mechanics th,
+  .metrics-table.mechanics td {
+    padding: 4px 6px;
+  }
+
+  /* 技能使用次數：一列兩張卡片，數據排成 2×2 */
+  .usage-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .usage-card {
+    padding: 6px 8px;
+  }
+
+  .usage-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* 當下狀態：換到俯視圖下方佔滿整列，兩位玩家左右並排，播放時一個畫面看得到 */
+  .status-panel {
+    flex: 1 1 100%;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .boss-now {
+    grid-column: 1 / -1;
+  }
+
+  .side-status {
+    min-width: 0;
+    padding: 6px;
+  }
+
+  .side-status-head {
+    font-size: 0.85em;
+  }
+
+  .recent-action {
+    width: 20px;
+    height: 20px;
+  }
+
+  .aura {
+    width: 18px;
+    height: 24px;
+  }
+
+  .aura-row {
+    min-height: 24px;
+  }
+
+  /* 時間軸：縮窄左側標籤欄 */
+  .timeline-labels {
+    width: 64px;
+  }
+
+  .lane-label {
+    padding: 0 4px;
+    font-size: 0.72em;
+  }
 }

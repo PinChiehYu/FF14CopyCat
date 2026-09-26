@@ -175,7 +175,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - **施放事件**：有詠唱條的技能先有 `begincast`、詠唱結束才有 `cast`；被打斷的只有 `begincast`。開場預詠唱（例如黑魔的 Fire III）沒有 `begincast`。
 - **普通攻擊**：`dataType=All` 中每場約 300 次 `cast`（Attack #7；遠程為 Shot #8），`dataType=Casts` 中沒有。
 - **技能與道具 ID**：技能即遊戲的 Action ID；使用道具以 **`0x2000000`（33,554,432）＋道具 ID** 表示，HQ 道具再加 1,000,000。例：34600427 = 33,554,432 + 1,000,000 + 45995（Grade 3 Gemdraught of Strength，繁中「3級剛力之寶藥」）、34600428 → 45996（巧力）、34600430 → 45998（智力）。以 Item 表 `language=en／tc／chs` 驗證過（2026-09-26）。
-- **圖示**：`masterData.abilities[].icon`（如 `003000-003729.png`），網址 `https://assets.rpglogs.com/img/ff/abilities/<icon>`（`/icons/` 路徑會 403）。
+- **圖示**：`masterData.abilities[].icon`（如 `003000-003729.png`），網址 `https://assets.rpglogs.com/img/ff/abilities/<icon>`（`/icons/` 路徑會 403）。效果（Status）圖示原圖為 24×32 直式、技能圖示為正方形，顯示效果圖示時要維持 3:4 比例，否則會被壓扁。
 - **Boss**：施放最多次的敵人為主 Boss（Howling Blade 有多個同名 actor）。部分 Boss 技能沒有名稱（42672 顯示為 `unknown_a6b0`）。
 - **隨機機制**：同一機制的隨機變化使用不同技能 ID，甚至同名不同 ID。Howling Blade：Windfang／Stonefang、Eminent Reign／Revolutionary Reign、Wolves' Reign（#41880/#43369 vs #42927/#43370 等）、Hero's Blow（#42079/#42080 vs #42081/#42082）、Sand Surge（#43138 vs #43520）。
 - **語系**：FFLogs 有 `cn.`、`ja.` 等子網域，**沒有 `tw.fflogs.com`**；API 的 `translate` 只翻成英文。
@@ -380,6 +380,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - **FFLogs 權杖端點 429**（2026-09-26）：短時間內多次部署 Worker 並測試後，`/oauth/token` 回 429，所有報告查詢失敗約數分鐘後自行恢復。權杖只快取在 isolate 記憶體，每次部署或新 isolate 都會重新取權杖。Worker 現在把權杖的 429 轉成 503，前端對 429／503 顯示「請求過多…請稍候一分鐘再試」。若再發生頻繁，可考慮把權杖放進 `caches.default` 或 KV 跨 isolate 共用。
 - **摘要顯示的名稱**：`useSides()` 只依 ID 載入事件，`SideData.selection` 是載入當時的選擇（Boss 名稱可能還是英文）；`ComparisonLoader` 會把目前的選擇合併回 `SideData` 再交給 `Loaded`。
 - **技能名稱查詢延遲**：`/abilities` 快取未命中時約 8 秒；在瀏覽器驗證繁中名稱時要等比較載入後再多等幾秒。
+- **CSS 手機規則的位置**（2026-09-27）：`@media (max-width: 560px)` 區塊原本在 `index.css` 中段，之後才定義的元件樣式（狀態面板、圖示等）以相同權重蓋掉了手機規則，使部分手機調整沒有生效；手機區塊移到檔案最後。新增元件樣式要放在該區塊之前。
 - **PowerShell 5.1 寫檔**：`Set-Content -Encoding utf8` 會在檔案開頭加 BOM；改用 Edit／Write 工具或 Node 寫檔。
 
 ## 技術上的已知限制
