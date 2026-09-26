@@ -19,7 +19,7 @@ export function Dropdown<T>({
   lockLabel = '已鎖定',
   onChange,
 }: {
-  label: string
+  label: ReactNode
   options: DropdownOption<T>[]
   value: T | null
   placeholder?: string

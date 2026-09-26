@@ -5,6 +5,7 @@ import { formatFightTime } from '../analysis/timeline'
 import { fetchTcRankings, type TcRanking } from '../fflogs/client'
 import { reportUrl } from '../fflogs/url'
 import { jobName } from '../jobs/names'
+import { Dropdown, type DropdownOption } from '../ui/Dropdown'
 import { loadBossCasts, type Selection } from './load'
 
 // 同時比對機制的請求數（Worker 每 IP 每分鐘 60 次）
@@ -26,6 +27,8 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
     { status: 'idle' } | { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; count: number; rows: TcRanking[] }
   >({ status: 'idle' })
   const [mechanics, setMechanics] = useState<Map<string, MechanicState>>(new Map())
+  // 已從選單選為參考的紀錄
+  const [picked, setPicked] = useState<string | null>(null)
   const mineBoss = useRef<{ key: string; casts: Promise<TimedCast[]> } | null>(null)
 
   const mineKey = mine ? `${mine.report.code}/${mine.fight.id}/${mine.player.subType}` : null
@@ -33,12 +36,14 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   useEffect(() => {
     setResult({ status: 'idle' })
     setMechanics(new Map())
+    setPicked(null)
   }, [mineKey])
 
   const search = async () => {
     if (!mine) return
     setResult({ status: 'loading' })
     setMechanics(new Map())
+    setPicked(null)
     try {
       const { count, rankings } = await fetchTcRankings({
         encounter: mine.fight.encounterID,
@@ -123,54 +128,61 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       </div>
       {result.status === 'loading' && <p className="hint">搜尋中…</p>}
       {result.status === 'error' && <p className="error">{result.message}</p>}
-      {result.status === 'ready' && (
-        <>
-          {/* 只佔一行，說明放在滑鼠提示，避免撐高輸入框 */}
-          <p className="hint finder-summary">
-            <span
-              title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，每人取最好的一場，依 DPS 排序；列出 PR 範圍內的前 ${MAX_LISTED} 筆`}
-            >
-              共 {result.count} 人，列出 {result.rows.length} 筆
-            </span>
-            {noneSame && <span title="沒有隨機機制完全相同的紀錄，改依不同處由少到多排序">・無完全相同，依差異排序</span>}
-          </p>
-          {rows.length === 0 ? (
-            <p className="hint">沒有符合的紀錄。</p>
-          ) : (
-            <ul className="finder-list">
-              {rows.map((r) => {
-                const m = mechanics.get(rowKey(r))
-                return (
-                  <li key={rowKey(r)}>
-                    <button
-                      type="button"
-                      onClick={() => onPick(reportUrl(r.report, r.fight, r.actor))}
-                      title="選為參考日誌"
-                    >
-                      <span className="finder-rank">#{r.rank}</span>
-                      <span className="finder-pr">PR {r.pr}</span>
-                      <span className="finder-name">
-                        {r.name}
-                        <span className="hint-inline">（{r.server}）</span>
-                      </span>
-                      <span className="finder-meta">{Math.round(r.dps).toLocaleString()} DPS</span>
-                      <span className="finder-meta">{formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}</span>
-                      <span className="finder-meta">{new Date(r.reportStart).toLocaleDateString('zh-TW')}</span>
-                      {sameMechanics && (
-                        <span className="finder-mech">
-                          {!m || m.status === 'loading' ? '比對中…' : m.status === 'error' ? '—' : m.variants === 0 ? '機制相同' : `${m.variants} 處不同`}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </>
-      )}
+      {result.status === 'ready' &&
+        (rows.length === 0 ? (
+          <p className="hint">沒有符合的紀錄。</p>
+        ) : (
+          <Dropdown
+            // 摘要只佔一行，完整說明放在滑鼠提示，避免撐高輸入框
+            label={
+              <span className="finder-summary">
+                <span
+                  title={`繁中服${mine.fight.name}的${jobName(mine.player.subType)}共 ${result.count} 人，每人取最好的一場，依 DPS 排序；列出 PR 範圍內的前 ${MAX_LISTED} 筆`}
+                >
+                  共 {result.count} 人，列出 {result.rows.length} 筆
+                </span>
+                {noneSame && <span title="沒有隨機機制完全相同的紀錄，改依不同處由少到多排序">・無完全相同，依差異排序</span>}
+              </span>
+            }
+            placeholder={`選擇要參考的紀錄（${rows.length} 筆）`}
+            options={rows.map((r) => rankingOption(r, sameMechanics ? (mechanics.get(rowKey(r)) ?? { status: 'loading' }) : undefined))}
+            value={picked}
+            onChange={(key) => {
+              const r = rows.find((row) => rowKey(row) === key)
+              if (!r) return
+              setPicked(key)
+              onPick(reportUrl(r.report, r.fight, r.actor))
+            }}
+          />
+        ))}
     </details>
   )
+}
+
+/** 排名紀錄的選項：名次、PR、玩家、DPS、戰鬥長度（伺服器與日期放在滑鼠提示） */
+function rankingOption(r: TcRanking, mech: MechanicState | undefined): DropdownOption<string> {
+  const date = new Date(r.reportStart).toLocaleDateString('zh-TW')
+  return {
+    value: rowKey(r),
+    title: `${r.name}（${r.server}）${Math.round(r.dps).toLocaleString()} DPS，${formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}，${date}`,
+    content: (
+      <span className={`option-row finder-option${mech ? ' with-mech' : ''}`}>
+        <span className="finder-rank">#{r.rank}</span>
+        <span className="finder-pr">PR {r.pr}</span>
+        <span className="option-main">{r.name}</span>
+        <span className="option-meta">
+          {Math.round(r.dps).toLocaleString()}
+          <span className="finder-unit"> DPS</span>
+        </span>
+        <span className="option-meta finder-time">{formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}</span>
+        {mech && (
+          <span className="finder-mech">
+            {mech.status === 'loading' ? '比對中…' : mech.status === 'error' ? '—' : mech.variants === 0 ? '機制相同' : `${mech.variants} 處不同`}
+          </span>
+        )}
+      </span>
+    ),
+  }
 }
 
 function rowKey(r: TcRanking): string {

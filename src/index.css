@@ -580,10 +580,11 @@ button:disabled {
   cursor: pointer;
 }
 
-/* 結果摘要只佔一行，完整說明放在滑鼠提示 */
+/* 結果摘要當作選單標籤：只佔一行，完整說明放在滑鼠提示 */
 .finder-summary {
-  margin: 0 0 6px;
   font-size: 0.85em;
+  font-weight: normal;
+  color: var(--text-muted);
 }
 
 .finder-summary [title] {
@@ -592,40 +593,22 @@ button:disabled {
   text-underline-offset: 3px;
 }
 
-.finder-list {
+/* 排名選項：名次、PR、玩家、DPS、長度（、機制比對）各自固定欄寬 */
+.finder-option {
   display: grid;
-  gap: 4px;
-  max-height: 320px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.9em;
-}
-
-.finder-list button {
-  display: grid;
-  grid-template-columns: 3.2em 4.2em minmax(0, 1fr) auto auto auto auto;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 10px;
-  font: inherit;
-  text-align: left;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
+  grid-template-columns: 2.6em 4.2em minmax(0, 1fr) auto 3.2em;
   font-variant-numeric: tabular-nums;
 }
 
-.finder-list button:hover {
-  border-color: var(--accent);
+.finder-option.with-mech {
+  grid-template-columns: 2.6em 4.2em minmax(0, 1fr) auto 3.2em 4.6em;
 }
 
-.finder-rank,
-.finder-meta {
+.finder-option .option-meta {
+  text-align: right;
+}
+
+.finder-rank {
   color: var(--text-muted);
 }
 
@@ -633,13 +616,6 @@ button:disabled {
   font-weight: 600;
   color: var(--accent);
 }
-
-.finder-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .finder-mech {
   font-size: 0.85em;
   color: var(--text-muted);
@@ -1197,8 +1173,24 @@ h3 {
 
   /* 戰鬥選單：縮窄編號、長度、結果欄，留空間給 Boss 名稱 */
   .fight-option,
-  .player-option {
+  .player-option,
+  .finder-option {
     gap: 4px;
+  }
+
+  /* 排名選項：省略名次、戰鬥長度與「DPS」字樣（PR 已表示名次，其餘在滑鼠提示），留空間給玩家名稱 */
+  .finder-option {
+    grid-template-columns: 3.8em minmax(0, 1fr) auto;
+  }
+
+  .finder-option.with-mech {
+    grid-template-columns: 3.8em minmax(0, 1fr) auto 4.2em;
+  }
+
+  .finder-rank,
+  .finder-time,
+  .finder-unit {
+    display: none;
   }
 
   .player-option {
