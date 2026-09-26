@@ -2,6 +2,7 @@ import { formatFightTime } from '../analysis/timeline'
 import { windowState, windowTitle, type WindowSummary } from '../analysis/windows'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
+import { ruleDisplayId, ruleName } from '../jobs/windows'
 
 function Chips({
   summary,
@@ -39,11 +40,13 @@ function Chips({
 export function Windows({
   windows,
   abilities,
+  abilityName,
   mineToRef,
   onJump,
 }: {
   windows: { mine: WindowSummary; ref: WindowSummary }[]
   abilities: Map<number, Ability>
+  abilityName: (id: number) => string
   mineToRef: (t: number) => number
   onJump: (t: number) => void
 }) {
@@ -58,12 +61,12 @@ export function Windows({
       </thead>
       <tbody>
         {windows.map(({ mine, ref }) => {
-          const status = abilities.get(mine.rule.statusId)
+          const icon = abilities.get(ruleDisplayId(mine.rule))
           return (
             <tr key={mine.rule.key}>
-              <th title={status?.englishName}>
-                {status && <img className="usage-icon" src={abilityIconUrl(status.icon)} alt="" loading="lazy" />}
-                {status?.name ?? `#${mine.rule.statusId}`}
+              <th title={icon?.englishName}>
+                {icon && <img className="usage-icon" src={abilityIconUrl(icon.icon)} alt="" loading="lazy" />}
+                {ruleName(mine.rule, abilityName)}
               </th>
               <td>
                 <Chips summary={mine} toRef={mineToRef} onJump={onJump} />

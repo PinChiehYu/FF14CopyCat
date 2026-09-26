@@ -172,9 +172,16 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技能窗口（2026-09-27 實作）
 
-- 資料：`selfBuffWindows()`（`src/analysis/buffs.ts`）從玩家全部事件取 `sourceID` 與 `targetID` 都是玩家自己的 `applybuff`／`removebuff`，重複施加視為同一段；開打前已有的效果從 0:00 起算，到戰鬥結束仍未移除的標 `openEnded`。`clipSide()` 會移除比較範圍外才開始的窗口，並把跨過結束點的截斷、標為 `openEnded`（不評分）。
-- 規則：`src/jobs/windows.ts` 的 `windowRules(subType)`，欄位有 `statusId`（效果 ID＝狀態 ID＋1,000,000）、`expectedGcds`、`trackedGcds`、`allowedGcds`、`expectedActions`（`each` 每個各 N 次／`total` 合計 N 次）、`ignoredGcds`，並記錄出處 `source`（xivanalysis 模組）。
-- 評估：`evaluateWindows()`（`src/analysis/windows.ts`）以開始施放時間判斷技能是否在窗口內（`start ≤ t ≤ end + 100 ms`：最後一個 GCD 常在效果移除的同一時間施放）。
+- 資料（`src/analysis/buffs.ts`）：
+  - `selfBuffWindows()`：玩家全部事件中 `sourceID` 與 `targetID` 都是玩家自己的 `applybuff`／`removebuff`，重複施加視為同一段；開打前已有的效果從 0:00 起算，到戰鬥結束仍未移除的標 `openEnded`。
+  - `enemyDebuffWindows()`：玩家施加在敵人身上的 `applydebuff`／`removedebuff`，依「效果＋目標」追蹤，同一效果重疊的時段合併（範圍技能同時掛在多個敵人身上）。
+  - 兩者合併存在 `SideData.buffs`（效果 ID 不重複）。`clipSide()` 會移除比較範圍外才開始的窗口，並把跨過結束點的截斷、標為 `openEnded`（不評分）。
+- 規則格式：`src/jobs/windows.ts`（`WindowRule`、`windowRules()`、`ruleIds()`、`ruleName()`）；各職業規則：`src/jobs/windowRules.ts`。
+  - 觸發方式三擇一：`statusId`（效果期間）、`action`（技能後固定時長，例如武神槍 20 秒、蛇靈氣 30 秒）、`allOf`（多個效果的交集，例如吟遊詩人三個 Buff）。
+  - 要求：`expectedGcds`（依時間結束的窗口以 `ceil((長度 − 250 ms) ÷ GCD)` 封頂，`stacks` 為 true 時不封頂）、`gcdAdjust`（每用一次某技能 ±N）、`trackedGcds`／`ignoredGcds`、`allowedGcds`、`expectedActions`（`each`／`total`，可有 `openerCount`、`onlyIf`）、`limitedActions`（不應使用，開場可有 `openerAllowed`）、`openerMs`。
+  - 問題說明由技能 ID 組成（`abilityName`，官方繁中），規則中不寫分組名稱。
+- 評估：`evaluateWindows()`（`src/analysis/windows.ts`）以開始施放時間判斷技能是否在窗口內（`start ≤ t ≤ end + 100 ms`：最後一個 GCD 常在效果移除的同一時間施放）；`ruleWindows()` 依觸發方式取出窗口。前端以各自的 GCD 估計（`gcdStats`）封頂 GCD 數。
+- 名稱：規則中的技能可能兩邊都沒用過、不在報告的技能清單中，`useAbilityNames()` 另把 `ruleIds()` 一起查繁中名稱，`abilityName` 在技能清單沒有時用查到的名稱。
 - 規則的 ID（Action／Status 表查證，2026-09-27）：
   - 武士：明鏡止水 狀態 1233（技能 7499）；刃風 7477、曉風 36963、陣風 7478、士風 7479、風光 25780、月光 7481、花車 7482、雪風 7480、滿月 7484、櫻花 7485。
   - 騎士：戰逃反應 狀態 76（技能 20）、安魂祈禱 狀態 1368（Imperator 36921 也施加）；瀝血劍 3538、悔罪 16459、信念之劍 25748、真理之劍 25749、英勇之劍 25750、王權劍 3539、贖罪劍 16460、祈告劍 36918、葬送劍 36919、聖靈 7384、榮耀之劍 36922、償贖劍 25747（英文資料拼作 Expiacion）、厄運流轉 23、調停 16461、深仁厚澤 3541。
@@ -183,6 +190,45 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
   - 騎士 hqNYDGK9A4pmWVXB #18：戰逃反應 1/13，其中 12 次缺調停；另有數次「其他 GCD」不足 3 個或 GCD 不足 8 個。安魂祈禱 12/13（8:34 缺英勇之劍，窗口長達 31 秒）。
   - 騎士 khNfTaMtYwKBd36b #10：戰逃反應 13/13、安魂祈禱 13/13。
 - 效果名稱：Worker `/abilities` 的 `gameRow()` 把 1,000,000～1,099,999 對應到 Status 表（例如 1001233 → 明鏡止水、1000076 → 戰逃反應、Iron Will 1000079 → 鋼鐵信念）。
+
+### 其餘職業的規則移植（2026-09-27）
+
+- 來源：xivanalysis dawntrail 分支（commit b240252，2026-09-23）各職業繼承 `BuffWindow`／`RaidBuffWindow`／`BuffGroupWindow`／`TimedWindow` 的模組，以及各職業的 `Tincture`（強化藥，狀態 49）。以三個代理平行整理規則，ID 取自 xivanalysis 的 `src/data/{ACTIONS,STATUSES}`。
+- 查證：
+  - 所有規則 ID 以 Action／Status 表查英文與繁中名稱，與 xivanalysis 的名稱逐一對照（暫時腳本，未提交）。
+  - 觸發效果都在實際日誌中出現過：強化藥 1000049（20 個職業都有）；百雷銃 1003906 是 `applydebuff` 施加在敵人身上。
+  - 赤魔的魔元化 1001971 仍存在，魔連攻等使用舊 ID（7527、7529，沒有 7.4 新增的 45960～45962），可判斷基準日誌為 **7.4 以前**的版本。因此移植 xivanalysis 7.4 以前的規則：魔元化、絕槍的終結之心需先用血壤。
+- 未移植：
+  - 依量譜／MP／召喚獸階段或寵物施放判斷的模組：黑魔 RotationWatchdog、召喚 Summons（非窗口類別）、暗黑 EsteemWindow（影子的施放）、舞者 DirtyDancing（舞步）、機工 Wildfire／Hypercharge（非窗口類別）。
+  - 詠唱時間相關：即刻詠唱、三連詠唱。
+  - 只顯示不評分的：吟遊詩人單一 Buff 窗口、學者／武士／龍騎／繪靈的強化藥（xivanalysis 沒有要求）。
+  - 自訂評估：武僧 BlitzEvaluator、吟遊詩人 Barrage 的特殊計算（這裡以施放次數代替）、機工強化藥的整備計算，以及各規則「趕時間」（`isRushedEndOfPullWindow`）的放寬。
+- 驗證（6 場戰鬥 48 位玩家，事件快取在 scratchpad `event-cache/`；暫時腳本 `_all-windows.ts`，未提交）。合格數／評分窗口數：
+
+| 職業 | 規則 | 結果 |
+|---|---|---|
+| 騎士 | 戰逃反應 | 13/13、13/13、9/14、6/13、1/13；安魂祈禱都 ≥ 13/14；強化藥大多全部合格 |
+| 武士 | 明鏡止水 | 17/17、16/16、8/8、11/15 |
+| 暗黑騎士 | 血亂 | 4 人全部合格；強化藥 0/1～2/3（暗影鋒 5 次、暗影使者 2 次較嚴） |
+| 絕槍戰士 | 無情 | 6/6（修正終結之心前為 3/6） |
+| 占星術師 | 占卜 | 7/7、4/7（拿掉焚灼前為 2/7、3/7） |
+| 賢者 | 活化 | 全部合格；強化藥 1/3～3/3（發炎III 2 次） |
+| 龍騎士 | 三種窗口 | 11/13～13/13，少數 GCD 少 1 個 |
+| 忍者 | 百雷銃 | 3/14（雷遁之術只用 1 次 ×9、強甲破點突 ×7） |
+| 毒蛇劍士 | 祖靈降臨 | 17/18～19/20；蛇靈氣 後 30 秒 4/7～7/7 |
+| 吟遊詩人 | 三重 Buff | 7/7、2/7 |
+| 舞者 | 技巧舞步結束 | 3/3、6/7、7/7 |
+| 武僧 | 紅蓮極意／義結金蘭 | 5/6、3/3 |
+| 赤魔道士 | 魔元化 | 7/7 |
+| 召喚士 | 灼熱之光 | 7/7 |
+| 繪靈法師 | 星空構想 | 4/7、4/7（重錘不足 3 次較常見） |
+| 戰士／白魔／機工 | 強化藥 | 0/1～1/3（強化藥窗口要求較嚴） |
+
+- 依驗證調整：絕槍戰士的終結之心改為窗口內用了血壤才要求（7.4 以前的規則）；占星術師占卜拿掉焚灼（xivanalysis 該規則沒有嚴重度、只在表格顯示）。
+- 名稱修正：規則註解與 DESIGN.md 中憑記憶寫的名稱，改用 Action 表的官方繁中。例如：
+  - 瀝血劍、榮耀之劍、曉風、陰冷收割、夜遊魂收割
+  - 重錘掠刷、莫古利激流、馬蒂恩懲罰
+  - 六合星導腳、三連詠唱
 
 ## 外部資料來源調查：技能繁中名稱（2026-09-25）
 
@@ -308,6 +354,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-27 其餘職業的技能窗口規則
+- 變更：規則移到 `jobs/windowRules.ts`（18 個職業）；`WindowRule` 新增 `action`、`allOf`、`stacks`、`gcdAdjust`、`limitedActions`、`openerMs`，`ExpectedActions` 新增 `openerCount`、`onlyIf`；新增 `enemyDebuffWindows()`；`evaluateWindows()` 新增 GCD 間隔與戰鬥長度參數；`ruleIds()` 供查詢名稱。
+- 原因：移植 xivanalysis 其餘職業的窗口規則（見「技能窗口」）。
 
 ### 2026-09-27 技能窗口與開打前效果
 - 變更：新增 `analysis/buffs.ts`（自身效果窗口、開打前效果）、`analysis/windows.ts`（窗口評估）、`jobs/windows.ts`（武士、騎士規則）、`compare/Windows.tsx`；`SideData` 新增 `buffs`、`prepull`；`Timeline` 新增 `windows`；Worker `/abilities` 支援 Status 表。Worker 已部署。

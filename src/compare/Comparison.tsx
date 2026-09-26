@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { evaluateWindows, timelineWindow } from '../analysis/windows'
-import { windowRules } from '../jobs/windows'
+import { ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows'
 import { Windows } from './Windows'
 import { buildAlignment } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
@@ -55,12 +55,16 @@ function useSides(mine: Selection, reference: Selection) {
 function useAbilityNames(mine: SideData, reference: SideData): Map<number, AbilityName> {
   const [names, setNames] = useState<Map<number, AbilityName>>(new Map())
   useEffect(() => {
-    const ids = [mine, reference].flatMap((s) => [
-      ...[...s.playerCasts, ...s.autoAttacks, ...s.bossCasts].map((c) => c.abilityId),
-      // 效果（開打前、技能窗口）
-      ...s.prepull,
-      ...s.buffs.map((b) => b.statusId),
-    ])
+    const ids = [
+      ...[mine, reference].flatMap((s) => [
+        ...[...s.playerCasts, ...s.autoAttacks, ...s.bossCasts].map((c) => c.abilityId),
+        // 效果（開打前、技能窗口）
+        ...s.prepull,
+        ...s.buffs.map((b) => b.statusId),
+      ]),
+      // 技能窗口規則中的技能：兩邊都沒用過的（例如「缺少」的技能）不在報告的技能清單中
+      ...windowRules(reference.selection.player.subType).flatMap(ruleIds),
+    ]
     const controller = new AbortController()
     fetchAbilityNames(ids, controller.signal)
       .then(setNames)
@@ -220,16 +224,22 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       ),
     [mine, reference, alignment],
   )
-  const abilityName = (id: number) => abilities.get(id)?.name ?? `#${id}`
+  // 報告技能清單中沒有的（兩邊都沒用過）也用查到的繁中名稱
+  const abilityName = useCallback(
+    (id: number) => abilities.get(id)?.name ?? zhNames.get(id)?.name ?? `#${id}`,
+    [abilities, zhNames],
+  )
   // 技能窗口（xivanalysis 式的職業規則）：兩邊各自評分，只看比較範圍內
   const windows = useMemo(() => {
     if (!job) return []
-    const name = (id: number) => abilities.get(id)?.name ?? `#${id}`
+    // 各自的 GCD 間隔用來依窗口長度封頂應打的 GCD 數
+    const evaluate = (rule: WindowRule, side: SideData, gcdMs: number | null) =>
+      evaluateWindows(rule, side.buffs, side.playerCasts, job.isGcd, abilityName, gcdMs, side.duration)
     return windowRules(job.subType).map((rule) => ({
-      mine: evaluateWindows(rule, mineInRange.buffs, mineInRange.playerCasts, job.isGcd, name),
-      ref: evaluateWindows(rule, refInRange.buffs, refInRange.playerCasts, job.isGcd, name),
+      mine: evaluate(rule, mineInRange, gcd?.mine.gcdMs ?? null),
+      ref: evaluate(rule, refInRange, gcd?.ref.gcdMs ?? null),
     }))
-  }, [job, mineInRange, refInRange, abilities])
+  }, [job, mineInRange, refInRange, abilityName, gcd])
   const advice = useMemo(
     () =>
       generateAdvice({
@@ -240,7 +250,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         usage,
         divergences: positions.divergences,
         track: positions.track,
-        abilityName: (id) => abilities.get(id)?.name ?? `#${id}`,
+        abilityName,
         englishName: (id) => {
           const a = abilities.get(id)
           return a?.englishName ?? a?.name ?? `#${id}`
@@ -252,7 +262,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         windows,
         prepull: { mine: mine.prepull, ref: reference.prepull },
       }),
-    [compareEnd, gcd, lost, usage, positions, abilities, job, category, alignment, mineInRange, mechanics, windows, mine, reference],
+    [compareEnd, gcd, lost, usage, positions, abilities, abilityName, job, category, alignment, mineInRange, mechanics, windows, mine, reference],
   )
 
   // 目前檢視的參考時間（站位圖、時間軸游標）
@@ -286,7 +296,13 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       {windows.length > 0 && (
         <>
           <h3>技能窗口</h3>
-          <Windows windows={windows} abilities={abilities} mineToRef={alignment.mineToRef} onJump={jumpTo} />
+          <Windows
+            windows={windows}
+            abilities={abilities}
+            abilityName={abilityName}
+            mineToRef={alignment.mineToRef}
+            onJump={jumpTo}
+          />
         </>
       )}
       <h3>Boss 機制差異</h3>
@@ -322,8 +338,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         job={job}
         highlights={lost.map((w) => ({ start: w.refStart, end: w.refEnd }))}
         windows={windows.flatMap(({ mine: m, ref: r }) => [
-          ...m.windows.map((w) => ({ ...timelineWindow(w, abilityName(m.rule.statusId)), side: 'mine' as const })),
-          ...r.windows.map((w) => ({ ...timelineWindow(w, abilityName(r.rule.statusId)), side: 'ref' as const })),
+          ...m.windows.map((w) => ({ ...timelineWindow(w, ruleName(m.rule, abilityName)), side: 'mine' as const })),
+          ...r.windows.map((w) => ({ ...timelineWindow(w, ruleName(r.rule, abilityName)), side: 'ref' as const })),
         ])}
         focus={focus}
         cursor={cursor}

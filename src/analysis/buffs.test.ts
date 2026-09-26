@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FFLogsEvent, Fight } from '../fflogs/types'
-import { prepullEffects, selfBuffWindows } from './buffs'
+import { enemyDebuffWindows, prepullEffects, selfBuffWindows } from './buffs'
 
 const fight = { id: 1, startTime: 10_000, endTime: 70_000 } as Fight
 const me = 6
@@ -27,6 +27,26 @@ describe('buffs', () => {
 
   it('lists self-applied effects present at the pull', () => {
     expect(prepullEffects(events, me)).toEqual([1_001_233, 1_000_048])
+  })
+
+  it('merges debuffs the player applies to several enemies', () => {
+    const debuff = 1_003_849
+    const windows = enemyDebuffWindows(
+      [
+        { timestamp: 20_000, type: 'applydebuff', sourceID: me, targetID: 50, abilityGameID: debuff },
+        { timestamp: 20_100, type: 'applydebuff', sourceID: me, targetID: 51, abilityGameID: debuff },
+        { timestamp: 40_000, type: 'removedebuff', sourceID: me, targetID: 50, abilityGameID: debuff },
+        { timestamp: 41_000, type: 'removedebuff', sourceID: me, targetID: 51, abilityGameID: debuff },
+        { timestamp: 50_000, type: 'applydebuff', sourceID: 9, targetID: 50, abilityGameID: debuff }, // 別人施加
+        { timestamp: 60_000, type: 'applydebuff', sourceID: me, targetID: 50, abilityGameID: debuff },
+      ],
+      fight,
+      me,
+    )
+    expect(windows).toEqual([
+      { statusId: debuff, start: 10_000, end: 31_000, prepull: false, openEnded: false },
+      { statusId: debuff, start: 50_000, end: 60_000, prepull: false, openEnded: true },
+    ])
   })
 
   it('builds self buff windows including pre-pull and open-ended ones', () => {

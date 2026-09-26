@@ -55,3 +55,43 @@ export function selfBuffWindows(events: FFLogsEvent[], fight: Fight, actorId: nu
   }
   return windows.sort((a, b) => a.start - b.start)
 }
+
+/**
+ * 玩家施加在敵人身上的效果（例如忍者的毒盛、攻擊力降低類的減益）時段。
+ * 同一效果可能同時掛在多個敵人身上（範圍技能），同一效果重疊的時段合併成一段。
+ */
+export function enemyDebuffWindows(events: FFLogsEvent[], fight: Fight, actorId: number): BuffWindow[] {
+  const duration = fight.endTime - fight.startTime
+  const open = new Map<string, { statusId: number; start: number }>()
+  const raw: BuffWindow[] = []
+  for (const e of events) {
+    if (e.sourceID !== actorId || e.targetID === undefined || e.targetID === actorId || e.abilityGameID === undefined) continue
+    const key = `${e.abilityGameID}|${e.targetID}`
+    const t = toFightTime(e.timestamp, fight.startTime)
+    if (e.type === 'applydebuff') {
+      if (!open.has(key)) open.set(key, { statusId: e.abilityGameID, start: t })
+    } else if (e.type === 'removedebuff') {
+      const started = open.get(key)
+      if (!started) continue
+      open.delete(key)
+      raw.push({ statusId: started.statusId, start: started.start, end: t, prepull: false, openEnded: false })
+    }
+  }
+  for (const started of open.values()) {
+    raw.push({ statusId: started.statusId, start: started.start, end: duration, prepull: false, openEnded: true })
+  }
+  // 合併同一效果重疊的時段
+  const merged: BuffWindow[] = []
+  for (const w of raw.sort((a, b) => a.statusId - b.statusId || a.start - b.start)) {
+    const last = merged.at(-1)
+    if (last && last.statusId === w.statusId && w.start <= last.end) {
+      if (w.end > last.end) {
+        last.end = w.end
+        last.openEnded = w.openEnded
+      }
+    } else {
+      merged.push({ ...w })
+    }
+  }
+  return merged.sort((a, b) => a.start - b.start)
+}

@@ -1,5 +1,5 @@
 import type { TimedCast } from '../analysis/alignment'
-import { prepullEffects, selfBuffWindows, type BuffWindow } from '../analysis/buffs'
+import { enemyDebuffWindows, prepullEffects, selfBuffWindows, type BuffWindow } from '../analysis/buffs'
 import type { PositionSample } from '../analysis/positions'
 import { toFightTime } from '../analysis/timeline'
 import { fetchFightEvents } from '../fflogs/client'
@@ -23,7 +23,7 @@ export interface SideData {
   playerPositions: PositionSample[]
   /** 主要 Boss（施放最多次的敵人）的位置 */
   bossPositions: PositionSample[]
-  /** 玩家自己給自己的效果時段（技能窗口分析用） */
+  /** 玩家自己給自己的效果，以及玩家施加在敵人身上的效果的時段（技能窗口分析用） */
   buffs: BuffWindow[]
   /** 開打當下玩家自己施加、身上已有的效果 ID（推知開打前用過的技能） */
   prepull: number[]
@@ -119,7 +119,10 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     bossCasts: toCasts(bossEvents, fight),
     playerPositions: actorPositions(playerEvents, fight, player.id),
     bossPositions: boss === undefined ? [] : actorPositions(bossEvents, fight, boss),
-    buffs: selfBuffWindows(playerEvents, fight, player.id),
+    // 自身效果與施加在敵人身上的效果（效果 ID 不重複，放在一起供技能窗口使用）
+    buffs: [...selfBuffWindows(playerEvents, fight, player.id), ...enemyDebuffWindows(playerEvents, fight, player.id)].sort(
+      (a, b) => a.start - b.start,
+    ),
     prepull: prepullEffects(playerEvents, player.id),
     duration: fight.endTime - fight.startTime,
   }

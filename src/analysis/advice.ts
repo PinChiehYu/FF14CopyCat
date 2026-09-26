@@ -1,4 +1,5 @@
 import type { AbilityCategory } from '../jobs/roleActions'
+import { ruleName } from '../jobs/windows'
 import { mechanicLabel, type MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
 import { MIRROR_LABELS, type Divergence, type TrackPoint } from './positions'
@@ -311,7 +312,7 @@ function windowAdvice(input: AdviceInput): Advice[] {
       .slice(0, MAX_WINDOW_ISSUES)
       .map(([issue, n]) => `${issue}（${n} 次）`)
       .join('；')
-    const name = input.abilityName(mine.rule.statusId)
+    const name = ruleName(mine.rule, input.abilityName)
     items.push({
       severity: refRate - mineRate >= WINDOW_HIGH_GAP ? 'high' : 'medium',
       title: `${name}：你 ${mine.judged} 次中 ${mine.passed} 次合格，參考 ${ref.judged} 次中 ${ref.passed} 次`,
