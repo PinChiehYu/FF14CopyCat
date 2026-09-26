@@ -3,6 +3,7 @@ import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
 import {
   actorPositions,
   autoAttacks,
+  castBars,
   clipSide,
   incompatibility,
   playerCasts,
@@ -87,6 +88,36 @@ function selection(encounterID: number, subType: string): Selection {
   return { report: {} as Report, fight, player }
 }
 
+describe('castBars', () => {
+  it('pairs begincast with its cast and marks cancelled casts', () => {
+    const fight = { startTime: 1000, endTime: 60_000 } as Fight
+    const e = (timestamp: number, type: string, abilityGameID: number, extra = {}) => ({
+      timestamp,
+      type,
+      sourceID: 2,
+      abilityGameID,
+      ...extra,
+    })
+    const bars = castBars(
+      [
+        e(2000, 'begincast', 3577, { duration: 1660 }), // 炎之四：完成
+        e(3660, 'cast', 3577),
+        e(4000, 'begincast', 152, { duration: 3500 }), // 爆炎：被瞬發的技能取消
+        e(5000, 'cast', 16505),
+        e(6000, 'cast', 7), // 普通攻擊不計
+        e(8000, 'begincast', 3577, { duration: 1660 }), // 戰鬥結束時仍在詠唱
+      ],
+      fight,
+      2,
+    )
+    expect(bars).toEqual([
+      { abilityId: 3577, start: 1000, end: 2660, interrupted: false },
+      { abilityId: 152, start: 3000, end: 4000, interrupted: true },
+      { abilityId: 3577, start: 7000, end: 8660, interrupted: true },
+    ])
+  })
+})
+
 describe('clipSide', () => {
   it('drops data after the end time', () => {
     const side: SideData = {
@@ -110,6 +141,7 @@ describe('clipSide', () => {
       prepull: [],
       auras: [],
       hp: [],
+      castBars: [],
       duration: 10_000,
     }
     const clipped = clipSide(side, 5000)

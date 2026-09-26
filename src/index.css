@@ -1207,6 +1207,66 @@ h3 {
   border: 1px solid transparent;
 }
 
+/* 讀條 */
+.cast-bar {
+  position: relative;
+  height: 18px;
+  margin-bottom: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.cast-bar.idle {
+  background: transparent;
+}
+
+.cast-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.cast-bar.interrupted .cast-bar-fill {
+  background: color-mix(in srgb, var(--text-muted) 40%, transparent);
+}
+
+.cast-bar-text {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 6px;
+  font-size: 0.75em;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.cast-bar-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* 最近使用的技能：由新到舊 */
+.recent-actions {
+  display: flex;
+  gap: 3px;
+  min-height: 26px;
+  margin-bottom: 4px;
+  align-items: center;
+}
+
+.recent-action {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.recent-action:first-child {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .aura-wrap {
   position: relative;
   display: inline-block;

@@ -36,9 +36,10 @@ export interface SideData {
   buffs: BuffWindow[]
   /** 開打當下玩家自己施加、身上已有的效果 ID（推知開打前用過的技能） */
   prepull: number[]
-  /** 玩家身上所有效果（任何來源）與血量：當下狀態面板用，不裁切 */
+  /** 玩家身上所有效果（任何來源）、血量與讀條：當下狀態面板用，不裁切 */
   auras: Aura[]
   hp: HpSample[]
+  castBars: CastBar[]
   /** 戰鬥長度（毫秒） */
   duration: number
 }
@@ -126,6 +127,40 @@ export function playerCasts(events: FFLogsEvent[], fight: Fight, actorId?: numbe
   return casts
 }
 
+/** 有詠唱時間的技能讀條（戰鬥時間）；被打斷的詠唱標 interrupted。 */
+export interface CastBar {
+  abilityId: number
+  start: number
+  end: number
+  interrupted: boolean
+}
+
+/**
+ * 玩家的讀條：begincast 到同技能的 cast 為一條。詠唱中不能使用其他技能，因此在同技能 cast 之前
+ * 出現別的施放或新的詠唱，代表原本的詠唱已被取消（移動等），以那個時間結束並標 interrupted；
+ * 戰鬥結束時仍未完成的，以 begincast 的 duration（詠唱時間）結束。
+ */
+export function castBars(events: FFLogsEvent[], fight: Fight, actorId: number): CastBar[] {
+  const bars: CastBar[] = []
+  let pending: { abilityId: number; start: number; duration: number } | null = null
+  for (const e of events) {
+    if (e.sourceID !== actorId || e.abilityGameID === undefined || AUTO_ATTACKS.has(e.abilityGameID)) continue
+    if (e.type !== 'begincast' && e.type !== 'cast') continue
+    const t = toFightTime(e.timestamp, fight.startTime)
+    if (pending) {
+      const completed = e.type === 'cast' && e.abilityGameID === pending.abilityId && t - pending.start <= MAX_CAST_BAR_MS
+      bars.push({ abilityId: pending.abilityId, start: pending.start, end: t, interrupted: !completed })
+      pending = null
+      if (completed) continue
+    }
+    if (e.type === 'begincast') {
+      pending = { abilityId: e.abilityGameID, start: t, duration: typeof e.duration === 'number' ? e.duration : 0 }
+    }
+  }
+  if (pending) bars.push({ abilityId: pending.abilityId, start: pending.start, end: pending.start + pending.duration, interrupted: true })
+  return bars
+}
+
 export async function loadSide(selection: Selection, signal?: AbortSignal): Promise<SideData> {
   const { report, fight, player } = selection
   // 玩家取全部事件（約每 0.4 秒一筆位置），施放與位置都從中取得；只取施放時位置取樣太稀疏
@@ -148,6 +183,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     prepull: prepullEffects(playerEvents, player.id),
     auras: playerAuras(playerEvents, fight, player.id),
     hp: hpSamples(playerEvents, fight, player.id),
+    castBars: castBars(playerEvents, fight, player.id),
     duration: fight.endTime - fight.startTime,
   }
 }

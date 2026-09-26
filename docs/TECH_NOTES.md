@@ -391,6 +391,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 ## 技術變更紀錄
 
+### 2026-09-27 讀條
+- 變更：`load.ts` 新增 `castBars()`，`SideData` 新增 `castBars`；`StatusPanel` 顯示讀條與最近使用的技能（取自 `playerCasts`）。
+- 資料：`begincast` 帶有 `duration`（該次的詠唱時間，已含加速，例如炎之四 1660 ms）。黑魔基準 152 次詠唱全部接著同技能的 `cast`。詠唱中不能使用其他技能，所以在同技能 `cast` 之前出現其他施放或新的詠唱，就視為原本的詠唱已取消。
+
 ### 2026-09-27 播放列與當下狀態
 - 變更：
   - `analysis/buffs.ts` 新增 `playerAuras()`、`aurasAt()`、`hpSamples()`、`hpAt()`；`SideData` 新增 `auras`、`hp`（不裁切）。
