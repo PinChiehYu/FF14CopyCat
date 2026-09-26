@@ -123,7 +123,7 @@ function ReportSelector({
   onChange: (selection: Selection | null) => void
 }) {
   const [overrides, setOverrides] = useState<Overrides>({ fightId: null, playerId: null })
-  const { fight, players, player, note, locked } = resolveSelection(report, urlRef, overrides, preferred)
+  const { fights, fight, fightNote, players, player, note, locked } = resolveSelection(report, urlRef, overrides, preferred)
   // 依隊伍位置排序；位置以整場隊伍判斷（參考日誌的選單只列同職業，但位置仍依全隊）
   const everyone = fight ? playersInFight(report, fight) : []
   const tankLoad = useTankLoad(report.code, fight, everyone)
@@ -143,8 +143,13 @@ function ReportSelector({
     <div className="selectors">
       <Dropdown
         label="戰鬥"
-        options={report.fights.map(fightOption)}
+        // 參考日誌只列與我同一個 Boss 的戰鬥；沒有時選單顯示原因並停用（與沒有同職業時相同）
+        options={fights.map(fightOption)}
         value={fight?.id ?? null}
+        placeholder={fightNote ?? '請選擇戰鬥'}
+        disabled={fightNote !== null}
+        disabledTitle={fightNote ?? undefined}
+        lockLabel={null}
         // 換戰鬥時角色回到自動選擇
         onChange={(fightId) => setOverrides({ fightId, playerId: null })}
       />
@@ -213,7 +218,9 @@ export default function App() {
   const [mine, setMine] = useState<Selection | null>(null)
   const [reference, setReference] = useState<Selection | null>(null)
   // 參考日誌依我選的 Boss 與職業自動選擇戰鬥與角色
-  const preferred = mine ? { encounterID: mine.fight.encounterID, subType: mine.player.subType } : undefined
+  const preferred = mine
+    ? { encounterID: mine.fight.encounterID, bossName: mine.fight.name, subType: mine.player.subType }
+    : undefined
 
   return (
     <>

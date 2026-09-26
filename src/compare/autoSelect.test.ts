@@ -40,31 +40,32 @@ describe('resolveSelection', () => {
   })
 
   it('picks the last kill of the same encounter and the only same-job player', () => {
-    const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 100, subType: 'Samurai' })
+    const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 100, bossName: 'B100', subType: 'Samurai' })
     expect(r).toMatchObject({ fight: { id: 2 }, player: { id: 1 }, note: null })
   })
 
   it('does not pick a player when two share the job', () => {
-    const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 97, subType: 'Viper' })
+    const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 97, bossName: 'B97', subType: 'Viper' })
     expect(r.fight?.id).toBe(4)
     expect(r.player).toBeUndefined()
     expect(r.note).toBe('這場戰鬥有 2 位毒蛇劍士，請選擇要比較的對象')
   })
 
   it('explains when the job is absent', () => {
-    const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 97, subType: 'Samurai' })
+    const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 97, bossName: 'B97', subType: 'Samurai' })
     expect(r.fight?.id).toBe(4)
     expect(r.player?.id).toBe(1)
 
-    const absent = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 98, subType: 'Paladin' })
+    const absent = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 98, bossName: 'B98', subType: 'Paladin' })
     expect(absent.player).toBeUndefined()
     expect(absent.note).toBe('這場戰鬥沒有騎士')
   })
 
   it('locks the only same-job player, ignoring URL and manual player choices', () => {
-    const pref = { encounterID: 100, subType: 'Samurai' }
+    const pref = { encounterID: 100, bossName: 'B100', subType: 'Samurai' }
+    // 連結的 fight 5 不是同一個 Boss，改選同 Boss 的最後一次擊殺
     const fromUrl = resolveSelection(report, { reportCode: 'x', fight: 5, sourceId: 2 }, none, pref)
-    expect(fromUrl).toMatchObject({ fight: { id: 5 }, player: { id: 1 }, locked: true })
+    expect(fromUrl).toMatchObject({ fight: { id: 2 }, player: { id: 1 }, locked: true })
     expect(fromUrl.players.map((p) => p.id)).toEqual([1])
     expect(resolveSelection(report, { reportCode: 'x' }, { fightId: 3, playerId: 3 }, pref)).toMatchObject({
       fight: { id: 3 },
@@ -74,7 +75,7 @@ describe('resolveSelection', () => {
   })
 
   it('lets the user choose among several same-job players only', () => {
-    const pref = { encounterID: 97, subType: 'Viper' }
+    const pref = { encounterID: 97, bossName: 'B97', subType: 'Viper' }
     const r = resolveSelection(report, { reportCode: 'x' }, { fightId: null, playerId: 4 }, pref)
     expect(r).toMatchObject({ player: { id: 4 }, note: null, locked: false })
     expect(r.players.map((p) => p.id)).toEqual([2, 4])
@@ -82,8 +83,22 @@ describe('resolveSelection', () => {
     expect(resolveSelection(report, { reportCode: 'x' }, { fightId: null, playerId: 1 }, pref).player).toBeUndefined()
   })
 
-  it('falls back to the last fight when the encounter is missing', () => {
-    const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 999, subType: 'Samurai' })
-    expect(r.fight?.id).toBe(5)
+  it('lists only fights of my boss', () => {
+    const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 100, bossName: 'B100', subType: 'Samurai' })
+    expect(r.fights.map((f) => f.id)).toEqual([1, 2, 3])
+    expect(r.fightNote).toBeNull()
+    // 沒有 preferred（我的日誌）時列出全部
+    expect(resolveSelection(report, { reportCode: 'x' }, none).fights).toHaveLength(5)
+  })
+
+  it('selects nothing and explains when the report has no fight of my boss', () => {
+    const r = resolveSelection(report, { reportCode: 'x', fight: 5 }, none, {
+      encounterID: 999,
+      bossName: '呼嘯之劍',
+      subType: 'Samurai',
+    })
+    expect(r).toMatchObject({ fights: [], fight: undefined, fightNote: '這份報告沒有呼嘯之劍', player: undefined })
+    expect(r.players).toEqual([])
+    expect(r.note).toBe('這份報告沒有呼嘯之劍')
   })
 })
