@@ -35,6 +35,24 @@ describe('buildAlignment', () => {
     ])
   })
 
+  it('drops an isolated anchor from a mechanic with a random order', () => {
+    // A 面／B 面先後隨機（熱舞綠光）：兩邊順序相反，配出的錨點時間差 ±20 秒，前後的錨點都一致
+    const common = [cast(10, 1), cast(20, 2), cast(30, 3), cast(70, 4), cast(80, 5), cast(90, 6)]
+    const mine = [...common, cast(40, 10), cast(60, 11)]
+    const ref = [...common, cast(40, 11), cast(60, 10)]
+    const { anchors, mineToRef } = buildAlignment(mine, ref)
+    expect(anchors.map((a) => a.abilityId)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(mineToRef(50_000)).toBe(50_000)
+    expect(pushDifferences(anchors)).toEqual([])
+  })
+
+  it('keeps the anchors around a real push', () => {
+    // 60 秒後參考都早 10 秒：前後兩邊的時間差不同，不是孤立錨點
+    const mine = [cast(10, 1), cast(20, 2), cast(30, 3), cast(60, 4), cast(70, 5), cast(80, 6)]
+    const ref = [cast(10, 1), cast(20, 2), cast(30, 3), cast(50, 4), cast(60, 5), cast(70, 6)]
+    expect(buildAlignment(mine, ref).anchors).toHaveLength(6)
+  })
+
   it('ignores frequent abilities such as auto-attacks', () => {
     const autos = (offset: number) => Array.from({ length: 20 }, (_, i) => cast(offset + i * 3, 99))
     const mine = [...autos(0), cast(30, 1)]

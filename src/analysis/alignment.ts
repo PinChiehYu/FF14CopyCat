@@ -137,6 +137,26 @@ function occurrences(casts: TimedCast[], dedupeMs: number): { list: Occurrence[]
   return { list, counts }
 }
 
+// 孤立錨點：時間差和前、後各幾個錨點都差這麼多以上（而前後兩邊彼此一致）
+const SPIKE_MS = 3000
+const SPIKE_NEIGHBORS = 3
+
+/**
+ * 去掉孤立的錨點：隨機順序的機制（例如熱舞綠光開場的 A 面／B 面先後隨機）會讓「同一技能的第 n 次」配錯，
+ * 這種錨點的時間差和前後都不同，會扭曲時間軸並被誤判成推進差距。真正的推進是前後兩邊的時間差不同，不會被去掉。
+ */
+function dropSpikes(anchors: Anchor[]): Anchor[] {
+  const offset = (a: Anchor) => a.ref - a.mine
+  return anchors.filter((a, i) => {
+    const before = anchors.slice(Math.max(0, i - SPIKE_NEIGHBORS), i).map(offset)
+    const after = anchors.slice(i + 1, i + 1 + SPIKE_NEIGHBORS).map(offset)
+    if (before.length === 0 || after.length === 0) return true
+    const b = median(before)
+    const c = median(after)
+    return !(Math.abs(offset(a) - b) >= SPIKE_MS && Math.abs(offset(a) - c) >= SPIKE_MS && Math.abs(b - c) < SPIKE_MS)
+  })
+}
+
 /** 依 mine 排序的配對中，取 ref 嚴格遞增的最長子序列，去掉時間順序矛盾的錯誤配對。 */
 function longestIncreasing(pairs: Anchor[]): Anchor[] {
   const tails: number[] = []
@@ -181,7 +201,8 @@ export function buildAlignment(
     }
   }
   // 同一時間點多個技能只留第一個，確保內插區段長度 > 0
-  const anchors = longestIncreasing(candidates).filter((a, i, all) => i === 0 || a.mine > all[i - 1].mine)
+  // 去掉孤立錨點後兩邊仍嚴格遞增（只刪除，不改順序）
+  const anchors = dropSpikes(longestIncreasing(candidates).filter((a, i, all) => i === 0 || a.mine > all[i - 1].mine))
   const points = [{ mine: 0, ref: 0 }, ...anchors]
   // LIS 保證 ref 嚴格遞增、上面的過濾保證 mine 嚴格遞增，因此兩個方向都能分段內插
   const forward = points.map((p) => ({ from: p.mine, to: p.ref }))
