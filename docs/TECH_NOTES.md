@@ -179,6 +179,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - **普通攻擊**：`dataType=All` 中每場約 300 次 `cast`（Attack #7；遠程為 Shot #8），`dataType=Casts` 中沒有。
 - **技能與道具 ID**：技能即遊戲的 Action ID；使用道具以 **`0x2000000`（33,554,432）＋道具 ID** 表示，HQ 道具再加 1,000,000。例：34600427 = 33,554,432 + 1,000,000 + 45995（Grade 3 Gemdraught of Strength，繁中「3級剛力之寶藥」）、34600428 → 45996（巧力）、34600430 → 45998（智力）。以 Item 表 `language=en／tc／chs` 驗證過（2026-09-26）。
 - **圖示**：`masterData.abilities[].icon`（如 `003000-003729.png`），網址 `https://assets.rpglogs.com/img/ff/abilities/<icon>`（`/icons/` 路徑會 403）。效果（Status）圖示原圖為 24×32 直式、技能圖示為正方形，顯示效果圖示時要維持 3:4 比例，否則會被壓扁。
+- **食物效果時間延長**：BF76r8yKh4wGaYkm #1 的學者（source 14）開打當下帶有 #1001084 Rationing（食物效果時間延長）；另有部隊特效版 #1000360。與戰鬥無關，`analysis/buffs.ts` 的 `HIDDEN_STATUSES` 在開打前效果、自身效果時段與當下狀態都排除。
 - **Boss**：施放最多次的敵人為主 Boss（Howling Blade 有多個同名 actor）。部分 Boss 技能沒有名稱（42672 顯示為 `unknown_a6b0`）。
 - **隨機機制**：同一機制的隨機變化使用不同技能 ID，甚至同名不同 ID。Howling Blade：Windfang／Stonefang、Eminent Reign／Revolutionary Reign、Wolves' Reign（#41880/#43369 vs #42927/#43370 等）、Hero's Blow（#42079/#42080 vs #42081/#42082）、Sand Surge（#43138 vs #43520）。
 - **語系**：FFLogs 有 `cn.`、`ja.` 等子網域，**沒有 `tw.fflogs.com`**；API 的 `translate` 只翻成英文。

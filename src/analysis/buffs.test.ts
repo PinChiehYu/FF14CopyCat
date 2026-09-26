@@ -14,6 +14,7 @@ describe('buffs', () => {
       auras: [
         { source: me, ability: 1_001_233 }, // 明鏡止水（開打前）
         { source: me, ability: 1_000_048 }, // 進食
+        { source: me, ability: 1_001_084 }, // 食物效果時間延長：不顯示
         { source: 11, ability: 1_002_609 }, // 別人給的盾
       ],
     },

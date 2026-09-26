@@ -13,6 +13,16 @@ export interface BuffWindow {
   openEnded: boolean
 }
 
+/**
+ * 不顯示、不比較的效果：只延長食物效果時間、與戰鬥表現無關（不影響爆發藥等其他效果）。
+ * 1084 食物效果時間延長（Rationing）、360 部隊特效：食物效果時間延長。
+ */
+const HIDDEN_STATUSES: ReadonlySet<number> = new Set([1_001_084, 1_000_360])
+
+function isHiddenStatus(statusId: number): boolean {
+  return HIDDEN_STATUSES.has(statusId)
+}
+
 /** combatantinfo.auras 的一筆：開打當下身上的效果 */
 interface CombatantAura {
   source?: number
@@ -26,7 +36,11 @@ interface CombatantAura {
 export function prepullEffects(events: FFLogsEvent[], actorId: number): number[] {
   const info = events.find((e) => e.type === 'combatantinfo' && e.sourceID === actorId)
   const auras = (info?.auras as CombatantAura[] | undefined) ?? []
-  return [...new Set(auras.filter((a) => a.source === actorId && a.ability !== undefined).map((a) => a.ability!))]
+  return [
+    ...new Set(
+      auras.filter((a) => a.source === actorId && a.ability !== undefined && !isHiddenStatus(a.ability)).map((a) => a.ability!),
+    ),
+  ]
 }
 
 /**
@@ -39,7 +53,7 @@ export function selfBuffWindows(events: FFLogsEvent[], fight: Fight, actorId: nu
   for (const id of prepullEffects(events, actorId)) open.set(id, { start: 0, prepull: true })
   const windows: BuffWindow[] = []
   for (const e of events) {
-    if (e.sourceID !== actorId || e.targetID !== actorId || e.abilityGameID === undefined) continue
+    if (e.sourceID !== actorId || e.targetID !== actorId || e.abilityGameID === undefined || isHiddenStatus(e.abilityGameID)) continue
     const t = toFightTime(e.timestamp, fight.startTime)
     if (e.type === 'applybuff') {
       // 重複施加（刷新）視為同一段
@@ -76,12 +90,12 @@ export function playerAuras(events: FFLogsEvent[], fight: Fight, actorId: number
   const open = new Map<string, { statusId: number; sourceId: number; start: number; debuff: boolean }>()
   const info = events.find((e) => e.type === 'combatantinfo' && e.sourceID === actorId)
   for (const a of (info?.auras as CombatantAura[] | undefined) ?? []) {
-    if (a.ability === undefined || a.source === undefined) continue
+    if (a.ability === undefined || a.source === undefined || isHiddenStatus(a.ability)) continue
     open.set(`${a.ability}|${a.source}`, { statusId: a.ability, sourceId: a.source, start: 0, debuff: false })
   }
   const auras: Aura[] = []
   for (const e of events) {
-    if (e.targetID !== actorId || e.abilityGameID === undefined || e.sourceID === undefined) continue
+    if (e.targetID !== actorId || e.abilityGameID === undefined || e.sourceID === undefined || isHiddenStatus(e.abilityGameID)) continue
     const key = `${e.abilityGameID}|${e.sourceID}`
     const t = toFightTime(e.timestamp, fight.startTime)
     if (e.type === 'applybuff' || e.type === 'applydebuff') {

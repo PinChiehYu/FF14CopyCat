@@ -132,14 +132,16 @@ function SummaryTable({
     },
     {
       label: '比較範圍',
-      cell: (s, end) => (
-        <>
-          0:00～{formatFightTime(end)}
-          {s.duration - end >= 1000 && (
+      // 一定從 0:00 開始，只顯示結束點；沒被裁切的一方（戰鬥長度已在選單上）只標「全場」
+      cell: (s, end) =>
+        s.duration - end >= 1000 ? (
+          <>
+            到 {formatFightTime(end)}
             <span className="hint-inline">（之後 {((s.duration - end) / 1000).toFixed(1)} 秒不列入統計）</span>
-          )}
-        </>
-      ),
+          </>
+        ) : (
+          '全場'
+        ),
     },
     {
       // FFLogs 沒有開打前的施放事件，以開打當下身上的自身效果推知；對方沒有的效果標示出來
