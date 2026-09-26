@@ -409,6 +409,20 @@ button:disabled {
   width: 6em;
 }
 
+/* 技能窗口：「我」「參考」兩欄等寬，時間標籤每行放的數量相同 */
+.windows-table {
+  table-layout: fixed;
+}
+
+.windows-table thead th:first-child {
+  width: 7.5em;
+}
+
+/* 固定欄寬後，較長的規則名稱（例如「技能 後 20 秒」）改為換行，不超出欄位 */
+.windows-table tbody th {
+  white-space: normal;
+}
+
 .summary-table thead th {
   font-size: 0.9em;
   border-bottom-width: 2px;
