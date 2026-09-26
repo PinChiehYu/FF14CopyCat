@@ -637,28 +637,41 @@ button:disabled {
   position: relative;
 }
 
+/* 實心強調色讓按鈕明顯；內距、行高、字級不變，不影響標題列的高度 */
 .finder-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 1px 10px;
   font-size: 0.85em;
   font-weight: 600;
   line-height: 1.5;
-  color: var(--accent);
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+  /* 淺色主題為白字、深色主題（強調色較淺）為深色字 */
+  color: var(--bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
   border-radius: 999px;
   cursor: pointer;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .finder-toggle:hover,
 .finder-toggle.open {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 82%, #000);
 }
 
 .finder-toggle:disabled {
   color: var(--text-muted);
   border-color: var(--border);
   background: transparent;
+  box-shadow: none;
   cursor: default;
+}
+
+.finder-icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
 }
 
 .finder-panel {

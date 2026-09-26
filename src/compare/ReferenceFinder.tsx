@@ -120,7 +120,8 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
     return (
       <div className="finder">
         <button type="button" className="finder-toggle" disabled title="先選好「我的日誌」的戰鬥與角色">
-          從排名找
+          <SearchIcon />
+          搜尋前輩日誌
         </button>
       </div>
     )
@@ -147,10 +148,11 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
         type="button"
         className={`finder-toggle${open ? ' open' : ''}`}
         aria-expanded={open}
-        title="從繁中服排名找參考日誌"
+        title="依 PR 從繁中服排名中找同 Boss、同職業的前輩日誌"
         onClick={() => setOpen((o) => !o)}
       >
-        從排名找
+        <SearchIcon />
+        搜尋前輩日誌
       </button>
       {open && (
         <div className="finder-panel" role="dialog" aria-label="從繁中服排名找參考日誌">
@@ -203,6 +205,16 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
         </div>
       )}
     </div>
+  )
+}
+
+/** 放大鏡圖示（大小跟著文字） */
+function SearchIcon() {
+  return (
+    <svg className="finder-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="2" />
+      <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   )
 }
 
