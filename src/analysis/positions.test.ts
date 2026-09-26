@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attachMechanics, bossPoseAt, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
+import { attachMechanics, attachVariants, bossPoseAt, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
 
 const s = (seconds: number, x: number, y: number): PositionSample => ({ t: seconds * 1000, x, y })
 
@@ -74,6 +74,16 @@ describe('compareTracks / divergences', () => {
     const [a, b] = attachMechanics(divs, boss, distance, 8)
     expect(a.mechanics.map((m) => m.abilityId)).toEqual([2])
     expect(b.mechanics).toEqual([])
+  })
+
+  it('attaches a random mechanic variant during or shortly before a divergence', () => {
+    const d = (start: number, end: number) => ({ start, end, maxDistance: 10, mirror: null, mechanics: [] })
+    const variant = { t: 25_000, mine: [1], ref: [2], kind: 'variant' as const }
+    const onlyMine = { t: 60_000, mine: [3], ref: [], kind: 'only-mine' as const }
+    const [a, b, c] = attachVariants([d(30_000, 40_000), d(50_000, 70_000), d(20_000, 24_000)], [variant, onlyMine])
+    expect(a.variant).toBe(variant) // 區段開始前 5 秒（10 秒內）
+    expect(b.variant).toBeUndefined() // 只有一邊有的不算隨機變化
+    expect(c.variant).toBeUndefined() // 區段結束後
   })
 
   it('ignores short blips', () => {

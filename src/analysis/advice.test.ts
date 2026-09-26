@@ -234,23 +234,30 @@ describe('generateAdvice', () => {
     expect(advice.find((a) => a.title.includes('不同攻略'))?.title).toMatch('左右對稱')
   })
 
-  it('downgrades position differences caused by a different random mechanic', () => {
-    const [a] = generateAdvice(
+  it('groups position differences caused by a different random mechanic into one low item', () => {
+    const variant = { t: 95_000, mine: [1], ref: [5], kind: 'variant' as const }
+    const advice = generateAdvice(
       input({
-        divergences: [{ start: 100_000, end: 110_000, maxDistance: 15, mirror: null, mechanics: [{ t: 104_000, abilityId: 1 }] }],
-        mechanics: [{ t: 95_000, mine: [1], ref: [5], kind: 'variant' }],
+        divergences: [
+          { start: 100_000, end: 110_000, maxDistance: 15, mirror: null, mechanics: [{ t: 104_000, abilityId: 1 }], variant },
+          { start: 200_000, end: 210_000, maxDistance: 15, mirror: 'left-right', mechanics: [], variant },
+        ],
+        mechanics: [variant],
       }),
     )
-    expect(a.severity).toBe('low')
-    expect(a.detail).toMatch('隨機機制不同（你：Ikishoten；參考：Meikyo Shisui）')
+    // 不逐段列出，也不算在「可能是不同攻略」
+    expect(advice).toHaveLength(1)
+    expect(advice[0]).toMatchObject({ severity: 'low', title: '2 段站位差異發生在 Boss 隨機機制不同時', at: 100_000 })
+    expect(advice[0].detail).toMatch('1:40.0（你：Ikishoten；參考：Meikyo Shisui）')
   })
 
   it('adds ability IDs when variants share a name', () => {
+    const variant = { t: 95_000, mine: [42081], ref: [42079], kind: 'variant' as const }
     const [a] = generateAdvice(
       input({
         abilityName: () => "Hero's Blow",
-        divergences: [{ start: 100_000, end: 110_000, maxDistance: 30, mirror: null, mechanics: [{ t: 104_000, abilityId: 42079 }] }],
-        mechanics: [{ t: 95_000, mine: [42081], ref: [42079], kind: 'variant' }],
+        divergences: [{ start: 100_000, end: 110_000, maxDistance: 30, mirror: null, mechanics: [{ t: 104_000, abilityId: 42079 }], variant }],
+        mechanics: [variant],
       }),
     )
     expect(a.detail).toMatch("你：Hero's Blow #42081；參考：Hero's Blow #42079")

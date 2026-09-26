@@ -5,7 +5,7 @@ import type { Death } from '../compare/load'
 import { ruleName } from '../jobs/windows'
 import { mechanicLabel, type MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
-import { MIRROR_LABELS, type Divergence, type TrackPoint } from './positions'
+import { MIRROR_LABELS, VARIANT_LEAD_MS, type Divergence, type TrackPoint } from './positions'
 import { formatFightTime } from './timeline'
 import type { WindowSummary } from './windows'
 
@@ -54,12 +54,11 @@ export interface AdviceInput {
   cooldowns?: CooldownPair[]
 }
 
-// 機制差異發生在時段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
-const MECHANIC_LEAD_MS = 10_000
+// 機制差異發生在時段開始前不久（VARIANT_LEAD_MS）也視為相關（機制通常先施放、後結算），與站位差異相同
 
 /** 與時段相關的 Boss 隨機變化（同時間施放不同技能）。 */
 function mechanicNear(mechanics: MechanicDifference[] | undefined, start: number, end: number) {
-  return mechanics?.find((m) => m.kind === 'variant' && m.t >= start - MECHANIC_LEAD_MS && m.t <= end)
+  return mechanics?.find((m) => m.kind === 'variant' && m.t >= start - VARIANT_LEAD_MS && m.t <= end)
 }
 
 function mechanicNote(input: AdviceInput, start: number, end: number): string {
@@ -290,10 +289,12 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUs
 }
 
 function positionAdvice(input: AdviceInput): Advice[] {
-  const { divergences, lost, mechanics, abilityName } = input
+  const { divergences, lost, abilityName } = input
   const overlapsLost = (d: Divergence) => lost.some((w) => w.refStart < d.end && w.refEnd > d.start)
   const lostNote = (d: Divergence) => (overlapsLost(d) ? '這段同時少打了 GCD，站位可能讓你無法持續攻擊。' : '')
-  const unexplained = divergences.filter((d) => !d.mirror)
+  // 兩邊隨機機制不同（見 attachVariants）的站位差異是機制造成的，不逐段列出，最後合併成一則參考
+  const byVariant = divergences.filter((d) => d.variant)
+  const unexplained = divergences.filter((d) => !d.mirror && !d.variant)
 
   // 站位差異在 Boss 機制結算時才有明顯意義：有機制的差異優先列出，並指出是哪個機制
   const atMechanic = unexplained
@@ -302,15 +303,13 @@ function positionAdvice(input: AdviceInput): Advice[] {
     .slice(0, MAX_MECHANIC_POSITIONS)
   const items: Advice[] = atMechanic.map((d) => {
     const names = [...new Set(d.mechanics.map((m) => abilityName(m.abilityId)))].slice(0, 2).join('、')
-    const byVariant = mechanicNear(mechanics, d.start, d.end) !== undefined
     return {
-      // 機制本身隨機不同時，站位不同是合理的，降為參考；少打的 GCD 已由停手建議列為優先，站位本身最多到「建議」
-      severity: byVariant ? 'low' : 'medium',
+      // 少打的 GCD 已由停手建議列為優先，站位本身最多到「建議」
+      severity: 'medium',
       title: `${formatFightTime(d.mechanics[0].t)} 機制「${names}」結算時站位與參考不同（最遠 ${d.maxDistance.toFixed(1)} yalm）`,
       detail:
         `差異從 ${formatFightTime(d.start)} 持續 ${seconds(d.end - d.start)} 秒。${lostNote(d)}` +
-        '對照俯視圖看參考在這個機制的站位與移動路線；若是攻略分配不同可忽略。' +
-        mechanicNote(input, d.start, d.end),
+        '對照俯視圖看參考在這個機制的站位與移動路線；若是攻略分配不同可忽略。',
       at: d.start,
     }
   })
@@ -329,7 +328,20 @@ function positionAdvice(input: AdviceInput): Advice[] {
     })
   }
 
-  const mirrored = divergences.filter((d) => d.mirror)
+  if (byVariant.length > 0) {
+    const names = (ids: number[], others: number[]) => mechanicLabel(ids, others, abilityName)
+    const listed = byVariant
+      .slice(0, MAX_LISTED_TIMES)
+      .map((d) => `${formatFightTime(d.start)}（你：${names(d.variant!.mine, d.variant!.ref)}；參考：${names(d.variant!.ref, d.variant!.mine)}）`)
+    items.push({
+      severity: 'low',
+      title: `${byVariant.length} 段站位差異發生在 Boss 隨機機制不同時`,
+      detail: `${listed.join('、')}${byVariant.length > listed.length ? ' 等' : ''}。兩邊的機制不同，站位不同多半是機制造成，不是站錯。`,
+      at: byVariant[0].start,
+    })
+  }
+
+  const mirrored = divergences.filter((d) => d.mirror && !d.variant)
   if (mirrored.length > 0) {
     const kinds = [...new Set(mirrored.map((d) => MIRROR_LABELS[d.mirror!]))].join('、')
     items.push({

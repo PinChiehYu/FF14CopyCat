@@ -507,6 +507,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
 
+### 2026-09-27 站位差異附上隨機機制差異
+- 變更：`positions.ts` 新增 `Divergence.variant` 與 `attachVariants()`（區段期間或開始前 `VARIANT_LEAD_MS` 10 秒內的 `kind === 'variant'` 機制差異；建議的 `mechanicNote()` 共用同一個常數）；`Comparison.tsx` 先算 `mechanicDifferences()` 再算站位；`advice.ts` 的 `positionAdvice()` 排除有 `variant` 的段、合併成一則；`Positions.tsx` 顯示「機制不同」。
+- 實測：熱舞綠光 `BF76r8yKh4wGaYkm` #1 vs `YAzxqkpVfBNmcMwj` #1 的 7 段站位差異中，3:58–4:15 標為機制不同（我 4 拍節奏／參考 8 拍節奏）；開場 A 面／B 面期間兩人相距未超過 8 yalm，沒有站位差異。
+
 ### 2026-09-27 對齊去掉孤立錨點
 - 變更：`buildAlignment()` 在 LIS 之後以 `dropSpikes()` 去掉時間差與前後都不同的錨點（見「時間軸對齊」）。對齊（時間軸換算）、推進差距與 Boss 機制差異都受影響。
 - 原因：使用者回報熱舞綠光比較出現明顯錯誤的推進差距；原因是隨機順序的機制配錯錨點。

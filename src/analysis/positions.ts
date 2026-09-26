@@ -1,4 +1,5 @@
 import type { TimedCast } from './alignment'
+import type { MechanicDifference } from './mechanics'
 
 /** 位置取樣，座標單位為 yalm（FFLogs 原始值 ÷ 100），時間為戰鬥時間（毫秒）。 */
 export interface PositionSample {
@@ -175,6 +176,20 @@ export interface Divergence {
   mirror: MirrorKind | null
   /** 區段期間結算的 Boss 機制（見 attachMechanics）；站位差異在機制結算時才有明顯意義 */
   mechanics: TimedCast[]
+  /** 區段期間（或開始前不久）兩邊的 Boss 隨機機制不同（見 attachVariants）：站位不同可能是機制造成 */
+  variant?: MechanicDifference
+}
+
+// 隨機機制差異發生在區段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
+export const VARIANT_LEAD_MS = 10_000
+
+/** 標示每段站位差異相關的 Boss 隨機機制差異（同一時間兩邊施放不同技能）。 */
+export function attachVariants(divergences: Divergence[], mechanics: MechanicDifference[]): Divergence[] {
+  const variants = mechanics.filter((m) => m.kind === 'variant')
+  return divergences.map((d) => {
+    const variant = variants.find((m) => m.t >= d.start - VARIANT_LEAD_MS && m.t <= d.end)
+    return variant ? { ...d, variant } : d
+  })
 }
 
 export interface MechanicOptions {

@@ -9,6 +9,7 @@ import {
   type TrackPoint,
 } from '../analysis/positions'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { mechanicLabel } from '../analysis/mechanics'
 import { formatFightTime } from '../analysis/timeline'
 
 // 地圖上顯示游標前多久的移動軌跡
@@ -298,7 +299,7 @@ function DistanceChart({
       {divergences.map((d) => (
         <rect
           key={d.start}
-          className={d.mirror ? 'band mirrored' : d.mechanics.length > 0 ? 'band mechanic' : 'band'}
+          className={d.variant || d.mirror ? 'band mirrored' : d.mechanics.length > 0 ? 'band mechanic' : 'band'}
           x={x(d.start)}
           width={Math.max(2, x(d.end) - x(d.start))}
           y={0}
@@ -363,8 +364,10 @@ export function Positions({
   // 以 Boss 為中心需要兩邊當下的 Boss 位置與面向；沒有時（Boss 無法選取、轉場）暫時以場地顯示
   const bossFrameReady = bossPoseAt(bossSamples, cursor) !== null && bossPoseAt(mineBossSamples, cursor) !== null
   const showBossFrame = mode === 'boss' && bossFrameReady
-  const atMechanic = divergences.filter((d) => d.mechanics.length > 0).length
-  const mirrored = divergences.filter((d) => d.mirror).length
+  // 機制不同優先於其他標示：站位不同多半是機制造成
+  const byVariant = divergences.filter((d) => d.variant).length
+  const atMechanic = divergences.filter((d) => !d.variant && d.mechanics.length > 0).length
+  const mirrored = divergences.filter((d) => !d.variant && d.mirror).length
 
   return (
     <section className="positions">
@@ -376,6 +379,11 @@ export function Positions({
         {atMechanic > 0 && (
           <span className="tag mechanic" title="Boss 機制結算時仍站在不同位置，最值得對照；其餘多半只是移動路線不同">
             機制 {atMechanic}
+          </span>
+        )}
+        {byVariant > 0 && (
+          <span className="tag variant" title="這些時段兩邊的 Boss 隨機機制不同，站位不同多半是機制造成">
+            機制不同 {byVariant}
           </span>
         )}
         {mirrored > 0 && (
@@ -480,7 +488,15 @@ function DivergenceCards({
         const unique = d.mechanics
           .map((m) => ({ name: abilityName(m.abilityId), t: m.t }))
           .filter((m) => !seen.has(m.name) && seen.add(m.name))
-        const classes = ['divergence-card', d.mechanics.length > 0 && 'at-mechanic', i === active && 'active']
+        const classes = ['divergence-card', !d.variant && d.mechanics.length > 0 && 'at-mechanic', d.variant && 'by-variant', i === active && 'active']
+        const variantTitle = d.variant
+          ? [
+              `兩邊的 Boss 隨機機制不同（${formatFightTime(d.variant.t)}）`,
+              `我：${mechanicLabel(d.variant.mine, d.variant.ref, abilityName)}`,
+              `參考：${mechanicLabel(d.variant.ref, d.variant.mine, abilityName)}`,
+              '站位不同多半是機制造成，不是站錯',
+            ].join('\n')
+          : undefined
         return (
           <li key={d.start} className={classes.filter(Boolean).join(' ')} aria-current={i === active ? 'true' : undefined}>
             <button type="button" onClick={() => onJump(d.start)} title="跳到這段開始">
@@ -492,9 +508,17 @@ function DivergenceCards({
                 <span className="card-sub">最遠</span>
               </span>
               <span className="card-tags">
-                {d.mechanics.length > 0 && <span className="tag mechanic">機制</span>}
-                {d.mirror && <span className="tag">可能是{MIRROR_LABELS[d.mirror]}站位</span>}
-                {d.mechanics.length === 0 && !d.mirror && <span className="card-sub">移動路線不同</span>}
+                {d.variant ? (
+                  <span className="tag variant" title={variantTitle}>
+                    機制不同
+                  </span>
+                ) : (
+                  <>
+                    {d.mechanics.length > 0 && <span className="tag mechanic">機制</span>}
+                    {d.mirror && <span className="tag">可能是{MIRROR_LABELS[d.mirror]}站位</span>}
+                    {d.mechanics.length === 0 && !d.mirror && <span className="card-sub">移動路線不同</span>}
+                  </>
+                )}
               </span>
               {unique.length > 0 && (
                 <span className="card-mechanics">
