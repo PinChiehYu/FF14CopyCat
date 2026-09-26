@@ -140,6 +140,9 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
     : noneSame
       ? [...all].sort((a, b) => (variantsOf(a) ?? Infinity) - (variantsOf(b) ?? Infinity))
       : same
+  // 處理中（搜尋、或勾選機制相同後逐筆比對）：只顯示轉圈，完成後才顯示結果並允許操作，避免筆數跟著比對進度跳動
+  const comparing = sameMechanics && result.status === 'ready' && !compared
+  const busy = loading || comparing
 
   // 浮在頁面上的面板，不推擠下方的戰鬥／角色欄位
   return (
@@ -159,21 +162,33 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
           <div className="finder-controls">
             <label title={`PR 只在繁中服的${jobName(mine.player.subType)}之間計算`}>
               {jobName(mine.player.subType)} PR
-              <PrInput value={minPr} min={0} max={maxPr} onChange={setMinPr} />
+              <PrInput value={minPr} min={0} max={maxPr} disabled={busy} onChange={setMinPr} />
               ～
-              <PrInput value={maxPr} min={minPr} max={100} onChange={setMaxPr} />
+              <PrInput value={maxPr} min={minPr} max={100} disabled={busy} onChange={setMaxPr} />
             </label>
             <label className="finder-check" title="逐筆比對 Boss 的隨機機制，只列出與我的戰鬥相同的紀錄">
-              <input type="checkbox" checked={sameMechanics} onChange={(e) => setSameMechanics(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={sameMechanics}
+                disabled={busy}
+                onChange={(e) => setSameMechanics(e.target.checked)}
+              />
               機制相同
             </label>
-            <button type="button" className="finder-search" onClick={search} disabled={loading}>
-              {loading ? '搜尋中…' : '搜尋'}
+            <button type="button" className="finder-search" onClick={search} disabled={busy}>
+              搜尋
             </button>
           </div>
-          <div className={loading ? 'finder-result stale' : 'finder-result'} aria-busy={loading}>
-          {result.status === 'error' && <p className="error">{result.message}</p>}
-          {result.status === 'ready' &&
+          <div className={busy || result.status === 'ready' ? 'finder-result filled' : 'finder-result'} aria-busy={busy}>
+          {busy && (
+            <p className="finder-busy" role="status">
+              <span className="spinner" aria-hidden="true" />
+              {loading ? '搜尋中…' : '比對機制中…'}
+            </p>
+          )}
+          {!busy && result.status === 'error' && <p className="error">{result.message}</p>}
+          {!busy &&
+            result.status === 'ready' &&
             (rows.length === 0 ? (
               <p className="hint">沒有符合的紀錄。</p>
             ) : (
@@ -255,12 +270,25 @@ function rowKey(r: TcRanking): string {
  * PR 輸入框，限制在 [min, max]（下限不超過上限）。輸入中的中間值（例如要打 95 時先出現的 9）
  * 先暫存不套用，在範圍內才套用；離開輸入框時把超出範圍的值夾回範圍內。
  */
-function PrInput({ value, min, max, onChange }: { value: number; min: number; max: number; onChange: (v: number) => void }) {
+function PrInput({
+  value,
+  min,
+  max,
+  disabled,
+  onChange,
+}: {
+  value: number
+  min: number
+  max: number
+  disabled?: boolean
+  onChange: (v: number) => void
+}) {
   const [draft, setDraft] = useState<string | null>(null)
   const parse = (text: string) => Math.round(Number(text))
   return (
     <input
       type="number"
+      disabled={disabled}
       min={min}
       max={max}
       value={draft ?? value}

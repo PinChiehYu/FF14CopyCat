@@ -747,16 +747,40 @@ button:disabled {
   cursor: pointer;
 }
 
-/* 「搜尋」與「搜尋中…」同寬，按下時控制列不跳動 */
-.finder-search {
-  min-width: 6.5em;
+/* 處理中與完成後的結果區同高（下拉選單＋摘要列），面板不跳動 */
+.finder-result.filled {
+  min-height: 4.4rem;
 }
 
-/* 搜尋中：保留上一次的結果並淡化，不換成其他內容（避免面板高度跳動） */
-.finder-result.stale {
-  opacity: 0.5;
-  pointer-events: none;
-  transition: opacity 0.15s;
+.finder-busy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 4.4rem;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 1.1em;
+  height: 1.1em;
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
 }
 
 /* 結果摘要當作選單標籤：只佔一行，完整說明放在滑鼠提示 */
