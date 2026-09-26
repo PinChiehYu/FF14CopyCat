@@ -200,12 +200,12 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   )
 }
 
-/** 排名紀錄的選項：名次、PR、玩家 @ 伺服器、rDPS、戰鬥長度（DPS 與日期放在滑鼠提示） */
+/** 排名紀錄的選項：名次、PR、玩家 @ 伺服器、rDPS、戰鬥長度（日期放在滑鼠提示） */
 function rankingOption(r: TcRanking, mech: MechanicState | undefined): DropdownOption<string> {
   const date = new Date(r.reportStart).toLocaleDateString('zh-TW')
   return {
     value: rowKey(r),
-    title: `${r.name} @ ${r.server}，${Math.round(r.rdps).toLocaleString()} rDPS（DPS ${Math.round(r.dps).toLocaleString()}），${formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}，${date}`,
+    title: `${r.name} @ ${r.server}，${Math.round(r.rdps).toLocaleString()} rDPS，${formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}，${date}`,
     content: (
       <span className={`option-row finder-option${mech ? ' with-mech' : ''}`}>
         <span className="finder-rank">#{r.rank}</span>
