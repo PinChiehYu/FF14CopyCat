@@ -1,3 +1,5 @@
+import { formatFightTime } from './timeline'
+
 /** 已正規化到戰鬥開始（毫秒）的施放事件。 */
 export interface TimedCast {
   t: number
@@ -20,6 +22,75 @@ export interface Alignment {
   mineToRef(t: number): number
   /** mineToRef 的反函數：參考時間換算成我的戰鬥時間 */
   refToMine(t: number): number
+}
+
+/**
+ * 推進差距：兩個錨點之間，兩邊花的時間差了好幾秒、而且之後的時間差一直維持（例如 Boss 血量到了才轉場，
+ * 輸出較低的一方較晚推進）。我在這段的施放會被換算擠進參考很短的時間內。
+ */
+export interface PushDifference {
+  /** 這段在我的戰鬥時間的起訖 */
+  mineStart: number
+  mineEnd: number
+  /** 這段在參考時間的起訖（參考在 refEnd 推進） */
+  refStart: number
+  refEnd: number
+  /** 我比參考多花的時間（毫秒）；負值表示我較快推進 */
+  deltaMs: number
+}
+
+// 時間差跳變至少這麼多才算推進差距
+const MIN_PUSH_MS = 3000
+// 以跳變前後這段時間內錨點的時間差中位數判斷是否持續（排除隨機機制造成的短暫抖動）
+const PUSH_CONTEXT_MS = 30_000
+// 相距這麼近的跳變視為同一次推進
+const PUSH_MERGE_MS = 15_000
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = sorted.length >> 1
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+/** 推進差距的滑鼠提示 */
+export function pushTitle(p: PushDifference): string {
+  const seconds = (Math.abs(p.deltaMs) / 1000).toFixed(1)
+  return p.deltaMs > 0
+    ? `參考在 ${formatFightTime(p.refEnd)} 推進，你到 ${formatFightTime(p.mineEnd)}（你的時間）才推進，多花了 ${seconds} 秒；之後的機制都跟著延後。你在這段的施放在時間軸上會擠在一起。`
+    : `你比參考早 ${seconds} 秒推進（你的時間 ${formatFightTime(p.mineEnd)}）。`
+}
+
+/** 從錨點找出推進差距（依時間排序）。 */
+export function pushDifferences(anchors: Anchor[]): PushDifference[] {
+  const points = [{ mine: 0, ref: 0 }, ...anchors]
+  const offset = (p: { mine: number; ref: number }) => p.ref - p.mine
+  const offsetsIn = (from: number, to: number) => points.filter((p) => p.mine >= from && p.mine <= to).map(offset)
+  // 某段前後的持續時間差變化：前面 30 秒與後面 30 秒內錨點時間差的中位數之差
+  const persistentChange = (a: { mine: number }, b: { mine: number }) =>
+    median(offsetsIn(b.mine, b.mine + PUSH_CONTEXT_MS)) - median(offsetsIn(a.mine - PUSH_CONTEXT_MS, a.mine))
+
+  const segments: { a: (typeof points)[number]; b: (typeof points)[number] }[] = []
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    const jump = offset(b) - offset(a)
+    const change = persistentChange(a, b)
+    if (Math.abs(jump) >= MIN_PUSH_MS && Math.abs(change) >= MIN_PUSH_MS && Math.sign(change) === Math.sign(jump)) {
+      const last = segments[segments.length - 1]
+      if (last && a.mine - last.b.mine <= PUSH_MERGE_MS) last.b = b
+      else segments.push({ a, b })
+    }
+  }
+  // 合併後重算：先跳開又跳回的兩段（例如隨機機制）合起來沒有持續的差距
+  return segments
+    .map(({ a, b }) => ({
+      mineStart: a.mine,
+      mineEnd: b.mine,
+      refStart: a.ref,
+      refEnd: b.ref,
+      deltaMs: -persistentChange(a, b),
+    }))
+    .filter((p) => Math.abs(p.deltaMs) >= MIN_PUSH_MS)
 }
 
 /** 依錨點做分段線性換算；points 在 from 與 to 上都嚴格遞增，最後一點之後以斜率 1 外推。 */

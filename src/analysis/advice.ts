@@ -1,4 +1,5 @@
 import type { AbilityCategory } from '../jobs/roleActions'
+import type { PushDifference } from './alignment'
 import type { Death } from '../compare/load'
 import { ruleName } from '../jobs/windows'
 import { mechanicLabel, type MechanicDifference } from './mechanics'
@@ -46,6 +47,8 @@ export interface AdviceInput {
   deaths?: { mine: Death[]; ref: Death[] }
   /** 我的戰鬥長度（我的時間；死亡到戰鬥結束都沒恢復時計算無法行動的時間） */
   mineDurationMs?: number
+  /** 推進差距（例如轉場）：只含比較範圍內的 */
+  pushes?: PushDifference[]
 }
 
 // 機制差異發生在時段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
@@ -370,6 +373,28 @@ function prepullAdvice(input: AdviceInput): Advice[] {
   ]
 }
 
+// 推進慢超過這麼多（毫秒）列為優先
+const SLOW_PUSH_HIGH_MS = 8000
+
+/** 推進較慢（例如 Boss 血量到了才轉場）：這之前的輸出較低，之後的機制也都跟著延後。 */
+function pushAdvice(input: AdviceInput): Advice[] {
+  return (input.pushes ?? [])
+    .filter((p) => p.deltaMs > 0)
+    .map((p): Advice => {
+      const died = input.deaths?.mine.some((d) => d.t < p.mineEnd)
+      return {
+        severity: p.deltaMs >= SLOW_PUSH_HIGH_MS ? 'high' : 'medium',
+        title: `${formatFightTime(p.refEnd)} 推進比參考慢 ${seconds(p.deltaMs)} 秒`,
+        detail:
+          `參考在 ${formatFightTime(p.refEnd)} 推進（例如 Boss 血量到了而轉場），你到 ${formatFightTime(p.mineEnd)} 才推進，` +
+          `之後的機制都晚了約 ${seconds(p.deltaMs)} 秒。推進時間取決於全隊輸出，` +
+          (died ? '你在這之前有死亡，也會拖慢推進；' : '') +
+          '對照這之前的 GCD、技能窗口與爆發是否對齊，看自己能補上多少。',
+        at: p.refEnd,
+      }
+    })
+}
+
 const ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2 }
 
 /** 依各階段的分析結果產生規則式建議，依重要性排序。 */
@@ -378,11 +403,12 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...deathAdvice(input),
     ...lostGcdAdvice(input),
     ...gcdSpeedAdvice(input),
+    ...pushAdvice(input),
     ...windowAdvice(input),
     ...prepullAdvice(input),
     ...usageAdvice(input),
     ...positionAdvice(input),
   ]
-  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 技能窗口 → 開打前 → 技能 → 站位）
+  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 技能窗口 → 開打前 → 技能 → 站位）
   return items.map((a, i) => ({ a, i })).sort((x, y) => ORDER[x.a.severity] - ORDER[y.a.severity] || x.i - y.i).map((x) => x.a)
 }

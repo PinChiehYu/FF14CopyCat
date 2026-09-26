@@ -50,6 +50,20 @@ describe('generateAdvice', () => {
     expect(generateAdvice(input({ usage: [usage(1, 5, 5)] }))).toEqual([])
   })
 
+  it('points out pushing a phase later than the reference, but not an earlier push', () => {
+    const advice = generateAdvice(
+      input({
+        pushes: [
+          { mineStart: 390_800, mineEnd: 400_500, refStart: 390_400, refEnd: 391_200, deltaMs: 8_900 },
+          { mineStart: 500_000, mineEnd: 505_000, refStart: 500_000, refEnd: 510_000, deltaMs: -5_000 },
+        ],
+      }),
+    )
+    expect(advice).toHaveLength(1)
+    expect(advice[0]).toMatchObject({ severity: 'high', title: '6:31.2 推進比參考慢 8.9 秒', at: 391_200 })
+    expect(advice[0].detail).toContain('你到 6:40.5 才推進')
+  })
+
   it('puts deaths first and tells the player not to die', () => {
     const advice = generateAdvice(
       input({

@@ -503,6 +503,52 @@ button:disabled {
   padding-left: 3px;
 }
 
+/* 推進差距：在 Boss 列上標出參考推進的時間點與我慢／快的秒數 */
+.push-marker {
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  height: 22px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  font-size: 0.72em;
+  font-weight: 700;
+  line-height: 20px;
+  white-space: nowrap;
+  border: 1px solid;
+  border-radius: 4px;
+  cursor: help;
+}
+
+.push-marker.slower {
+  color: var(--error);
+  border-color: var(--error);
+  background: color-mix(in srgb, var(--error) 18%, var(--surface));
+}
+
+.push-marker.faster {
+  color: var(--kill);
+  border-color: var(--kill);
+  background: color-mix(in srgb, var(--kill) 18%, var(--surface));
+}
+
+.push-chip {
+  margin: 0 2px;
+  padding: 0 6px;
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
+}
+
+.push-chip.slower {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.push-chip.faster {
+  color: var(--kill);
+  border-color: var(--kill);
+}
+
 .boss-cast {
   position: absolute;
   top: 10px;

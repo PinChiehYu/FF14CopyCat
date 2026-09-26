@@ -4,7 +4,7 @@ import { ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows
 import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
-import { buildAlignment } from '../analysis/alignment'
+import { buildAlignment, pushDifferences, pushTitle } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
 import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
@@ -216,6 +216,11 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     [mine, alignment, compareEnd],
   )
   const refInRange = useMemo(() => clipSide(reference, compareEnd), [reference, compareEnd])
+  // 推進差距（例如轉場時 Boss 血量到了的時間不同）：只看比較範圍內
+  const pushes = useMemo(
+    () => pushDifferences(alignment.anchors).filter((p) => p.refEnd <= compareEnd),
+    [alignment, compareEnd],
+  )
 
   const { gcd, lost } = useMemo(() => {
     if (!job) return { gcd: null, lost: [] }
@@ -299,8 +304,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         prepull: { mine: mine.prepull, ref: reference.prepull },
         deaths: { mine: mineInRange.deaths, ref: refInRange.deaths },
         mineDurationMs: mineInRange.duration,
+        pushes,
       }),
-    [compareEnd, gcd, lost, usage, positions, abilities, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference],
+    [compareEnd, gcd, lost, usage, positions, abilities, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes],
   )
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
@@ -367,6 +373,22 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         時間軸以 Boss 技能對齊：錨點 {alignment.anchors.length} 個
         {drifts.length > 0 &&
           `，參考相對於我的時間差 ${Math.min(...drifts).toFixed(1)} ～ ${Math.max(...drifts).toFixed(1)} 秒`}
+        {pushes.length > 0 && (
+          <>
+            ；推進差距：
+            {pushes.map((p) => (
+              <button
+                key={p.refEnd}
+                type="button"
+                className={`push-chip ${p.deltaMs > 0 ? 'slower' : 'faster'}`}
+                onClick={() => jumpTo(p.refEnd)}
+                title={pushTitle(p)}
+              >
+                {formatFightTime(p.refEnd)} 我{p.deltaMs > 0 ? '慢' : '快'} {(Math.abs(p.deltaMs) / 1000).toFixed(1)} 秒
+              </button>
+            ))}
+          </>
+        )}
         。兩場都在進行的時段才列入統計。
       </p>
       {alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
@@ -405,6 +427,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         job={job}
         highlights={timelineHighlights}
         windows={timelineWindows}
+        pushes={pushes}
         focus={focus}
         cursor={cursor}
         follow={playing}

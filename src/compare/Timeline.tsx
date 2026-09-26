@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import type { Alignment, TimedCast } from '../analysis/alignment'
+import { pushTitle, type Alignment, type PushDifference, type TimedCast } from '../analysis/alignment'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
@@ -42,6 +42,7 @@ export function Timeline({
   job,
   highlights = [],
   windows = [],
+  pushes = [],
   focus = null,
   cursor,
   follow = false,
@@ -57,6 +58,8 @@ export function Timeline({
   highlights?: { start: number; end: number }[]
   /** 技能窗口（各側自己的戰鬥時間），畫在該側 GCD 列的底部 */
   windows?: (TimelineWindow & { side: 'mine' | 'ref' })[]
+  /** 推進差距（例如轉場），標在 Boss 列上 */
+  pushes?: PushDifference[]
   /** 要捲動到的參考時間；每次傳入新物件就會捲動一次 */
   focus?: { t: number } | null
   /** 目前檢視的參考時間，畫成直線 */
@@ -144,6 +147,7 @@ export function Timeline({
               allLanes={allLanes}
               highlights={highlights}
               windows={windows}
+              pushes={pushes}
               pxPerSec={pxPerSec}
               totalMs={totalMs}
               onSeek={onSeek}
@@ -164,6 +168,7 @@ function TimelineLanesImpl({
   allLanes,
   highlights,
   windows,
+  pushes,
   pxPerSec,
   totalMs,
   onSeek,
@@ -175,6 +180,7 @@ function TimelineLanesImpl({
   allLanes: Lane[]
   highlights: { start: number; end: number }[]
   windows: (TimelineWindow & { side: 'mine' | 'ref' })[]
+  pushes: PushDifference[]
   pxPerSec: number
   totalMs: number
   onSeek?: (t: number) => void
@@ -206,6 +212,17 @@ function TimelineLanesImpl({
                   style={{ left: x(c.t) }}
                   title={`${name(c.abilityId)} ${formatFightTime(c.t)}${anchorRefTimes.has(c.t) ? '（對齊錨點）' : ''}`}
                 />
+              ))}
+              {/* 推進差距：參考推進的時間點；我在這之前多花的時間被擠進這段 */}
+              {pushes.map((p) => (
+                <span
+                  key={p.refEnd}
+                  className={`push-marker ${p.deltaMs > 0 ? 'slower' : 'faster'}`}
+                  style={{ left: x(p.refStart), minWidth: Math.max(4, x(p.refEnd - p.refStart)) }}
+                  title={pushTitle(p)}
+                >
+                  我{p.deltaMs > 0 ? '慢' : '快'} {(Math.abs(p.deltaMs) / 1000).toFixed(1)} 秒
+                </span>
               ))}
             </div>
 

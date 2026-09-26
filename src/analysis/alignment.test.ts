@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAlignment, type TimedCast } from './alignment'
+import { buildAlignment, pushDifferences, type Anchor, type TimedCast } from './alignment'
 
 const cast = (seconds: number, abilityId: number): TimedCast => ({ t: seconds * 1000, abilityId })
 
@@ -55,5 +55,40 @@ describe('buildAlignment', () => {
     const { anchors, mineToRef } = buildAlignment([cast(10, 1)], [cast(10, 2)])
     expect(anchors).toEqual([])
     expect(mineToRef(12_345)).toBe(12_345)
+  })
+})
+
+describe('pushDifferences', () => {
+  // 錨點：[我的秒數, 參考的秒數]
+  const anchors = (pairs: [number, number][]): Anchor[] =>
+    pairs.map(([m, r], i) => ({ mine: m * 1000, ref: r * 1000, abilityId: i + 1, occurrence: 1 }))
+
+  it('finds a persistent jump such as pushing a phase later than the reference', () => {
+    // 第一階段兩邊同步；參考 100 秒推進、我 109 秒才推進；轉場後時間差維持 −9 秒
+    const pushes = pushDifferences(
+      anchors([[20, 20], [50, 50], [80, 80], [99.5, 99.4], [109, 100], [170, 161], [190, 181], [220, 211]]),
+    )
+    expect(pushes).toHaveLength(1)
+    expect(pushes[0]).toMatchObject({ mineStart: 99_500, mineEnd: 109_000, refStart: 99_400, refEnd: 100_000 })
+    // 前後各取中位數：推進前的時間差約 −0.05 秒，之後 −9 秒
+    expect(pushes[0].deltaMs).toBe(8950)
+  })
+
+  it('ignores short wobbles from random mechanics', () => {
+    // 5:56 附近一個錨點偏了約 4 秒，之後回到原本的時間差
+    const pushes = pushDifferences(anchors([[340, 340], [351, 351.2], [356.6, 352.8], [358.6, 356.8], [359.7, 359.9], [364, 364.1], [378, 378.2]]))
+    expect(pushes).toEqual([])
+  })
+
+  it('drops a jump that is undone shortly after', () => {
+    // 先慢 5 秒、10 秒後又追回：兩段合併後沒有持續的差距
+    const pushes = pushDifferences(anchors([[30, 30], [60, 60], [90, 85], [100, 100], [130, 130], [160, 160]]))
+    expect(pushes).toEqual([])
+  })
+
+  it('reports a faster push as a negative difference', () => {
+    const pushes = pushDifferences(anchors([[30, 30], [60, 60], [90, 95], [120, 125], [150, 155]]))
+    expect(pushes).toHaveLength(1)
+    expect(pushes[0].deltaMs).toBe(-5000)
   })
 })
