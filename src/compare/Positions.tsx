@@ -6,7 +6,7 @@ import {
   type PositionSample,
   type TrackPoint,
 } from '../analysis/positions'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { formatFightTime } from '../analysis/timeline'
 
 // 地圖上顯示游標前多久的移動軌跡
@@ -169,19 +169,6 @@ export function Positions({
   if (!hasData) return <p className="hint">這兩份日誌沒有足夠的位置資料。</p>
   const atMechanic = divergences.filter((d) => d.mechanics.length > 0).length
   const mirrored = divergences.filter((d) => d.mirror).length
-  // 同一段內重複的機制名稱只列一次，最多列 3 個；附上機制結算當下兩人的距離
-  const mechanicLabel = (d: Divergence) => {
-    const seen = new Set<string>()
-    const unique = d.mechanics
-      .map((m) => ({ name: abilityName(m.abilityId), t: m.t }))
-      .filter((m) => !seen.has(m.name) && seen.add(m.name))
-    const listed = unique.slice(0, MAX_LISTED_MECHANICS).map((m) => {
-      const distance = distanceAt(track, m.t)
-      return `${m.name}（${formatFightTime(m.t)}${distance != null ? `，相距 ${distance.toFixed(1)} yalm` : ''}）`
-    })
-    const more = unique.length > MAX_LISTED_MECHANICS ? ` 等 ${unique.length} 個` : ''
-    return listed.join('、') + more
-  }
 
   return (
     <section className="positions">
@@ -209,24 +196,91 @@ export function Positions({
           </p>
         </div>
         {status}
-        <ul className="divergence-list">
-          {divergences.map((d) => (
-            <li key={d.start} className={d.mechanics.length > 0 ? 'at-mechanic' : undefined}>
-              <button type="button" onClick={() => onJump(d.start)}>
-                {formatFightTime(d.start)}–{formatFightTime(d.end)}
-              </button>{' '}
-              最遠 {d.maxDistance.toFixed(1)} yalm
-              {d.mirror && <span className="tag">可能是{MIRROR_LABELS[d.mirror]}站位</span>}
-              {d.mechanics.length > 0 && (
-                <div className="mechanic-note">
-                  <span className="tag mechanic">機制</span>
-                  {mechanicLabel(d)}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
       </div>
+      <DivergenceCards divergences={divergences} track={track} cursor={cursor} abilityName={abilityName} onJump={onJump} />
     </section>
+  )
+}
+
+/** 游標與機制結算時間相差多少以內，視為「正在結算」而高亮該機制 */
+const MECHANIC_ACTIVE_MS = 1500
+
+/**
+ * 站位差異以一張張卡片橫向排列（單字卡式），游標進入某段時高亮該卡片並捲到可見位置。
+ * 點卡片跳到該段開始。
+ */
+function DivergenceCards({
+  divergences,
+  track,
+  cursor,
+  abilityName,
+  onJump,
+}: {
+  divergences: Divergence[]
+  track: TrackPoint[]
+  cursor: number
+  abilityName: (id: number) => string
+  onJump: (t: number) => void
+}) {
+  const strip = useRef<HTMLOListElement>(null)
+  const active = divergences.findIndex((d) => cursor >= d.start && cursor <= d.end)
+
+  // 進入新的一段時把卡片捲到中間；只捲卡片列本身（立即設定），不動整頁，也不與時間軸的捲動互相中斷
+  useEffect(() => {
+    const el = strip.current
+    const card = el?.children[active] as HTMLElement | undefined
+    if (!el || !card) return
+    const left = card.offsetLeft - (el.clientWidth - card.offsetWidth) / 2
+    el.scrollLeft = Math.max(0, left)
+  }, [active])
+
+  if (divergences.length === 0) return null
+  return (
+    <ol className="divergence-cards" ref={strip}>
+      {divergences.map((d, i) => {
+        // 同一段內重複的機制名稱只列一次，最多列 3 個；附上機制結算當下兩人的距離
+        const seen = new Set<string>()
+        const unique = d.mechanics
+          .map((m) => ({ name: abilityName(m.abilityId), t: m.t }))
+          .filter((m) => !seen.has(m.name) && seen.add(m.name))
+        const classes = ['divergence-card', d.mechanics.length > 0 && 'at-mechanic', i === active && 'active']
+        return (
+          <li key={d.start} className={classes.filter(Boolean).join(' ')} aria-current={i === active ? 'true' : undefined}>
+            <button type="button" onClick={() => onJump(d.start)} title="跳到這段開始">
+              <span className="card-time">
+                {formatFightTime(d.start)}–{formatFightTime(d.end)}
+              </span>
+              <span className="card-distance">
+                <strong>{d.maxDistance.toFixed(1)}</strong> yalm
+                <span className="card-sub">最遠</span>
+              </span>
+              <span className="card-tags">
+                {d.mechanics.length > 0 && <span className="tag mechanic">機制</span>}
+                {d.mirror && <span className="tag">可能是{MIRROR_LABELS[d.mirror]}站位</span>}
+                {d.mechanics.length === 0 && !d.mirror && <span className="card-sub">移動路線不同</span>}
+              </span>
+              {unique.length > 0 && (
+                <span className="card-mechanics">
+                  {unique.slice(0, MAX_LISTED_MECHANICS).map((m) => {
+                    const distance = distanceAt(track, m.t)
+                    const now = Math.abs(cursor - m.t) <= MECHANIC_ACTIVE_MS
+                    return (
+                      <span key={m.name} className={now ? 'card-mechanic now' : 'card-mechanic'}>
+                        <span className="card-mechanic-name">{m.name}</span>
+                        <span className="card-sub">
+                          {formatFightTime(m.t)}
+                          {distance != null && ` · ${distance.toFixed(1)} yalm`}
+                        </span>
+                      </span>
+                    )
+                  })}
+                  {unique.length > MAX_LISTED_MECHANICS && <span className="card-sub">等 {unique.length} 個機制</span>}
+                </span>
+              )}
+            </button>
+          </li>
+        )
+      })}
+    </ol>
   )
 }

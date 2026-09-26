@@ -1063,16 +1063,6 @@ h3 {
   fill: color-mix(in srgb, var(--error) 40%, transparent);
 }
 
-.divergence-list li.at-mechanic > button {
-  border-color: var(--error);
-  color: var(--error);
-}
-
-.mechanic-note {
-  margin: 2px 0 6px;
-  font-size: 0.85em;
-  color: var(--text-muted);
-}
 
 .tag.mechanic {
   margin: 0 6px 0 0;
@@ -1490,22 +1480,122 @@ h3 {
   color: var(--text-muted);
 }
 
-.divergence-list {
-  flex: 1;
-  min-width: 240px;
-  margin: 0;
-  padding-left: 20px;
-  max-height: 420px;
-  overflow-y: auto;
+/* 站位差異：單字卡式橫向排列，游標所在的一段高亮 */
+.divergence-cards {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 4px 2px 10px;
+  list-style: none;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
 }
 
-.divergence-list li {
-  margin: 4px 0;
+.divergence-card {
+  flex: none;
+  width: 190px;
+  scroll-snap-align: center;
 }
 
-.divergence-list button {
-  padding: 1px 8px;
+.divergence-card > button {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid color-mix(in srgb, var(--error) 35%, var(--border));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.divergence-card.at-mechanic > button {
+  border-top-color: var(--error);
+}
+
+.divergence-card > button:hover {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+}
+
+.divergence-card.active > button {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+  transform: translateY(-2px);
+}
+
+.card-time {
+  font-size: 0.85em;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.card-distance {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.9em;
+}
+
+.card-distance strong {
+  font-size: 1.6em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-distance .card-sub {
+  margin-left: auto;
+}
+
+.card-sub {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.card-tags .tag {
+  margin: 0;
+}
+
+.card-mechanics {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+
+.card-mechanic {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 6px;
+  margin: 0 -6px;
+  border-radius: 4px;
+}
+
+.card-mechanic-name {
+  font-size: 0.9em;
+}
+
+/* 游標在機制結算前後時高亮該機制 */
+.card-mechanic.now {
+  background: color-mix(in srgb, var(--error) 18%, transparent);
+}
+
+.card-mechanic.now .card-mechanic-name {
+  font-weight: 700;
+  color: var(--error);
 }
 
 /* ---- 手機（窄螢幕）版面：放在檔案最後，才能覆寫前面同權重的規則 ---- */
