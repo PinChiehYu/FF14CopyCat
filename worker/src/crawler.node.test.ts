@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
-import { crawl, percentile, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
+import { crawl, pruneGoneReports, percentile, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
 
 /** 以 Node 內建的 SQLite 實作 D1 的最小介面，套用與正式環境相同的 schema.sql。 */
 function memoryDb(): DbLike {
@@ -104,15 +104,37 @@ describe('crawl', () => {
       if (code === 'FLAKY') throw new Error('Too many requests')
       return { reportData: { report: { code } } } as T
     }
-    expect(await crawl(db, graphql, now, 68)).toMatchObject({ checkedReports: 3, removedReports: 2 })
+    expect(await pruneGoneReports(db, graphql, now)).toEqual({ checkedReports: 3, removedReports: 2, failedReports: 1 })
     expect(checked.sort()).toEqual(['FLAKY', 'GONE', 'OK', 'PRIV'])
     const left = await db.prepare('SELECT report FROM parses ORDER BY report').all<{ report: string }>()
     expect(left.results.map((r) => r.report)).toEqual(['FLAKY', 'NEW', 'OK'])
 
     // 一小時後：暫時失敗的再確認一次，已確認的一天內不再確認
     checked.length = 0
-    await crawl(db, graphql, now + 3600_000, 68)
+    await pruneGoneReports(db, graphql, now + 3600_000)
     expect(checked).toEqual(['FLAKY'])
+  })
+
+  it('stops before the per-run request limit and resumes the same page next time', async () => {
+    const db = memoryDb()
+    const now = 100 * 24 * 3600_000
+    await db.prepare("INSERT INTO crawl_state (key, value) VALUES ('zone68:cursor', ?)").bind(String(now - 2 * 24 * 3600_000 - 3600_000)).run()
+    // 一頁 60 份繁中服報告：每份都要查傷害表，這次執行查不完
+    const reports = Array.from({ length: 60 }, (_, i) => ({ ...tcReport, code: `R${i}` }))
+    let damage = 0
+    const graphql: Graphql = async <T>(query: string) => {
+      if (query.includes('reports(')) return { rateLimitData: { pointsSpentThisHour: 10 }, reportData: { reports: { has_more_pages: true, data: reports } } } as T
+      damage++
+      return { reportData: { report: {} } } as T
+    }
+    const first = await crawl(db, graphql, now, 68)
+    expect(first.skipped).toBe('subrequests')
+    expect(damage).toBeLessThan(50)
+    // 頁碼不推進；已處理的報告記為已掃描，下次同一頁只處理剩下的
+    expect(await db.prepare("SELECT value FROM crawl_state WHERE key = 'zone68:recent_page'").first()).toBeNull()
+    const before = damage
+    await crawl(db, graphql, now + 1000, 68)
+    expect(damage - before).toBe(60 - before)
   })
 
   const DAY = 24 * 3600_000

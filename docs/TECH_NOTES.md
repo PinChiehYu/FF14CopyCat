@@ -119,13 +119,13 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 抽樣 zone 68（AAC Cruiserweight）100 份報告：67 份有繁中服玩家、189 場擊殺（含其他難度）。
 
 ### 實作（`worker/src/crawler.ts`、`worker/schema.sql`、D1 `ff14-copycat-rankings`，APAC）
-- 定時觸發（`wrangler.toml` 的 `crons = ["7 * * * *"]`，每小時一次；`index.ts` 的 `scheduled`）執行 `crawl()`：
+- 定時觸發（`wrangler.toml` 的 `crons = ["7 * * * *", "37 * * * *"]`，`index.ts` 的 `scheduled` 依 `controller.cron` 分派）：每小時 7 分執行 `crawl()`，37 分執行 `pruneGoneReports()`。分開是因為 **Workers 免費方案每次執行最多 50 個對外請求**（FFLogs 查詢、授權；D1 不算）：原本確認排在掃描之後，掃描用掉 47 個（6 頁列表＋40 份傷害表＋授權），確認只做了 3 份，其餘因超過上限失敗而被當成暫時錯誤跳過（2026-09-27 以 `wrangler tail` 看到 `checkedReports: 3`）。`crawl()` 另外計算請求數（上限 47），用完時存入已處理的報告、不推進頁碼，下次重新列出同一頁（已處理的報告會跳過）。`crawl()`：
   - 每次最多 6 頁（每頁 25 份），分兩部分（進度都存在 `crawl_state`）：
     1. **先掃最近 2 天**（`recent_start`／`recent_page`）：一輪的起點在開始時固定為當時的「現在 − 2 天」、終點為每次執行的現在，跨次執行逐頁輪完；新上傳的報告只會讓後面的頁往後移，翻頁不會漏掉（可能重複列到，已處理的會跳過）。一輪掃完就停，下一輪留到下次執行。還在補舊資料時最多用 3 頁，補完後 6 頁都給最近 2 天。
     2. **剩下的頁數補舊資料**（`cursor`／`page`）：第一次從 60 天前開始，一個時間窗 1 天往後推，追上「現在 − 2 天」就停止；之後只有落後超過 12 小時（例如停擺過）才再補。
   - 跳過 `scanned_reports` 中已處理的報告；有繁中服玩家的報告，把零式（`difficulty` 101）擊殺的傷害表合成一個查詢（以 `f{fightID}:` 別名），`rDPS = totalRDPS ÷ 戰鬥秒數`（沒有 totalRDPS 時以 `total` 代替），只存繁中服玩家（排除極限技等非玩家）。
   - 這小時已用超過 2,000 點就跳過，把額度留給訪客。
-  - 最後確認已收錄的報告是否仍公開（`pruneGoneReports()`）：`parses` 中的報告依 `scanned_reports.checked_at`（沒有時用 `scanned_at`）由舊到新，超過 1 天沒確認的每次最多 20 份，各以只取 `code` 的查詢確認。FFLogs 對私人報告回「You do not have permission to view this report.」、已刪除回「This report does not exist.」（2026-09-27 確認），這兩種錯誤就刪除該報告的 `parses`（報告仍留在 `scanned_reports`，不會再收錄）；其他錯誤（額度、網路）不記錄確認時間，下次再試。
+  - 確認已收錄的報告是否仍公開（`pruneGoneReports()`，獨立觸發）：`parses` 中的報告依 `scanned_reports.checked_at`（沒有時用 `scanned_at`）由舊到新，超過 1 天沒確認的每次最多 40 份，各以只取 `code` 的查詢確認。FFLogs 對私人報告回「You do not have permission to view this report.」、已刪除回「This report does not exist.」（2026-09-27 確認），這兩種錯誤就刪除該報告的 `parses`（報告仍留在 `scanned_reports`，不會再收錄）；其他錯誤（額度、網路）不記錄確認時間，下次再試。
   - 掃描的副本：`CRAWL_ZONES = [68]`、`CRAWL_DIFFICULTY = 101`，**換季時要更新**。
 - `scanned_reports` 另有 `checked_at`（最後一次確認仍公開的時間）。
 - 資料表：`parses`（主鍵 report＋fight＋actor；只存 `rdps`，排名用索引 `parses_rdps`；另存戰鬥在報告中的開始／結束，供前端抓 Boss 施放比對機制）、`scanned_reports`、`crawl_state`。
@@ -506,6 +506,10 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 - 原因：依 xivanalysis 的職業規則做技能窗口分析，並顯示開打前的效果（見 DESIGN.md）。
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
+
+### 2026-09-27 確認報告改為獨立的定時觸發
+- 變更：`wrangler.toml` 新增 `37 * * * *`；`pruneGoneReports()` 改為匯出、獨立執行（每次最多 40 份，回傳 `checkedReports／removedReports／failedReports`，非私人／刪除的錯誤以 `console.warn` 記錄）；`crawl()` 計算對外請求數並在上限前停止。Worker 已部署。
+- 原因：Workers 免費方案每次執行最多 50 個對外請求，確認排在掃描之後只做到 3 份（見「繁中服排名／實作」）。
 
 ### 2026-09-27 Boss 強制控場
 - 變更：`buffs.ts` 新增 `debuffsOnPlayer()`（敵人施加在玩家身上的 applydebuff／removedebuff；原本的 `enemyDebuffWindows()` 是玩家施加在敵人身上的），`SideData.bossDebuffs`（`clipSide()` 一併裁切，名稱也一併查繁中）；新增 `analysis/control.ts`：`controlStatuses()`（兩場每次期間 1～10 秒、期間內〔施加後 0.3 秒起〕沒有開始 GCD 的效果）、`controlWindows()`（重疊合併）、`attachControl()`（與停手區間重疊 ≥ 1 秒時設 `LostWindow.control`）；`Comparison.tsx` 去掉無名稱的效果（例如與完美收尾同時的 #1004515 Unknown_11A3）；`advice.ts` 的停手建議排除控場段、合併成一則參考；`Metrics.tsx` 顯示「控場」標籤；`StatusPanel.tsx` 以 `SideData.bossDebuffs`（完整資料）在讀條欄顯示控場條（`Comparison.tsx` 的 `control` 與 `namedStatus` 傳入）。控場效果的判斷不要求兩邊同時被施加，也不要求兩邊都有（每個效果收集兩邊所有期間，逐一檢查期間內有無 GCD）。

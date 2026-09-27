@@ -26,6 +26,8 @@ export const CRAWL_DIFFICULTY = 101
 const PAGE_SIZE = 25
 // 每小時執行一次（wrangler.toml），每次最多 6 頁：每小時約 300 點列表＋傷害表，留大部分額度給訪客
 const PAGES_PER_RUN = 6
+// Workers 免費方案每次執行最多 50 個對外請求；留一些給取得 FFLogs 授權
+const SUBREQUEST_BUDGET = 47
 // 每次執行先掃最近這段時間的報告（近期擊殺最常被拿來參考，也涵蓋晚上傳的報告），再用剩下的頁數往回補舊資料
 const RECENT_MS = 2 * 24 * 3600_000
 // 還在補舊資料時，最近兩天最多用幾頁（其餘給補資料）；補完後全部頁數都給最近兩天
@@ -148,14 +150,12 @@ export interface CrawlResult {
   reports: number
   tcReports: number
   parses: number
-  /** 確認是否仍公開的報告數與其中被移除的（設為私人或已刪除） */
-  checkedReports: number
-  removedReports: number
 }
 
 /**
  * 掃描一頁報告清單：未處理過的報告中，繁中服玩家的擊殺查傷害表存入 parses。
- * 回傳是否還有下一頁；這小時的額度快用完時回傳 null（不處理）。進度狀態 `state` 與結果在同一批寫入。
+ * 回傳是否還有下一頁；這小時的額度快用完時回傳 null（不處理）；這次執行的請求數用完時存入已處理的報告、
+ * 不推進進度並回傳 null。進度狀態 `state` 與結果在同一批寫入。
  */
 async function scanPage(
   db: DbLike,
@@ -164,6 +164,7 @@ async function scanPage(
   now: number,
   result: CrawlResult,
   state: (hasMore: boolean) => StatementLike[],
+  budgetLeft: () => boolean = () => true,
 ): Promise<boolean | null> {
   const data = await graphql<{
     rateLimitData?: { pointsSpentThisHour: number }
@@ -193,6 +194,11 @@ async function scanPage(
   for (const report of reports.filter((r) => !scanned.has(r.code))) {
     const kills = tcKills(report)
     if (kills.length > 0) {
+      if (!budgetLeft()) {
+        result.skipped = 'subrequests'
+        if (writes.length > 0) await db.batch(writes)
+        return null
+      }
       result.tcReports++
       const tables = await graphql<{ reportData?: { report?: Record<string, { data?: { entries?: DamageEntry[] } }> } }>(
         damageQuery(kills.map((f) => f.id)),
@@ -219,15 +225,26 @@ async function scanPage(
   return hasMore
 }
 
-// 已收錄的報告多久確認一次是否仍公開，每次執行最多確認幾份（一份一個查詢，點數很少）
+// 已收錄的報告多久確認一次是否仍公開，每次執行最多確認幾份（一份一個查詢，點數很少）。
+// 在獨立的定時觸發中執行（index.ts 的 PRUNE_CRON）：Workers 免費方案每次執行最多 50 個對外請求，
+// 與掃描放在同一次時，掃描用掉 40 多個，只剩 3 個給確認（其餘失敗被當成暫時的錯誤跳過）
 const CHECK_INTERVAL_MS = 24 * 3600_000
-const CHECKS_PER_RUN = 20
+export const CHECKS_PER_RUN = 40
 const CHECK_QUERY = /* GraphQL */ `query ($code: String!) { reportData { report(code: $code) { code } } }`
 // FFLogs 對設為私人與已刪除的報告回傳的錯誤；其他錯誤（額度、網路）視為暫時的，下次再確認
 const GONE_REPORT = /permission to view this report|report does not exist/i
 
+export interface PruneResult {
+  /** 確認是否仍公開的報告數與其中被移除的（設為私人或已刪除） */
+  checkedReports: number
+  removedReports: number
+  /** 查詢失敗（非私人／刪除）、下次再確認的報告數 */
+  failedReports: number
+}
+
 /** 收錄後被設為私人或刪除的報告：前端打不開，從排名中移除（紀錄刪除，報告仍記在 scanned_reports，不會再收錄）。 */
-async function pruneGoneReports(db: DbLike, graphql: Graphql, now: number, result: CrawlResult): Promise<void> {
+export async function pruneGoneReports(db: DbLike, graphql: Graphql, now = Date.now()): Promise<PruneResult> {
+  const result: PruneResult = { checkedReports: 0, removedReports: 0, failedReports: 0 }
   const { results } = await db
     .prepare(
       `SELECT s.code FROM scanned_reports s WHERE s.code IN (SELECT DISTINCT report FROM parses)
@@ -242,7 +259,12 @@ async function pruneGoneReports(db: DbLike, graphql: Graphql, now: number, resul
       const data = await graphql<{ reportData?: { report?: { code: string } | null } }>(CHECK_QUERY, { code })
       gone = !data?.reportData?.report
     } catch (err) {
-      if (!GONE_REPORT.test(err instanceof Error ? err.message : String(err))) continue
+      const message = err instanceof Error ? err.message : String(err)
+      if (!GONE_REPORT.test(message)) {
+        result.failedReports++
+        console.warn(`check ${code} failed: ${message}`)
+        continue
+      }
       gone = true
     }
     result.checkedReports++
@@ -253,16 +275,30 @@ async function pruneGoneReports(db: DbLike, graphql: Graphql, now: number, resul
     writes.push(db.prepare('UPDATE scanned_reports SET checked_at = ? WHERE code = ?').bind(now, code))
   }
   if (writes.length > 0) await db.batch(writes)
+  return result
 }
 
 /**
  * 定時執行一次，存入繁中服玩家的擊殺：
  * 1. 先掃最近兩天（跨次執行逐頁輪完一輪；時間窗的起點在一輪開始時固定，新上傳的報告只會讓後面的頁往後移，不會漏掉）。
  * 2. 剩下的頁數往回補舊資料（從 60 天前一天一天往後），追上最近兩天的起點就停止。
- * 3. 確認已收錄的報告是否仍公開（每份每天一次），被設為私人或刪除的從排名移除。
  */
-export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zoneID = CRAWL_ZONES[0]): Promise<CrawlResult> {
-  const result: CrawlResult = { pages: 0, recentPages: 0, reports: 0, tcReports: 0, parses: 0, checkedReports: 0, removedReports: 0 }
+export async function crawl(db: DbLike, query: Graphql, now = Date.now(), zoneID = CRAWL_ZONES[0]): Promise<CrawlResult> {
+  const result: CrawlResult = { pages: 0, recentPages: 0, reports: 0, tcReports: 0, parses: 0 }
+  // 計算對外請求數（列表＋每份繁中服報告的傷害表），避免超過 Workers 每次執行的請求上限；
+  // 一頁中途用完時，已處理的報告照常存入、不推進頁碼，下次重新列出這一頁（已處理的會跳過）
+  let requests = 0
+  const graphql: Graphql = (q, v) => {
+    requests++
+    return query(q, v)
+  }
+  const budgetLeft = () => requests < SUBREQUEST_BUDGET
+  // 至少還能列出一頁並查一份報告才開始新的一頁
+  const canScanPage = () => {
+    if (requests + 2 <= SUBREQUEST_BUDGET) return true
+    result.skipped = 'subrequests'
+    return false
+  }
   const prefix = `zone${zoneID}`
   let cursor = Number((await getState(db, `${prefix}:cursor`)) ?? now - BACKFILL_MS)
   let page = Number((await getState(db, `${prefix}:page`)) ?? 1)
@@ -273,11 +309,19 @@ export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zone
 
   // 1. 最近兩天：一輪掃完就停（下一輪留到下次執行，避免同一次重複列出相同的頁）
   const recentBudget = backfilling ? RECENT_PAGES_WHILE_BACKFILLING : PAGES_PER_RUN
-  while (result.recentPages < recentBudget) {
-    const hasMore = await scanPage(db, graphql, { zoneID, startTime: recentStart, endTime: now, page: recentPage }, now, result, (more) => [
-      setState(db, `${prefix}:recent_start`, String(more ? recentStart : now - RECENT_MS)),
-      setState(db, `${prefix}:recent_page`, String(more ? recentPage + 1 : 1)),
-    ])
+  while (result.recentPages < recentBudget && canScanPage()) {
+    const hasMore = await scanPage(
+      db,
+      graphql,
+      { zoneID, startTime: recentStart, endTime: now, page: recentPage },
+      now,
+      result,
+      (more) => [
+        setState(db, `${prefix}:recent_start`, String(more ? recentStart : now - RECENT_MS)),
+        setState(db, `${prefix}:recent_page`, String(more ? recentPage + 1 : 1)),
+      ],
+      budgetLeft,
+    )
     if (hasMore === null) return result
     result.recentPages++
     if (!hasMore) {
@@ -289,12 +333,20 @@ export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zone
   }
 
   // 2. 補舊資料：同一時間窗還有下一頁就翻頁，否則前進到下一個時間窗
-  while (backfilling && result.pages < PAGES_PER_RUN && cursor < backfillEnd) {
+  while (backfilling && result.pages < PAGES_PER_RUN && cursor < backfillEnd && canScanPage()) {
     const windowEnd = Math.min(cursor + WINDOW_MS, backfillEnd)
-    const hasMore = await scanPage(db, graphql, { zoneID, startTime: cursor, endTime: windowEnd, page }, now, result, (more) => [
-      setState(db, `${prefix}:cursor`, String(more ? cursor : windowEnd)),
-      setState(db, `${prefix}:page`, String(more ? page + 1 : 1)),
-    ])
+    const hasMore = await scanPage(
+      db,
+      graphql,
+      { zoneID, startTime: cursor, endTime: windowEnd, page },
+      now,
+      result,
+      (more) => [
+        setState(db, `${prefix}:cursor`, String(more ? cursor : windowEnd)),
+        setState(db, `${prefix}:page`, String(more ? page + 1 : 1)),
+      ],
+      budgetLeft,
+    )
     if (hasMore === null) return result
     if (hasMore) {
       page++
@@ -303,7 +355,6 @@ export async function crawl(db: DbLike, graphql: Graphql, now = Date.now(), zone
       cursor = windowEnd
     }
   }
-  await pruneGoneReports(db, graphql, now, result)
   return result
 }
 
