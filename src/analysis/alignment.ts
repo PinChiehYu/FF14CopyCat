@@ -263,20 +263,20 @@ function dropDetours(anchors: Anchor[]): Anchor[] {
     list = list.filter((a) => !drop.has(a))
   }
 }
-// 挑選錨點時，時間差每跳 1 秒扣掉的分數（以錨點數計）
+// 挑選錨點時，時間差每跳 1 秒扣掉的分數（以錨點數計），一次跳動最多扣這麼多：小抖動照樣扣分，
+// 大跳動的扣分有上限（真正的推進後錨點少時也不會被整段捨棄）。以 9 組實際比較驗證，上限 0.5～5 結果都相同
 const OFFSET_JUMP_PENALTY_PER_S = 0.5
+const MAX_JUMP_PENALTY = 2
 
 /**
- * 依 mine 排序的配對中，取兩邊時間都遞增、分數最高的一串：每個錨點 +1，時間差（ref − mine）每跳 1 秒 −0.5
- * （從戰鬥開始 (0, 0) 起算）。只取最長的一串時，隨機順序的機制配錯的錨點若比較多（一次機制有多個判定，
+ * 依 mine 排序的配對中，取兩邊時間都遞增、分數最高的一串：每個錨點 +1，時間差（ref − mine）每跳 1 秒 −0.5、
+ * 一次最多 −2（從戰鬥開始 (0, 0) 起算）。只取最長的一串時，隨機順序的機制配錯的錨點若比較多（一次機制有多個判定，
  * 例如熱舞綠光的指向機制），會整串勝過中間正確的錨點（M5S 開場 A／B 面相反時，錯配 11 個對正確 6 個）；
- * 錯配要跳開再跳回，扣分遠多於多出的錨點。真正的推進只跳一次（例如 9 秒扣 4.5），之後的錨點多，仍會保留。
+ * 錯配要跳開再跳回（而且常連續錯好幾段），扣分多於多出的錨點；真正的推進只跳一次，之後有 3 個以上錨點就會保留。
  */
 function bestChain(pairs: Anchor[]): Anchor[] {
   const offset = (a: Anchor) => a.ref - a.mine
-  // 實驗用：globalThis.__jump 設定每次跳動的扣分（暫時）
-  const jumpCost = (globalThis as { __jump?: number }).__jump ?? OFFSET_JUMP_PENALTY_PER_S
-  const penalty = (ms: number) => Math.min((Math.abs(ms) / 1000) * 0.5, jumpCost)
+  const penalty = (ms: number) => Math.min((Math.abs(ms) / 1000) * OFFSET_JUMP_PENALTY_PER_S, MAX_JUMP_PENALTY)
   const score: number[] = []
   const prev: number[] = []
   pairs.forEach((p, i) => {
