@@ -7,6 +7,7 @@ import {
   castBars,
   clipSide,
   deathAt,
+  untargetableSpans,
   deaths,
   incompatibility,
   playerCasts,
@@ -203,6 +204,11 @@ describe('clipSide', () => {
       hp: [],
       castBars: [],
       deaths: [{ t: 9000, abilityId: 1, revivedAt: null }],
+      untargetable: [
+        { start: 2000, end: 3000 },
+        { start: 4000, end: 7000 },
+        { start: 8000, end: 9000 },
+      ],
       duration: 10_000,
     }
     const clipped = clipSide(side, 5000)
@@ -217,6 +223,33 @@ describe('clipSide', () => {
     expect(clipped.bossCasts).toHaveLength(1)
     expect(clipped.playerPositions).toHaveLength(1)
     expect(clipped.duration).toBe(5000)
+    // 無法選中的時段截到結束點
+    expect(clipped.untargetable).toEqual([
+      { start: 2000, end: 3000 },
+      { start: 4000, end: 5000 },
+    ])
+  })
+})
+
+describe('untargetableSpans', () => {
+  const actor = (id: number, subType: string) => ({ id, subType }) as Actor
+  const fight = { startTime: 100_000, endTime: 700_000 }
+  const at = (s: number, sourceID: number, targetable: boolean) => ({ timestamp: 100_000 + s * 1000, sourceID, targetable })
+
+  it('finds the spans when no boss can be targeted', () => {
+    // 實例（M8S BF76r8yKh4wGaYkm #10）：3:01.6 召喚光狼時 Boss 無法選中、4:00.2 回來；6:40.1 轉場，7:25.6 第二階段的 Boss 本體（另一個角色）出現
+    // 光狼（NPC）可否選中不影響
+    const actors = [actor(110, 'Boss'), actor(116, 'NPC'), actor(127, 'Boss')]
+    const changes = [at(181.6, 110, false), at(190.9, 116, true), at(239.5, 116, false), at(240.2, 110, true), at(400.1, 110, false), at(445.6, 127, true)]
+    expect(untargetableSpans(changes, actors, fight)).toEqual([
+      { start: 181_600, end: 240_200 },
+      { start: 400_100, end: 445_600 },
+    ])
+  })
+
+  it('drops very short spans and keeps one open until the fight ends', () => {
+    const changes = [at(10, 1, false), at(10.5, 1, true), at(500, 1, false)]
+    expect(untargetableSpans(changes, [actor(1, 'Boss')], fight)).toEqual([{ start: 500_000, end: 600_000 }])
   })
 })
 
@@ -235,6 +268,7 @@ describe('unifyPotions', () => {
     hp: [],
     castBars: [],
     deaths: [],
+    untargetable: [],
     duration: 600_000,
   })
 
@@ -286,6 +320,7 @@ describe('boss cast filters', () => {
     hp: [],
     castBars: [],
     deaths: [],
+    untargetable: [],
     duration: 600_000,
   })
 

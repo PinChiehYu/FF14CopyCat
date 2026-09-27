@@ -69,6 +69,9 @@ function useSides(mine: Selection, reference: Selection) {
   return result?.key === key ? result : null
 }
 
+// 普通攻擊（Action 7，繁中「攻擊」）
+const AUTO_ATTACK = 7
+
 /** 查詢兩邊出現過的技能的繁中名稱；查詢失敗時沿用 FFLogs 的英文名稱。 */
 function useAbilityNames(mine: SideData, reference: SideData): Map<number, AbilityName> {
   const [names, setNames] = useState<Map<number, AbilityName>>(new Map())
@@ -90,6 +93,8 @@ function useAbilityNames(mine: SideData, reference: SideData): Map<number, Abili
       ...windowRules(reference.selection.player.subType).flatMap(ruleIds),
       // 冷卻技（兩邊都沒用過時也要顯示名稱）
       ...(COOLDOWN_RULES[reference.selection.player.subType] ?? []).flatMap((g) => g.ids),
+      // 普通攻擊（沒有名稱的 Boss 普通攻擊沿用它的名稱）
+      AUTO_ATTACK,
     ]
     const controller = new AbortController()
     fetchAbilityNames(ids, controller.signal)
@@ -316,7 +321,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   const abilities = useMemo(() => {
     const merged = new Map([...abilityMap(mine.selection.report), ...abilityMap(reference.selection.report)])
     for (const [id, ability] of merged) {
-      const zh = zhNames.get(id)
+      // Boss 的普通攻擊常是各 Boss 專用、遊戲資料沒有名稱的技能（例如 #42228），FFLogs 記為 Attack：沿用普通攻擊的繁中名稱
+      const zh = zhNames.get(id) ?? (ability.name === 'Attack' ? zhNames.get(AUTO_ATTACK) : undefined)
       if (zh) merged.set(id, { ...ability, name: zh.name, englishName: ability.name })
     }
     // 道具 ID 對不上遊戲資料時（例如強化藥記成武器），依效果判定的強化藥改以「強化藥」顯示
@@ -514,7 +520,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   }, [setCursor, setFocus])
   const playbackEnd = Math.max(reference.duration, alignment.mineToRef(mine.duration))
   // 時間軸的標示：固定下來，時間軸的技能列才不會在播放時重繪
-  const timelineHighlights = useMemo(() => lost.map((w) => ({ start: w.refStart, end: w.refEnd })), [lost])
+  const timelineHighlights = useMemo(() => lost.map((w) => ({ start: w.mineStart, end: w.mineEnd })), [lost])
   const timelineWindows = useMemo(
     () =>
       windows.flatMap(({ mine: m, ref: r }) => [

@@ -96,3 +96,23 @@ export const EVENTS_QUERY = /* GraphQL */ `
     }
   }
 `
+
+/** 敵方可否選中的變化（Boss 無法選中的階段）；事件很少，一頁即可取完。 */
+export const TARGETABILITY_QUERY = /* GraphQL */ `
+  query Targetability($code: String!, $fightIDs: [Int], $startTime: Float, $endTime: Float) {
+    reportData {
+      report(code: $code) {
+        events(
+          fightIDs: $fightIDs
+          startTime: $startTime
+          endTime: $endTime
+          hostilityType: Enemies
+          filterExpression: "type = 'targetabilityupdate'"
+          limit: 10000
+        ) {
+          data
+        }
+      }
+    }
+  }
+`

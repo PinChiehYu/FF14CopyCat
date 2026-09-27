@@ -56,7 +56,7 @@ function median(values: number[]): number {
 export function pushTitle(p: PushDifference): string {
   const seconds = (Math.abs(p.deltaMs) / 1000).toFixed(1)
   return p.deltaMs > 0
-    ? `參考在 ${formatFightTime(p.refEnd)} 推進，你到 ${formatFightTime(p.mineEnd)}（你的時間）才推進，多花了 ${seconds} 秒；之後的機制都跟著延後。你在這段的施放在時間軸上會擠在一起。`
+    ? `參考在 ${formatFightTime(p.refEnd)} 推進，你到 ${formatFightTime(p.mineEnd)}（你的時間）才推進，多花了 ${seconds} 秒；之後的機制都跟著延後。`
     : `你比參考早 ${seconds} 秒推進（你的時間 ${formatFightTime(p.mineEnd)}）。`
 }
 

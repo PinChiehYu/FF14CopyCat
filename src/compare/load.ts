@@ -12,7 +12,7 @@ import {
 } from '../analysis/buffs'
 import type { PositionSample } from '../analysis/positions'
 import { toFightTime } from '../analysis/timeline'
-import { fetchFightEvents } from '../fflogs/client'
+import { fetchFightEvents, fetchTargetability, type TargetabilityChange } from '../fflogs/client'
 import { abilityMap, isItemId, isUnnamedAbility } from '../fflogs/report'
 import { jobName } from '../jobs/names'
 import type { Actor, FFLogsEvent, Fight, Report } from '../fflogs/types'
@@ -46,8 +46,44 @@ export interface SideData {
   castBars: CastBar[]
   /** 死亡（重點標示） */
   deaths: Death[]
+  /** Boss 無法選中的時段（戰鬥時間），例如召喚分身、轉場 */
+  untargetable: TimeSpan[]
   /** 戰鬥長度（毫秒） */
   duration: number
+}
+
+export interface TimeSpan {
+  start: number
+  end: number
+}
+
+// 無法選中不到這麼久的不標示
+const MIN_UNTARGETABLE_MS = 1000
+
+/**
+ * Boss（subType 為 Boss 的角色）全部都無法選中的時段。各 Boss 第一次變化是「變成無法選中」的，開打時可選中；
+ * 反之開打時無法選中（例如第二階段才出現的 Boss 本體）。
+ */
+export function untargetableSpans(changes: TargetabilityChange[], actors: Actor[], fight: Pick<Fight, 'startTime' | 'endTime'>): TimeSpan[] {
+  const bossIds = new Set(actors.filter((a) => a.subType === 'Boss').map((a) => a.id))
+  const events = changes.filter((c) => c.sourceID !== undefined && bossIds.has(c.sourceID)).sort((a, b) => a.timestamp - b.timestamp)
+  if (events.length === 0) return []
+  const state = new Map<number, boolean>()
+  for (const e of events) if (!state.has(e.sourceID!)) state.set(e.sourceID!, !e.targetable)
+  const any = () => [...state.values()].some(Boolean)
+  const spans: TimeSpan[] = []
+  let since: number | null = any() ? null : 0
+  for (const e of events) {
+    state.set(e.sourceID!, e.targetable)
+    const t = toFightTime(e.timestamp, fight.startTime)
+    if (since === null && !any()) since = t
+    else if (since !== null && any()) {
+      spans.push({ start: since, end: t })
+      since = null
+    }
+  }
+  if (since !== null) spans.push({ start: since, end: fight.endTime - fight.startTime })
+  return spans.filter((s) => s.end - s.start >= MIN_UNTARGETABLE_MS)
 }
 
 interface Resources {
@@ -233,9 +269,11 @@ export function castBars(events: FFLogsEvent[], fight: Fight, actorId: number): 
 export async function loadSide(selection: Selection, signal?: AbortSignal): Promise<SideData> {
   const { report, fight, player } = selection
   // 玩家取全部事件（約每 0.4 秒一筆位置），施放與位置都從中取得；只取施放時位置取樣太稀疏
-  const [playerEvents, bossEvents] = await Promise.all([
+  const [playerEvents, bossEvents, targetability] = await Promise.all([
     fetchFightEvents(report.code, fight, { sourceId: player.id, dataType: 'All' }, signal),
     fetchFightEvents(report.code, fight, { hostility: 'Enemies', dataType: 'Casts' }, signal),
+    // 只用來標示，查詢失敗時不影響比較
+    fetchTargetability(report.code, fight, signal).catch(() => []),
   ])
   return {
     selection,
@@ -254,6 +292,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     hp: hpSamples(playerEvents, fight, player.id),
     castBars: castBars(playerEvents, fight, player.id),
     deaths: deaths(playerEvents, fight, player.id),
+    untargetable: untargetableSpans(targetability, report.masterData.actors, fight),
     duration: fight.endTime - fight.startTime,
   }
 }
@@ -272,6 +311,7 @@ export function clipSide(side: SideData, endMs: number): SideData {
     playerPositions: before(side.playerPositions),
     bossPositions: before(side.bossPositions),
     deaths: before(side.deaths),
+    untargetable: side.untargetable.filter((s) => s.start <= endMs).map((s) => ({ ...s, end: Math.min(s.end, endMs) })),
     // 比較範圍外才開始的窗口不計；跨過結束點的窗口視為未結束（不評分）
     buffs: side.buffs
       .filter((b) => b.start <= endMs)

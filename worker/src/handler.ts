@@ -1,7 +1,7 @@
 import { abilityNames, gameRow } from './abilityNames'
 import { tcRankings, type DbLike, type Graphql } from './crawler'
 import { npcNames } from './npcNames'
-import { AUTO_ATTACKS_TAKEN_QUERY, DAMAGE_DONE_QUERY, EVENTS_QUERY, REPORT_QUERY } from './queries'
+import { AUTO_ATTACKS_TAKEN_QUERY, DAMAGE_DONE_QUERY, EVENTS_QUERY, REPORT_QUERY, TARGETABILITY_QUERY } from './queries'
 
 export interface Env {
   FFLOGS_CLIENT_ID: string
@@ -190,7 +190,7 @@ async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds:
 }
 
 async function reportRoute(url: URL, env: Env): Promise<unknown> {
-  const match = /^\/reports\/([^/]+)(\/events|\/auto-attacks-taken|\/damage-done)?\/?$/.exec(url.pathname)
+  const match = /^\/reports\/([^/]+)(\/events|\/auto-attacks-taken|\/damage-done|\/targetability)?\/?$/.exec(url.pathname)
   if (!match) throw new HttpError(404, 'Not found')
 
   const code = decodeURIComponent(match[1])
@@ -224,6 +224,16 @@ async function reportRoute(url: URL, env: Env): Promise<unknown> {
     }
   }
 
+  if (match[2] === '/targetability') {
+    const report = (await queryReport(env, TARGETABILITY_QUERY, {
+      code,
+      fightIDs: [requiredInt(params, 'fight')],
+      startTime: requiredInt(params, 'start'),
+      endTime: requiredInt(params, 'end'),
+    })) as { events: { data?: { timestamp: number; sourceID?: number; targetable?: number }[] } }
+    // 只回傳時間、角色與可否選中
+    return (report.events.data ?? []).map((e) => ({ timestamp: e.timestamp, sourceID: e.sourceID, targetable: e.targetable === 1 }))
+  }
   const report = (await queryReport(env, EVENTS_QUERY, {
     code,
     fightIDs: [requiredInt(params, 'fight')],

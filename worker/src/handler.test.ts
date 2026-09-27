@@ -122,6 +122,24 @@ describe('handleRequest', () => {
     })
   })
 
+  it('returns enemy targetability changes', async () => {
+    const fetchMock = mockFflogs({
+      data: {
+        reportData: {
+          report: {
+            events: {
+              data: [{ timestamp: 181_600, type: 'targetabilityupdate', sourceID: 110, targetable: 0, fight: 10 }],
+            },
+          },
+        },
+      },
+    })
+    const res = await handleRequest(get('/reports/abc/targetability?fight=10&start=0&end=600000'), env, ctx, null)
+    expect(await res.json()).toEqual([{ timestamp: 181_600, sourceID: 110, targetable: false }])
+    expect(JSON.stringify(fetchMock.mock.calls.at(-1))).toContain('targetabilityupdate')
+    expect((await handleRequest(get('/reports/abc/targetability?fight=10'), env, ctx, null)).status).toBe(400)
+  })
+
   it('rejects invalid parameters without calling FFLogs', async () => {
     const fetchMock = mockFflogs({})
     const cases = [

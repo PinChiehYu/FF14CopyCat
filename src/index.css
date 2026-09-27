@@ -728,6 +728,30 @@ button:disabled {
   background: var(--error);
 }
 
+/* 推進差距：推進較快的一方補上的空白（另一方多花的時間） */
+.timeline-gap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--text-muted) 22%, transparent) 0 4px,
+    transparent 4px 10px
+  );
+  border-inline: 1px dashed var(--text-muted);
+  box-sizing: border-box;
+  cursor: help;
+}
+
+/* Boss 無法選中（召喚分身、轉場等） */
+.untargetable {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+  cursor: help;
+}
+
 .highlight {
   position: absolute;
   top: 0;

@@ -30,6 +30,7 @@
 | `GET /abilities?ids=1,2,3` | 技能、效果（Buff）與道具的繁中名稱（見「技能繁中名稱」） | 1 天 |
 | `GET /npc-names?name=A&name=B` | Boss（NPC）繁中名稱（見「Boss 繁中名稱」） | 1 天 |
 | `GET /reports/:code/auto-attacks-taken?fight=` | 每位玩家承受的敵方普通攻擊總傷害 `{ 角色 ID: 傷害 }`，判斷 MT／ST（見「MT／ST 判斷」） | 10 分鐘 |
+| `GET /reports/:code/targetability?fight&start&end` | 敵方可否選中的變化 `[{ timestamp, sourceID, targetable }]`（`TARGETABILITY_QUERY`：`hostilityType: Enemies`、`filterExpression: "type = 'targetabilityupdate'"`；`dataType=Casts` 的事件不含這類事件，`All` 又太大） | 10 分鐘 |
 | `GET /tc-rankings?encounter&difficulty&job&minPr&maxPr` | 繁中服排名（D1）中 PR 在範圍內的紀錄 `{ count, rankings }`，最多 100 筆（見「繁中服排名」） | 5 分鐘 |
 
 - 保護：`ALLOWED_ORIGINS`（`wrangler.toml`）檢查 Origin 並回 CORS 標頭；Cloudflare Rate Limiting 綁定 `RATE_LIMITER`（每 IP 60 次／分）；成功回應以不含 Origin 的網址為鍵放入 `caches.default`。
@@ -39,12 +40,15 @@
 ## 前端資料處理
 
 ### 載入（`src/compare/load.ts`、`src/compare/Comparison.tsx`）
-- 每邊 2 個請求：玩家全部事件（`dataType=All&source=玩家`）與敵方施放（`dataType=Casts&hostility=Enemies`）。載入後另以 `/abilities` 查詢兩邊出現過的技能繁中名稱（查詢失敗沿用英文）。
+- 每邊 3 個請求：玩家全部事件（`dataType=All&source=玩家`）、敵方施放（`dataType=Casts&hostility=Enemies`）與敵方可否選中（`/targetability`，失敗時當成沒有）。載入後另以 `/abilities` 查詢兩邊出現過的技能繁中名稱（查詢失敗沿用英文）。
 - **玩家施放**（`playerCasts()`）：只取 `sourceID` 為玩家者；有詠唱條的技能以同技能前一個 `begincast`（5 秒內）的時間取代 `cast`；被打斷的只有 `begincast`、不計；任何施放完成時清除尚未完成的 `begincast`（該詠唱已被取消），避免之後瞬發同一技能時配對到過期的開始時間。
 - **普通攻擊**（Attack #7、Shot #8）另存 `autoAttacks`。
 - **不紀錄的技能**：`withoutAbilities()` 在比較開始時移除 ignored 分類的施放。
 - **位置**（`actorPositions()`）：事件中該角色為 source 的 `sourceResources` 或為 target 的 `targetResources`，座標 ÷100 為 yalm，同時間重複取樣去除。Boss 位置取施放最多次的敵人。
 - **比較範圍**：參考時間 0～`min(參考長度, mineToRef(我的長度))`；我的一側以 `refToMine` 換回自己的時間後用 `clipSide()` 裁切，得到 `mineInRange`／`refInRange`。所有統計都用裁切後的資料，只有時間軸與 Boss 機制差異用完整資料。
+- **Boss 無法選中**（`untargetableSpans()` → `SideData.untargetable`）：subType 為 Boss 的角色**全部**無法選中的時段（1 秒以上）。各 Boss 第一次變化是「變成無法選中」時，開打時可選中；反之開打時不可選中（M8S 第二階段的 Boss 本體是另一個角色，第一次變化是「變成可選中」）。光狼等 NPC 不算。實測 M8S `BF76r8yKh4wGaYkm` #10：3:01.6～4:00.2（召喚光狼）、4:45.0～4:51.8、6:40.1～7:25.6（轉場）；`dLWJGqBC9ZrmPDa4` #5：3:02.3～4:03.6、4:48.3～4:55.2、6:32.1～7:17.6。
+- **並排時間軸的橫軸**（`analysis/displayAxis.ts` 的 `displayAxis()`）：平常為參考時間；推進差距（`pushDifferences()` 的相鄰錨點區段 `mineStart～mineEnd`／`refStart～refEnd`）兩邊各自照實際長度排開，較慢一方多花的時間在較快一方補上空白（`gaps`，我較慢時在參考推進結束後插入），推進後兩邊接回同一位置。`ref()`／`mine()` 把各自的時間換成顯示時間，`toRef()` 供點擊時間尺換回參考時間（落在空白時取推進完成的時間）。只影響時間軸；游標、播放與其他統計仍用參考時間。原本我多花的時間會被擠進參考推進的短區段（M8S 實例：我 6:29～6:40 的施放擠在參考 6:31.6～6:32.0）。
+- **Boss 的普通攻擊名稱**：各 Boss 專用的普通攻擊常沒有遊戲名稱（例：M8S #42228，Action 表 en／tc／chs／ja 都是空字串），FFLogs 記為 `Attack`；`Comparison.tsx` 對英文名稱為 `Attack` 且查不到繁中的技能，改用 Action 7（普通攻擊）的繁中名稱「攻擊」。
 - `Comparison.tsx` 持有共用的時間游標 `cursor`（參考時間）與時間軸捲動用的 `focus`（每次點擊產生新物件以觸發捲動）。
 - 技能使用次數的分組由 `compare/usageGroups.ts` 的 `groupUsage()` 決定（普通攻擊、減傷、移動優先於 GCD 判斷），每組一個 `<tbody>`。
 
@@ -469,6 +473,9 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-28 時間軸推進空白、Boss 無法選中、普通攻擊名稱
+- Worker 新增 `/reports/:code/targetability`；`load.ts` 的 `untargetableSpans()`、`SideData.untargetable`（`clipSide()` 一併裁切）；`analysis/displayAxis.ts`；`Timeline.tsx` 改用顯示時間（少打 GCD 的時段改傳我的時間）；`pushTitle()` 移除「施放會擠在一起」。
 
 ### 2026-09-27 對齊使用 cactbot 的機制分組
 - `buildAlignment()` 新增 `knownGroups`：cactbot 同一條目的不同版本從第一次對齊就視為同一機制（`mergeGroups()` 與比較找出的組合併）。修正 M5S 兩邊 A 面／B 面整段相反時，第一次對齊把整段配到另一邊 19 秒後的同名技能。`mainMechanicDifferences()` 不列另一邊同一時間有非主要施放的「只有一邊」。10 組比較結果見「時間軸對齊」。

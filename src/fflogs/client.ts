@@ -178,6 +178,21 @@ export async function fetchAbilityNames(ids: number[], signal?: AbortSignal): Pr
   return names
 }
 
+/** 敵方可否選中的變化（報告時間）。 */
+export interface TargetabilityChange {
+  timestamp: number
+  sourceID?: number
+  targetable: boolean
+}
+
+export function fetchTargetability(
+  code: string,
+  fight: Pick<Fight, 'id' | 'startTime' | 'endTime'>,
+  signal?: AbortSignal,
+): Promise<TargetabilityChange[]> {
+  const params = new URLSearchParams({ fight: String(fight.id), start: String(fight.startTime), end: String(fight.endTime) })
+  return get(`/reports/${encodeURIComponent(code)}/targetability?${params}`, signal)
+}
 const MAX_PAGES = 50
 
 /** 取得整場戰鬥的事件，自動依 nextPageTimestamp 翻頁。 */
