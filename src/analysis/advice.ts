@@ -8,6 +8,7 @@ import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
 import { MIRROR_LABELS, VARIANT_LEAD_MS, type Divergence, type TrackPoint } from './positions'
 import { formatFightTime } from './timeline'
 import { isPotionName } from '../fflogs/report'
+import { controlNames } from './control'
 import type { WindowSummary } from './windows'
 
 export type Severity = 'high' | 'medium' | 'low'
@@ -91,11 +92,28 @@ function averageDistance(track: TrackPoint[], start: number, end: number): numbe
 }
 
 function lostGcdAdvice(input: AdviceInput): Advice[] {
-  const { lost, track } = input
-  if (lost.length === 0) return []
+  const { track } = input
+  // Boss 控場造成的停手不是操作問題：不列入停手建議，合併成一則參考
+  const controlled = input.lost.filter((w) => w.control)
+  const lost = input.lost.filter((w) => !w.control)
+  const controlItems: Advice[] =
+    controlled.length === 0
+      ? []
+      : [
+          {
+            severity: 'low',
+            title: `${controlled.length} 段停手是 Boss 控場造成`,
+            detail:
+              `${controlled.map((w) => `${formatFightTime(w.mineStart)}（${controlNames(w.control!, input.abilityName)}）`).join('、')}：` +
+              '你身上有 Boss 施加、期間無法施放的效果，參考在同一段仍在施放（例如隨機點名的時間不同），不是操作問題。',
+            at: controlled[0].refStart,
+          },
+        ]
+  if (lost.length === 0) return controlItems
   const total = lost.reduce((sum, w) => sum + w.refGcds, 0)
   const top = [...lost].sort((a, b) => b.refGcds - a.refGcds || b.mineEnd - b.mineStart - (a.mineEnd - a.mineStart))
   const items: Advice[] = [
+    ...controlItems,
     {
       // 與個別時段同等級時，排序會讓總結排在前面
       severity: total >= 3 ? 'high' : 'medium',

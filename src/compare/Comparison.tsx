@@ -11,6 +11,7 @@ import { buildAlignment, pushDifferences, pushTitle } from '../analysis/alignmen
 import { generateAdvice } from '../analysis/advice'
 import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
+import { attachControl, controlStatuses, controlWindows } from '../analysis/control'
 import { attachMechanics, attachVariants, compareTracks, distanceAt, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, fetchDamageSummary, type AbilityName, type DamageSummary } from '../fflogs/client'
@@ -76,6 +77,8 @@ function useAbilityNames(mine: SideData, reference: SideData): Map<number, Abili
         // 效果（開打前、技能窗口）
         ...s.prepull,
         ...s.buffs.map((b) => b.statusId),
+        // Boss 施加在玩家身上的 debuff（控場的名稱）
+        ...s.bossDebuffs.map((b) => b.statusId),
         // 當下狀態面板：角色自身的效果
         ...s.auras.filter((a) => a.sourceId === s.selection.player.id).map((a) => a.statusId),
         // 死亡的致命技能
@@ -338,8 +341,18 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     const stats = { mine: gcdStats(mineGcds), ref: gcdStats(refGcds) }
     const windows =
       stats.mine.gcdMs === null ? [] : lostGcdWindows(mineGcds, refGcds, alignment.mineToRef, stats.mine.gcdMs)
-    return { gcd: stats, lost: windows }
-  }, [mineInRange, refInRange, alignment, job])
+    // Boss 強制控場（兩份日誌中每次期間都沒有開始 GCD 的 Boss debuff）造成的停手另外標示，不算操作問題
+    const statuses = controlStatuses([
+      { debuffs: mineInRange.bossDebuffs, gcds: mineGcds },
+      { debuffs: refInRange.bossDebuffs, gcds: refGcds },
+    ])
+    // 同時施加的無名稱效果（FFLogs 的 Unknown_xxxx）不列出名稱
+    const named = (id: number) => !isUnnamedAbility(abilities.get(id)?.englishName ?? abilities.get(id)?.name)
+    const lost = attachControl(windows, controlWindows(mineInRange.bossDebuffs, statuses)).map((w) =>
+      w.control ? { ...w, control: w.control.filter(named) } : w,
+    )
+    return { gcd: stats, lost }
+  }, [mineInRange, refInRange, alignment, job, abilities])
   // 技能使用次數含普通攻擊（時間軸不畫）；次數多寡可反映是否離 Boss 太遠或停手
   const usage = useMemo(
     () =>

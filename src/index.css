@@ -1066,7 +1066,8 @@ h3 {
 
 .lost-list li {
   display: grid;
-  grid-template-columns: 9.5em 6.5em 1fr;
+  /* 時間｜停手秒數｜參考的 GCD 數｜控場標籤（沒有時為空） */
+  grid-template-columns: 9.5em 6.5em 1fr auto;
   align-items: center;
   gap: 8px;
   padding: 3px 8px;
@@ -1084,6 +1085,18 @@ h3 {
 
 .lost-list li.many strong {
   color: var(--error);
+}
+
+/* Boss 控場造成的停手：不是操作問題，以強調色（紫）區分，不用錯誤的紅色 */
+.lost-list li.controlled {
+  border-left-color: var(--accent);
+}
+
+.tag.control {
+  margin: 0;
+  color: var(--accent);
+  border-color: var(--accent);
+  cursor: help;
 }
 
 .lost-list button {
@@ -1939,7 +1952,7 @@ h3 {
 
   /* 少打 GCD 的時段：縮小字級與欄寬，一列放得下 */
   .lost-list li {
-    grid-template-columns: 8.6em 6em 1fr;
+    grid-template-columns: 8.6em 6em 1fr auto;
     gap: 6px;
     padding: 3px 6px;
     font-size: 0.85em;

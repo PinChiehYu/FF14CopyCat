@@ -71,6 +71,30 @@ export function selfBuffWindows(events: FFLogsEvent[], fight: Fight, actorId: nu
   return windows.sort((a, b) => a.start - b.start)
 }
 
+/**
+ * 敵人（Boss、雜兵）施加在玩家身上的 debuff 時段：applydebuff 開始、removedebuff 結束（用來找出強制控場，見 control.ts）。
+ * 玩家的全部事件（source＝玩家）也包含以玩家為目標的敵方事件。
+ */
+export function debuffsOnPlayer(events: FFLogsEvent[], fight: Fight, actorId: number): BuffWindow[] {
+  const duration = fight.endTime - fight.startTime
+  const open = new Map<number, number>()
+  const windows: BuffWindow[] = []
+  for (const e of events) {
+    if (e.targetID !== actorId || e.sourceID === actorId || e.abilityGameID === undefined) continue
+    const t = toFightTime(e.timestamp, fight.startTime)
+    if (e.type === 'applydebuff') {
+      if (!open.has(e.abilityGameID)) open.set(e.abilityGameID, t)
+    } else if (e.type === 'removedebuff') {
+      const start = open.get(e.abilityGameID)
+      if (start === undefined) continue
+      open.delete(e.abilityGameID)
+      windows.push({ statusId: e.abilityGameID, start, end: t, prepull: false, openEnded: false })
+    }
+  }
+  for (const [statusId, start] of open) windows.push({ statusId, start, end: duration, prepull: false, openEnded: true })
+  return windows.sort((a, b) => a.start - b.start)
+}
+
 /** 玩家身上的效果（任何來源）：當下狀態面板用。 */
 export interface Aura {
   statusId: number

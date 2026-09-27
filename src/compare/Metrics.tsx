@@ -1,3 +1,4 @@
+import { controlNames } from '../analysis/control'
 import { LATE_LISTED_MS, type CooldownPair, type CooldownUsage } from '../analysis/cooldowns'
 import type { AbilityUsage, GcdStats, LostWindow } from '../analysis/metrics'
 import { formatFightTime } from '../analysis/timeline'
@@ -20,12 +21,15 @@ function GcdSection({
   reference,
   lost,
   onFocus,
+  abilityName,
 }: {
   mine: GcdStats
   reference: GcdStats
   lost: LostWindow[]
   onFocus: (refTime: number) => void
+  abilityName?: (id: number) => string
 }) {
+  const controlled = lost.filter((w) => w.control)
   const lostTotal = lost.reduce((sum, w) => sum + w.refGcds, 0)
   const slower = mine.gcdMs !== null && reference.gcdMs !== null ? mine.gcdMs - reference.gcdMs : 0
 
@@ -74,11 +78,12 @@ function GcdSection({
         <>
           <p>
             共 {lost.length} 段，參考在這些時段多打了 {lostTotal} 個 GCD。雙方都停手的時段（Boss 無法攻擊等）不列入。
+            {controlled.length > 0 && `其中 ${controlled.length} 段你被 Boss 控場，停手是機制造成。`}
           </p>
           {/* 每段一列、欄位對齊（時間｜停手秒數｜參考同段的 GCD 數），手機上也不換行 */}
           <ul className="lost-list">
             {lost.map((w) => (
-              <li key={w.mineStart} className={w.refGcds >= 3 ? 'many' : undefined}>
+              <li key={w.mineStart} className={w.control ? 'controlled' : w.refGcds >= 3 ? 'many' : undefined}>
                 <button type="button" onClick={() => onFocus(w.refStart)} title="跳到這段">
                   {formatFightTime(w.mineStart)}–{formatFightTime(w.mineEnd)}
                 </button>
@@ -86,6 +91,14 @@ function GcdSection({
                 <span title="參考在同一段（對齊後）打的 GCD 數">
                   參考打 <strong>{w.refGcds}</strong> 個 GCD
                 </span>
+                {w.control && (
+                  <span
+                    className="tag control"
+                    title={`你身上有 Boss 施加的控場效果：${controlNames(w.control, abilityName ?? ((id) => `#${id}`))}\n期間無法施放，停手是機制造成（參考在同一段仍在施放）`}
+                  >
+                    控場
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -224,7 +237,7 @@ export function Metrics({
   return (
     <section className="metrics">
       {gcd ? (
-        <GcdSection mine={gcd.mine} reference={gcd.ref} lost={lost} onFocus={onFocus} />
+        <GcdSection mine={gcd.mine} reference={gcd.ref} lost={lost} onFocus={onFocus} abilityName={abilityName} />
       ) : (
         <p className="hint">此職業尚未有專屬規則，無法計算 GCD 指標。</p>
       )}

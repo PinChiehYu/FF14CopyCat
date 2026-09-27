@@ -44,6 +44,8 @@ export interface LostWindow {
   refEnd: number
   /** 參考在這段期間施放的 GCD 數，即我少打的 GCD 數 */
   refGcds: number
+  /** 這段期間我身上的 Boss 控場 debuff（見 control.ts）；停手是機制造成，不是操作問題 */
+  control?: number[]
 }
 
 /**

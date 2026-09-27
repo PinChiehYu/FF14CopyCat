@@ -507,7 +507,11 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
 
-### 2026-09-27 強制控場的 debuff（調查，尚未實作）
+### 2026-09-27 Boss 強制控場
+- 變更：`buffs.ts` 新增 `debuffsOnPlayer()`（敵人施加在玩家身上的 applydebuff／removedebuff；原本的 `enemyDebuffWindows()` 是玩家施加在敵人身上的），`SideData.bossDebuffs`（`clipSide()` 一併裁切，名稱也一併查繁中）；新增 `analysis/control.ts`：`controlStatuses()`（兩場每次期間 1～10 秒、期間內〔施加後 0.3 秒起〕沒有開始 GCD 的效果）、`controlWindows()`（重疊合併）、`attachControl()`（與停手區間重疊 ≥ 1 秒時設 `LostWindow.control`）；`Comparison.tsx` 去掉無名稱的效果（例如與完美收尾同時的 #1004515 Unknown_11A3）；`advice.ts` 的停手建議排除控場段、合併成一則參考；`Metrics.tsx` 顯示「控場」標籤。
+- 驗證：M5S `BF76r8yKh4wGaYkm` #1 對 `Kwx3LyFJjz26pYRm` #16 的 1:39.5–1:46.4、對 `YAzxqkpVfBNmcMwj` #1 的 5:43.4–5:49.4 標為控場（完美收尾）；對 `WBNDQCdcrP6A1qkv`、`kCcYLfbxnTJ91Md6` 兩邊控場時間相同，本來就不算少打。M8S 騎士（13 段停手）、武士（5 段）與 M7S 武士（9 段）沒有任何一段被標為控場。
+
+### 2026-09-27 強制控場的 debuff（調查）
 - 資料：M5S `BF76r8yKh4wGaYkm` #1（騎士 source 16）玩家全部事件中，敵人施加在玩家身上的 debuff 有：Burn Baby Burn（蹦迪，#1004461）1:18.3–1:41.8、5:26.0–5:45.5；緊接著 In the Spotlight（完美收尾，#1004471）1:42.3–1:45.3、5:46.0–5:49.1 與無名稱的 #1004515（Unknown_11A3，同一段時間）；另有魔法受傷加重、出血、音頻炸彈α、伴舞波動耐性降低等一般 debuff。完美收尾期間 GCD 由 1:39.5（先鋒劍）停到 1:46.4（暴亂劍），間隔 6.9 秒（正常約 2.5 秒）。
 - 可行做法：以 applydebuff／removedebuff 取得控場時段（`buffs.ts` 目前只取自身施加的效果與施加在敵人身上的，需另外取敵人施加在玩家身上的），在少打 GCD 的時段中扣除或標示。哪些 debuff 算控場需要逐一列表（名稱無法判斷；無名稱的效果也可能是控場），或以「兩邊在同一段都停手」自動判斷。
 

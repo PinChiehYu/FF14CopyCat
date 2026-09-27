@@ -1,5 +1,6 @@
 import type { TimedCast } from '../analysis/alignment'
 import {
+  debuffsOnPlayer,
   enemyDebuffWindows,
   hpSamples,
   playerAuras,
@@ -35,6 +36,8 @@ export interface SideData {
   bossPositions: PositionSample[]
   /** 玩家自己給自己的效果，以及玩家施加在敵人身上的效果的時段（技能窗口分析用） */
   buffs: BuffWindow[]
+  /** 敵人施加在玩家身上的 debuff（找出 Boss 強制控場用） */
+  bossDebuffs: BuffWindow[]
   /** 開打當下玩家自己施加、身上已有的效果 ID（推知開打前用過的技能） */
   prepull: number[]
   /** 玩家身上所有效果（任何來源）、血量與讀條：當下狀態面板用，不裁切 */
@@ -236,6 +239,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     buffs: [...selfBuffWindows(playerEvents, fight, player.id), ...enemyDebuffWindows(playerEvents, fight, player.id)].sort(
       (a, b) => a.start - b.start,
     ),
+    bossDebuffs: debuffsOnPlayer(playerEvents, fight, player.id),
     prepull: prepullEffects(playerEvents, player.id),
     auras: playerAuras(playerEvents, fight, player.id),
     hp: hpSamples(playerEvents, fight, player.id),
@@ -261,6 +265,9 @@ export function clipSide(side: SideData, endMs: number): SideData {
     deaths: before(side.deaths),
     // 比較範圍外才開始的窗口不計；跨過結束點的窗口視為未結束（不評分）
     buffs: side.buffs
+      .filter((b) => b.start <= endMs)
+      .map((b) => (b.end > endMs ? { ...b, end: endMs, openEnded: true } : b)),
+    bossDebuffs: side.bossDebuffs
       .filter((b) => b.start <= endMs)
       .map((b) => (b.end > endMs ? { ...b, end: endMs, openEnded: true } : b)),
     duration: Math.min(side.duration, endMs),
