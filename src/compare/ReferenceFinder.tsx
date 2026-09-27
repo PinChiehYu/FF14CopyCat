@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TimedCast } from '../analysis/alignment'
-import { mainMechanicGroups, mechanicIds, variantMechanics } from '../analysis/mainMechanics'
+import { mainMechanicGroups, mechanicIds, variantPoints } from '../analysis/mainMechanics'
 import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, fetchTcRankings, type TcRanking } from '../fflogs/client'
 import { reportUrl } from '../fflogs/url'
@@ -14,7 +14,7 @@ const MECHANIC_CONCURRENCY = 3
 const MAX_LISTED = 40
 
 // done：各機制（主要機制的鍵）隨機變化不同的次數
-type MechanicState = { status: 'loading' } | { status: 'done'; variants: Map<number, number> } | { status: 'error' }
+type MechanicState = { status: 'loading' } | { status: 'done'; points: { t: number; keys: number[] }[] } | { status: 'error' }
 
 /**
  * 從繁中服排名找參考日誌：依 PR 範圍列出同 Boss、同職業的紀錄（由高到低），
@@ -104,7 +104,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
           const casts = await loadBossCasts(row.report, { id: row.fight, startTime: row.fightStart, endTime: row.fightEnd }, controller.signal)
           state = {
             status: 'done',
-            variants: variantMechanics(mine.fight.encounterID, await mineCasts, casts, mineDuration, row.fightEnd - row.fightStart),
+            points: variantPoints(mine.fight.encounterID, await mineCasts, casts, mineDuration, row.fightEnd - row.fightStart),
           }
         } catch {
           if (controller.signal.aborted) return
@@ -137,7 +137,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   // 比對結果中出現過不同的機制
   const differing = useMemo(() => {
     const keys = new Set<number>()
-    for (const m of mechanics.values()) if (m.status === 'done') for (const key of m.variants.keys()) keys.add(key)
+    for (const m of mechanics.values()) if (m.status === 'done') for (const p of m.points) for (const key of p.keys) keys.add(key)
     return [...keys].sort((a, b) => a - b)
   }, [mechanics])
 
@@ -174,7 +174,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   const checklist = [...byLabel].map(([label, keys]) => ({
     label,
     keys,
-    records: [...mechanics.values()].filter((m) => m.status === 'done' && keys.some((k) => m.variants.has(k))).length,
+    records: [...mechanics.values()].filter((m) => m.status === 'done' && m.points.some((p) => p.keys.some((k) => keys.includes(k)))).length,
   }))
 
   if (!mine) {
@@ -187,22 +187,16 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       </div>
     )
   }
-  // 只數勾選的機制
+  // 與我不同的時間點（同一時間多個機制不同算一處），只數涉及勾選機制的；每處為「時間 機制名稱」
   const differencesOf = (r: TcRanking) => {
     const m = mechanics.get(rowKey(r))
     if (m?.status !== 'done') return undefined
-    // 依名稱合併：名稱 → 不同的次數
-    const byName = new Map<string, number>()
-    for (const [key, n] of m.variants) {
-      if (!ignoredKeys.has(key)) byName.set(mechanicName(key), (byName.get(mechanicName(key)) ?? 0) + n)
-    }
-    return byName
+    return m.points.flatMap((p) => {
+      const names = [...new Set(p.keys.filter((k) => !ignoredKeys.has(k)).map(mechanicName))]
+      return names.length === 0 ? [] : [`${formatFightTime(p.t).replace(/\.\d$/, '')} ${names.join('、')}`]
+    })
   }
-  // 排序用：先比不同的機制數，再比次數
-  const variantsOf = (r: TcRanking) => {
-    const d = differencesOf(r)
-    return d && d.size * 1000 + [...d.values()].reduce((sum, n) => sum + n, 0)
-  }
+  const variantsOf = (r: TcRanking) => differencesOf(r)?.length
   const all = result.status === 'ready' ? result.rows : []
   const compared = all.every((r) => variantsOf(r) !== undefined || mechanics.get(rowKey(r))?.status === 'error')
   const same = all.filter((r) => variantsOf(r) === undefined || variantsOf(r) === 0)
@@ -301,7 +295,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
                   rankingOption(
                     r,
                     sameMechanics ? (mechanics.get(rowKey(r)) ?? { status: 'loading' }) : undefined,
-                    [...(differencesOf(r) ?? [])].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)),
+                    differencesOf(r) ?? [],
                   ),
                 )}
                 value={picked}
@@ -351,14 +345,14 @@ function rankingOption(r: TcRanking, mech: MechanicState | undefined, difference
         </span>
         <span className="option-meta finder-time">{formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}</span>
         {mech && (
-          <span className="finder-mech" title={differences.length > 0 ? `不同：${differences.join('、')}` : undefined}>
+          <span className="finder-mech" title={differences.length > 0 ? `不同的時間點（這筆紀錄的戰鬥時間）：\n${differences.join('\n')}` : undefined}>
             {mech.status === 'loading'
               ? '比對中…'
               : mech.status === 'error'
                 ? '—'
                 : differences.length === 0
                   ? '機制相同'
-                  : `${differences.length} 種不同`}
+                  : `${differences.length} 處不同`}
           </span>
         )}
       </span>

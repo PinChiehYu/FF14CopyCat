@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TimedCast } from './alignment'
-import { mainMechanicDifferences, mainMechanicGroups, variantMechanics } from './mainMechanics'
+import { mainMechanicDifferences, mainMechanicGroups, variantPoints } from './mainMechanics'
 
 const cast = (seconds: number, abilityId: number): TimedCast => ({ t: seconds * 1000, abilityId })
 // M8S（Howling Blade）：Stonefang／Windfang 的四個版本是同一機制；41906～41909 各自是單獨的機制
@@ -24,12 +24,22 @@ describe('main mechanics', () => {
     expect(diffs).toEqual([{ t: 40_000, mine: [41885], ref: [41889], kind: 'variant' }])
   })
 
-  it('counts the differing random mechanics by mechanic', () => {
+  it('lists the time points where random mechanics differ, with the mechanics involved', () => {
     const mine = [...common, cast(40, 41885)]
     const ref = [...common, cast(40, 41889)]
     const key = mainMechanicGroups(M8S)!.get(41885)!
-    expect([...variantMechanics(M8S, mine, ref, 70_000, 70_000)]).toEqual([[key, 1]])
-    expect(variantMechanics(M8S, mine, mine, 70_000, 70_000).size).toBe(0)
+    expect(variantPoints(M8S, mine, ref, 70_000, 70_000)).toEqual([{ t: 40_000, keys: [key] }])
+    expect(variantPoints(M8S, mine, mine, 70_000, 70_000)).toEqual([])
+  })
+
+  it('counts two mechanics that differ at the same time as one point', () => {
+    // 同一時間點兩組機制都不同（例如魔技與群狼劍同時）：算一處，涉及兩個機制
+    const groups = mainMechanicGroups(M8S)!
+    const mine = [...common, cast(40, 41885), cast(40.2, 41880)]
+    const ref = [...common, cast(40, 41889), cast(40.2, 42927)]
+    const points = variantPoints(M8S, mine, ref, 70_000, 70_000)
+    expect(points).toHaveLength(1)
+    expect(points[0].keys.sort()).toEqual([groups.get(41880), groups.get(41885)].sort())
   })
 
   it('compares main mechanics however often they are cast', () => {
@@ -56,7 +66,7 @@ describe('main mechanics', () => {
     const mine = [...common, cast(40, 41885), cast(42, 41885), cast(44, 41885), cast(50, 41910)]
     const ref = [...common, cast(40, 41889), cast(42, 41889), cast(44, 41889)]
     const key = mainMechanicGroups(M8S)!.get(41885)!
-    expect([...variantMechanics(M8S, mine, ref, 70_000, 70_000)]).toEqual([[key, 1]])
+    expect(variantPoints(M8S, mine, ref, 70_000, 70_000)).toEqual([{ t: 40_000, keys: [key] }])
   })
 
   it('falls back to all infrequent abilities for bosses without data', () => {
@@ -67,6 +77,6 @@ describe('main mechanics', () => {
       { t: 40_000, mine: [10], ref: [11], kind: 'variant' },
     ])
     // 沒有資料時以各處最小的技能 ID 為鍵
-    expect([...variantMechanics(1, mine, ref, 60_000, 60_000)]).toEqual([[10, 1]])
+    expect(variantPoints(1, mine, ref, 60_000, 60_000)).toEqual([{ t: 40_000, keys: [10] }])
   })
 })

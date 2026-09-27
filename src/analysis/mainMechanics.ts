@@ -57,18 +57,20 @@ export function mainMechanicDifferences(
 // 與 mechanicDifferences 的預設相同：兩邊相差這麼近以內視為同一時間點
 const SAME_TIME_MS = 1500
 /**
- * 兩場同一 Boss 的戰鬥有哪些主要機制的隨機變化不同（同一時間施放不同技能），回傳各機制不同的次數。
+ * 兩場同一 Boss 的戰鬥中，主要機制的隨機變化不同（同一時間施放不同技能）的時間點，
+ * 每個時間點附上涉及的機制（主要機制的鍵）。以時間點計數：同一時間多個機制不同算一處。
  * 只看「不同變化」：「只有一邊」多半是輸出不同造成的轉場差異，不算隨機機制。
- * 沒有資料的 Boss，每個不同處以其中最小的技能 ID 為鍵。
+ * 沒有資料的 Boss，每個時間點以其中最小的技能 ID 為鍵。
  */
-export function variantMechanics(
+export function variantPoints(
   encounterID: number,
   mine: TimedCast[],
   other: TimedCast[],
   mineDuration: number,
   otherDuration: number,
-): Map<number, number> {
-  const alignment = buildAlignment(mine, other, { knownGroups: mainMechanicGroups(encounterID) ?? undefined })
+): { t: number; keys: number[] }[] {
+  const groups = mainMechanicGroups(encounterID)
+  const alignment = buildAlignment(mine, other, { knownGroups: groups ?? undefined })
   const differences = mainMechanicDifferences(
     encounterID,
     mine,
@@ -77,14 +79,11 @@ export function variantMechanics(
     alignment.mineToRef(mineDuration),
     otherDuration,
   )
-  const groups = mainMechanicGroups(encounterID)
-  const result = new Map<number, number>()
-  // 同一招連續結算的多個時間點算一次（同機制表的合併）
-  for (const d of mergeRepeats(differences, String)) {
-    if (d.kind !== 'variant') continue
-    const ids = [...d.mine, ...d.ref]
-    const keys = groups ? new Set(ids.map((id) => groups.get(id) ?? id)) : new Set([Math.min(...ids)])
-    for (const key of keys) result.set(key, (result.get(key) ?? 0) + 1)
-  }
-  return result
+  // 同一招連續結算的多個時間點算一處（同機制表的合併）
+  return mergeRepeats(differences, String)
+    .filter((d) => d.kind === 'variant')
+    .map((d) => {
+      const ids = [...d.mine, ...d.ref]
+      return { t: d.t, keys: groups ? [...new Set(ids.map((id) => groups.get(id) ?? id))] : [Math.min(...ids)] }
+    })
 }

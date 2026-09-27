@@ -115,7 +115,7 @@
 - 站位差異（`positions.ts` 的 `attachVariants()`）：區段期間或開始前 10 秒內的 `variant` 附在 `Divergence.variant`，卡片標「機制不同」、不列入站位建議。
 - 建議（`advice.ts` 的 `mechanicNote()`）：停手時段前 10 秒內到結束之間的 `variant` 附註在停手建議中。
 - 「只有一邊」的主要機制，若另一邊同一時間（1.5 秒內）有非主要機制的施放就不列：那是同一招的另一個版本、只是 cactbot 沒列（實例：M5S 三連指向最後一下 #42808 在 cactbot 自成一條，二連指向同一時間的 #42799 不在 cactbot，原本列成「只有我」）。真正被跳過的機制（M8S 第二次空間斬）另一邊同一時間沒有施放，仍列出。
-- 前輩日誌搜尋的「機制相同」（`mainMechanics.ts` 的 `variantMechanics()`）：`buildAlignment()`（同樣傳入已知分組）後以 `mainMechanicDifferences()` 比較，`mergeRepeats()` 合併連續結算後，把每個 `variant` 列的技能 ID 對應到所屬的主要機制（該組最小的 ID），回傳「機制 → 不同次數」。畫面依繁中名稱合併同名機制（M8S 的圓形／扇形群狼劍是 cactbot 的兩組、繁中名稱都是「群狼劍」），只數勾選的機制；取消勾選的機制鍵存在 `localStorage` 的 `finder-ignored-mechanics:<encounterID>`。機制名稱在勾選「機制相同」時就一次查完該 Boss 所有主要 ID（`fetchAbilityNames()`，約 60～100 個 ID 一個請求）：實測比對開始後才查名稱時曾查不到（推測碰到 Worker 每分鐘次數限制），失敗會 5 秒後重試。尚未套用 `withSharedCasters()`（`loadBossCasts()` 沒有角色資料）。
+- 前輩日誌搜尋的「機制相同」（`mainMechanics.ts` 的 `variantPoints()`）：`buildAlignment()`（同樣傳入已知分組）後以 `mainMechanicDifferences()` 比較，`mergeRepeats()` 合併連續結算後，回傳每個 `variant` 時間點與涉及的主要機制（技能 ID 對應到該組最小的 ID）。差異數是時間點數（使用者要求：看同一時間點有幾處不同，而不是幾組機制不同），只算涉及勾選機制的時間點。cactbot 沒有「衍生技能」的資料（例：M8S 群狼劍在時間軸是獨立條目，`r8s.ts` 觸發器只處理掃擊／旋擊群狼劍 A911～A914，兩者都有讀條），無法確定是否為前一招的後續，因此各自算一處（使用者要求：不能確定就保留，不當特例處理）。畫面依繁中名稱合併同名機制（M8S 的圓形／扇形群狼劍是 cactbot 的兩組、繁中名稱都是「群狼劍」），只數勾選的機制；取消勾選的機制鍵存在 `localStorage` 的 `finder-ignored-mechanics:<encounterID>`。機制名稱在勾選「機制相同」時就一次查完該 Boss 所有主要 ID（`fetchAbilityNames()`，約 60～100 個 ID 一個請求）：實測比對開始後才查名稱時曾查不到（推測碰到 Worker 每分鐘次數限制），失敗會 5 秒後重試。尚未套用 `withSharedCasters()`（`loadBossCasts()` 沒有角色資料）。
 
 #### 主要機制資料（`scripts/gen-mechanics.mjs` → `src/analysis/mechanicData.generated.ts`）
 
@@ -193,7 +193,7 @@
   - 補完 60 天約需 5 天。
 - 補資料進度（2026-09-26 13:07 查詢）：每小時都有執行，每次 126～150 份報告；共掃 495 份、其中繁中服 20 份（約 4%）、200 筆紀錄。進度從 7/28 推進到 7/31（每天約 160 份報告），補到現在還要約 2.5 天，而近期擊殺要等補完才會掃到，因此改為每次先掃最近 2 天。
 - 測試：`crawler.node.test.ts` 以 Node 24 內建的 `node:sqlite` 套用同一份 `schema.sql` 模擬 D1；這個檔案使用 Node 內建模組，Worker 的 tsconfig 排除它、改由 `tsconfig.node.json` 檢查。
-- 前端：`compare/ReferenceFinder.tsx`；`loadBossCasts()`（`load.ts`）只需戰鬥的 ID 與開始／結束，直接用資料庫存的時間抓 Boss 施放；`analysis/mainMechanics.ts` 的 `variantMechanics()` 以時間軸對齊後各主要機制的「不同變化」判斷機制是否相同。比對同時最多 3 個請求（Worker 每 IP 每分鐘 60 次）。
+- 前端：`compare/ReferenceFinder.tsx`；`loadBossCasts()`（`load.ts`）只需戰鬥的 ID 與開始／結束，直接用資料庫存的時間抓 Boss 施放；`analysis/mainMechanics.ts` 的 `variantPoints()` 以時間軸對齊後主要機制「不同變化」的時間點判斷機制是否相同。比對同時最多 3 個請求（Worker 每 IP 每分鐘 60 次）。
 
 ## MT／ST 判斷（`AUTO_ATTACKS_TAKEN_QUERY`）
 
