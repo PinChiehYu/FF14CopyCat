@@ -1,5 +1,6 @@
 import type { TimedCast } from '../analysis/alignment'
 import { aurasAt, hpAt, type Aura } from '../analysis/buffs'
+import { controlNames } from '../analysis/control'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
@@ -22,6 +23,20 @@ function CastBarView({ bar, t, name }: { bar: CastBar; t: number; name: string }
       <span className="cast-bar-text">
         {name}
         <span className="cast-bar-time">{bar.interrupted ? '取消' : `${((bar.end - t) / 1000).toFixed(1)}s`}</span>
+      </span>
+    </div>
+  )
+}
+
+/** Boss 控場：取代讀條的位置（控場期間無法詠唱），顯示控場效果與剩餘秒數，進度隨時間減少。 */
+function ControlBarView({ start, end, t, name }: { start: number; end: number; t: number; name: string }) {
+  const remaining = Math.max(0, 1 - (t - start) / Math.max(1, end - start))
+  return (
+    <div className="cast-bar control" title={`Boss 控場：${name}，期間無法施放`}>
+      <span className="cast-bar-fill" style={{ width: `${remaining * 100}%` }} />
+      <span className="cast-bar-text">
+        控場：{name}
+        <span className="cast-bar-time">{((end - t) / 1000).toFixed(1)}s</span>
       </span>
     </div>
   )
@@ -75,9 +90,14 @@ function SideStatus({
   abilities,
   abilityName,
   time,
+  control,
+  namedStatus,
 }: {
   label: string
   side: SideData
+  /** Boss 控場的效果 ID（見 control.ts） */
+  control: Set<number>
+  namedStatus: (id: number) => boolean
   /** 這一側的戰鬥時間 */
   t: number
   /** 標題旁顯示的時間（與播放列不同時才傳） */
@@ -96,6 +116,16 @@ function SideStatus({
     <AuraIcon key={a.statusId} aura={a} t={t} ability={abilities.get(a.statusId)} name={abilityName(a.statusId)} />
   )
   const dead = deathAt(side.deaths, t)
+  // 這一側當下的 Boss 控場（兩邊各自的時間，可能不同）
+  const controls = side.bossDebuffs.filter((d) => control.has(d.statusId) && d.start <= t && t < d.end)
+  const controlBar =
+    controls.length === 0
+      ? null
+      : {
+          start: Math.min(...controls.map((d) => d.start)),
+          end: Math.max(...controls.map((d) => d.end)),
+          name: controlNames(controls.map((d) => d.statusId).filter(namedStatus), abilityName),
+        }
   return (
     <div className={`side-status${dead ? ' dead' : ''}`}>
       <div className="side-status-head">
@@ -117,7 +147,13 @@ function SideStatus({
         {hp && hp.absorb > 0 && <span className="hp-shield" style={{ width: `${Math.min(100, hp.absorb)}%` }} />}
         <span className="hp-text">{pct === null ? '—' : `${pct}%`}</span>
       </div>
-      {casting ? <CastBarView bar={casting} t={t} name={abilityName(casting.abilityId)} /> : <div className="cast-bar idle" />}
+      {controlBar ? (
+        <ControlBarView start={controlBar.start} end={controlBar.end} t={t} name={controlBar.name} />
+      ) : casting ? (
+        <CastBarView bar={casting} t={t} name={abilityName(casting.abilityId)} />
+      ) : (
+        <div className="cast-bar idle" />
+      )}
       <RecentActions side={side} t={t} abilities={abilities} abilityName={abilityName} />
       <div className="aura-row">{buffs.length > 0 ? buffs.map(icon) : <span className="hint-inline">沒有自身 Buff</span>}</div>
     </div>
@@ -133,6 +169,8 @@ export function StatusPanel({
   bossCasts,
   abilities,
   abilityName,
+  control,
+  namedStatus,
 }: {
   mine: SideData
   reference: SideData
@@ -143,6 +181,8 @@ export function StatusPanel({
   bossCasts: TimedCast[]
   abilities: Map<number, Ability>
   abilityName: (id: number) => string
+  control: Set<number>
+  namedStatus: (id: number) => boolean
 }) {
   const recent = bossCasts.filter((c) => c.t <= cursor && c.t > cursor - BOSS_WINDOW_MS).at(-1)
   const upcoming = bossCasts.find((c) => c.t > cursor && c.t <= cursor + BOSS_WINDOW_MS)
@@ -183,8 +223,18 @@ export function StatusPanel({
         time={Math.abs(mineT - cursor) >= 100 ? mineT : undefined}
         abilities={abilities}
         abilityName={abilityName}
+        control={control}
+        namedStatus={namedStatus}
       />
-      <SideStatus label="參考" side={reference} t={cursor} abilities={abilities} abilityName={abilityName} />
+      <SideStatus
+        label="參考"
+        side={reference}
+        t={cursor}
+        abilities={abilities}
+        abilityName={abilityName}
+        control={control}
+        namedStatus={namedStatus}
+      />
     </div>
   )
 }

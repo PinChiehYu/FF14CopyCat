@@ -333,6 +333,21 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     [alignment, compareEnd],
   )
 
+  // Boss 強制控場：兩份日誌中每次期間都沒有開始 GCD 的 Boss debuff（兩邊各自的施加時間可以不同，也可以只有一邊有）
+  const control = useMemo(() => {
+    if (!job) return new Set<number>()
+    const gcds = (side: SideData) => side.playerCasts.filter((c) => job.isGcd(c.abilityId)).map((c) => c.t)
+    return controlStatuses([
+      { debuffs: mineInRange.bossDebuffs, gcds: gcds(mineInRange) },
+      { debuffs: refInRange.bossDebuffs, gcds: gcds(refInRange) },
+    ])
+  }, [mineInRange, refInRange, job])
+  // 同時施加的無名稱效果（FFLogs 的 Unknown_xxxx）不列出名稱
+  const namedStatus = useCallback(
+    (id: number) => !isUnnamedAbility(abilities.get(id)?.englishName ?? abilities.get(id)?.name),
+    [abilities],
+  )
+
   const { gcd, lost } = useMemo(() => {
     if (!job) return { gcd: null, lost: [] }
     const gcds = (side: SideData) => side.playerCasts.filter((c) => job.isGcd(c.abilityId)).map((c) => c.t)
@@ -341,18 +356,12 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     const stats = { mine: gcdStats(mineGcds), ref: gcdStats(refGcds) }
     const windows =
       stats.mine.gcdMs === null ? [] : lostGcdWindows(mineGcds, refGcds, alignment.mineToRef, stats.mine.gcdMs)
-    // Boss 強制控場（兩份日誌中每次期間都沒有開始 GCD 的 Boss debuff）造成的停手另外標示，不算操作問題
-    const statuses = controlStatuses([
-      { debuffs: mineInRange.bossDebuffs, gcds: mineGcds },
-      { debuffs: refInRange.bossDebuffs, gcds: refGcds },
-    ])
-    // 同時施加的無名稱效果（FFLogs 的 Unknown_xxxx）不列出名稱
-    const named = (id: number) => !isUnnamedAbility(abilities.get(id)?.englishName ?? abilities.get(id)?.name)
-    const lost = attachControl(windows, controlWindows(mineInRange.bossDebuffs, statuses)).map((w) =>
-      w.control ? { ...w, control: w.control.filter(named) } : w,
+    // 控場造成的停手另外標示，不算操作問題
+    const lost = attachControl(windows, controlWindows(mineInRange.bossDebuffs, control)).map((w) =>
+      w.control ? { ...w, control: w.control.filter(namedStatus) } : w,
     )
     return { gcd: stats, lost }
-  }, [mineInRange, refInRange, alignment, job, abilities])
+  }, [mineInRange, refInRange, alignment, job, control, namedStatus])
   // 技能使用次數含普通攻擊（時間軸不畫）；次數多寡可反映是否離 Boss 太遠或停手
   const usage = useMemo(
     () =>
@@ -597,6 +606,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
             cursor={cursor}
             refToMine={alignment.refToMine}
             bossCasts={reference.bossCasts}
+            control={control}
+            namedStatus={namedStatus}
             abilities={abilities}
             abilityName={abilityName}
           />

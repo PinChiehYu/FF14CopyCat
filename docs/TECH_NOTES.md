@@ -508,7 +508,7 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
 
 ### 2026-09-27 Boss 強制控場
-- 變更：`buffs.ts` 新增 `debuffsOnPlayer()`（敵人施加在玩家身上的 applydebuff／removedebuff；原本的 `enemyDebuffWindows()` 是玩家施加在敵人身上的），`SideData.bossDebuffs`（`clipSide()` 一併裁切，名稱也一併查繁中）；新增 `analysis/control.ts`：`controlStatuses()`（兩場每次期間 1～10 秒、期間內〔施加後 0.3 秒起〕沒有開始 GCD 的效果）、`controlWindows()`（重疊合併）、`attachControl()`（與停手區間重疊 ≥ 1 秒時設 `LostWindow.control`）；`Comparison.tsx` 去掉無名稱的效果（例如與完美收尾同時的 #1004515 Unknown_11A3）；`advice.ts` 的停手建議排除控場段、合併成一則參考；`Metrics.tsx` 顯示「控場」標籤。
+- 變更：`buffs.ts` 新增 `debuffsOnPlayer()`（敵人施加在玩家身上的 applydebuff／removedebuff；原本的 `enemyDebuffWindows()` 是玩家施加在敵人身上的），`SideData.bossDebuffs`（`clipSide()` 一併裁切，名稱也一併查繁中）；新增 `analysis/control.ts`：`controlStatuses()`（兩場每次期間 1～10 秒、期間內〔施加後 0.3 秒起〕沒有開始 GCD 的效果）、`controlWindows()`（重疊合併）、`attachControl()`（與停手區間重疊 ≥ 1 秒時設 `LostWindow.control`）；`Comparison.tsx` 去掉無名稱的效果（例如與完美收尾同時的 #1004515 Unknown_11A3）；`advice.ts` 的停手建議排除控場段、合併成一則參考；`Metrics.tsx` 顯示「控場」標籤；`StatusPanel.tsx` 以 `SideData.bossDebuffs`（完整資料）在讀條欄顯示控場條（`Comparison.tsx` 的 `control` 與 `namedStatus` 傳入）。控場效果的判斷不要求兩邊同時被施加，也不要求兩邊都有（每個效果收集兩邊所有期間，逐一檢查期間內有無 GCD）。
 - 驗證：M5S `BF76r8yKh4wGaYkm` #1 對 `Kwx3LyFJjz26pYRm` #16 的 1:39.5–1:46.4、對 `YAzxqkpVfBNmcMwj` #1 的 5:43.4–5:49.4 標為控場（完美收尾）；對 `WBNDQCdcrP6A1qkv`、`kCcYLfbxnTJ91Md6` 兩邊控場時間相同，本來就不算少打。M8S 騎士（13 段停手）、武士（5 段）與 M7S 武士（9 段）沒有任何一段被標為控場。
 
 ### 2026-09-27 強制控場的 debuff（調查）

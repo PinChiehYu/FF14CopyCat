@@ -1702,6 +1702,24 @@ h3 {
   background: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
+/* Boss 控場：與讀條同一格，以斜紋區分（期間無法施放） */
+.cast-bar.control {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.cast-bar.control .cast-bar-fill {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--accent) 45%, transparent) 0 6px,
+    color-mix(in srgb, var(--accent) 20%, transparent) 6px 12px
+  );
+}
+
+.cast-bar.control .cast-bar-text {
+  font-weight: 600;
+}
+
 .cast-bar.interrupted .cast-bar-fill {
   background: color-mix(in srgb, var(--text-muted) 40%, transparent);
 }
