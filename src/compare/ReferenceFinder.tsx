@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TimedCast } from '../analysis/alignment'
-import { variantCount } from '../analysis/mechanicMatch'
+import { mainMechanicGroups, mechanicIds, variantMechanics } from '../analysis/mainMechanics'
 import { formatFightTime } from '../analysis/timeline'
-import { fetchTcRankings, type TcRanking } from '../fflogs/client'
+import { fetchAbilityNames, fetchTcRankings, type TcRanking } from '../fflogs/client'
 import { reportUrl } from '../fflogs/url'
 import { jobName } from '../jobs/names'
 import { Dropdown, type DropdownOption } from '../ui/Dropdown'
@@ -13,7 +13,8 @@ const MECHANIC_CONCURRENCY = 3
 // 最多列出（並比對機制）的筆數：同一人常有多場，列多一點才找得到機制相同的
 const MAX_LISTED = 40
 
-type MechanicState = { status: 'loading' } | { status: 'done'; variants: number } | { status: 'error' }
+// done：各機制（主要機制的鍵）隨機變化不同的次數
+type MechanicState = { status: 'loading' } | { status: 'done'; variants: Map<number, number> } | { status: 'error' }
 
 /**
  * 從繁中服排名找參考日誌：依 PR 範圍列出同 Boss、同職業的紀錄（由高到低），
@@ -101,7 +102,10 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
         let state: MechanicState
         try {
           const casts = await loadBossCasts(row.report, { id: row.fight, startTime: row.fightStart, endTime: row.fightEnd }, controller.signal)
-          state = { status: 'done', variants: variantCount(await mineCasts, casts, mineDuration, row.fightEnd - row.fightStart) }
+          state = {
+            status: 'done',
+            variants: variantMechanics(mine.fight.encounterID, await mineCasts, casts, mineDuration, row.fightEnd - row.fightStart),
+          }
         } catch {
           if (controller.signal.aborted) return
           state = { status: 'error' }
@@ -116,6 +120,63 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [sameMechanics, result, mine])
 
+  // 不列入比對的機制（使用者取消勾選的），依 Boss 記住
+  const encounter = mine?.fight.encounterID ?? 0
+  const [ignored, setIgnored] = useState<{ encounter: number; keys: Set<number> }>({ encounter: 0, keys: new Set() })
+  const ignoredKeys = ignored.encounter === encounter ? ignored.keys : loadIgnored(encounter)
+  const toggleMechanic = (toggled: number[], checked: boolean) => {
+    const keys = new Set(ignoredKeys)
+    for (const key of toggled) {
+      if (checked) keys.delete(key)
+      else keys.add(key)
+    }
+    setIgnored({ encounter, keys })
+    saveIgnored(encounter, keys)
+  }
+
+  // 比對結果中出現過不同的機制
+  const differing = useMemo(() => {
+    const keys = new Set<number>()
+    for (const m of mechanics.values()) if (m.status === 'done') for (const key of m.variants.keys()) keys.add(key)
+    return [...keys].sort((a, b) => a - b)
+  }, [mechanics])
+
+  // 機制名稱（繁中服）
+  const [names, setNames] = useState<Map<number, string>>(new Map())
+  // 有主要機制資料的 Boss 在勾選時就一次查完（比對開始後請求多，可能碰到 Worker 的次數限制）
+  const mainIds = mainMechanicGroups(encounter)
+  const wantedIds = mainIds ? [...mainIds.keys()] : differing.flatMap((key) => mechanicIds(encounter, key))
+  const missingKey = sameMechanics
+    ? [...new Set(wantedIds.filter((id) => !names.has(id)))].sort((a, b) => a - b).join(',')
+    : ''
+  const [nameRetry, setNameRetry] = useState(0)
+  useEffect(() => {
+    if (!missingKey) return
+    const controller = new AbortController()
+    const ids = missingKey.split(',').map(Number)
+    fetchAbilityNames(ids, controller.signal)
+      // 查不到名稱的記為空字串，不再重查
+      .then((found) => setNames((n) => new Map([...n, ...ids.map((id) => [id, found.get(id)?.name ?? ''] as const)])))
+      .catch(() => {
+        // 碰到次數限制等：稍後重試
+        if (!controller.signal.aborted) setTimeout(() => setNameRetry((r) => r + 1), 5000)
+      })
+    return () => controller.abort()
+  }, [missingKey, nameRetry])
+  const mechanicName = (key: number) => {
+    const list = [...new Set(mechanicIds(encounter, key).map((id) => names.get(id)).filter((n) => !!n))]
+    if (list.length === 0) return `#${key}`
+    return list.length > 3 ? `${list.slice(0, 3).join('／')}…` : list.join('／')
+  }
+  // 勾選清單：繁中名稱相同的機制（例如圓形與扇形的群狼劍）合併成一項
+  const byLabel = new Map<string, number[]>()
+  for (const key of differing) byLabel.set(mechanicName(key), [...(byLabel.get(mechanicName(key)) ?? []), key])
+  const checklist = [...byLabel].map(([label, keys]) => ({
+    label,
+    keys,
+    records: [...mechanics.values()].filter((m) => m.status === 'done' && keys.some((k) => m.variants.has(k))).length,
+  }))
+
   if (!mine) {
     return (
       <div className="finder">
@@ -126,9 +187,21 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       </div>
     )
   }
-  const variantsOf = (r: TcRanking) => {
+  // 只數勾選的機制
+  const differencesOf = (r: TcRanking) => {
     const m = mechanics.get(rowKey(r))
-    return m?.status === 'done' ? m.variants : undefined
+    if (m?.status !== 'done') return undefined
+    // 依名稱合併：名稱 → 不同的次數
+    const byName = new Map<string, number>()
+    for (const [key, n] of m.variants) {
+      if (!ignoredKeys.has(key)) byName.set(mechanicName(key), (byName.get(mechanicName(key)) ?? 0) + n)
+    }
+    return byName
+  }
+  // 排序用：先比不同的機制數，再比次數
+  const variantsOf = (r: TcRanking) => {
+    const d = differencesOf(r)
+    return d && d.size * 1000 + [...d.values()].reduce((sum, n) => sum + n, 0)
   }
   const all = result.status === 'ready' ? result.rows : []
   const compared = all.every((r) => variantsOf(r) !== undefined || mechanics.get(rowKey(r))?.status === 'error')
@@ -179,6 +252,25 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
               搜尋
             </button>
           </div>
+          {sameMechanics && !busy && checklist.length > 0 && (
+            <details className="finder-mechanics">
+              <summary title="只比對勾選的機制；取消勾選不在意的機制（依 Boss 記住）">
+                比對的機制（{checklist.filter((c) => !c.keys.every((k) => ignoredKeys.has(k))).length}／{checklist.length}）
+              </summary>
+              <div className="finder-mechanic-list">
+                {checklist.map((c) => (
+                  <label key={c.label} className="finder-check" title={`${c.records} 筆紀錄與我不同`}>
+                    <input
+                      type="checkbox"
+                      checked={!c.keys.every((k) => ignoredKeys.has(k))}
+                      onChange={(e) => toggleMechanic(c.keys, e.target.checked)}
+                    />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
           <div className={busy || result.status === 'ready' ? 'finder-result filled' : 'finder-result'} aria-busy={busy}>
           {busy && (
             <p className="finder-busy" role="status">
@@ -205,7 +297,13 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
                   </span>
                 }
                 placeholder={`選擇要參考的紀錄（${rows.length} 筆）`}
-                options={rows.map((r) => rankingOption(r, sameMechanics ? (mechanics.get(rowKey(r)) ?? { status: 'loading' }) : undefined))}
+                options={rows.map((r) =>
+                  rankingOption(
+                    r,
+                    sameMechanics ? (mechanics.get(rowKey(r)) ?? { status: 'loading' }) : undefined,
+                    [...(differencesOf(r) ?? [])].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)),
+                  ),
+                )}
                 value={picked}
                 onChange={(key) => {
                   const r = rows.find((row) => rowKey(row) === key)
@@ -234,7 +332,7 @@ function SearchIcon() {
 }
 
 /** 排名紀錄的選項：名次、PR、玩家 @ 伺服器、rDPS、戰鬥長度（日期放在滑鼠提示） */
-function rankingOption(r: TcRanking, mech: MechanicState | undefined): DropdownOption<string> {
+function rankingOption(r: TcRanking, mech: MechanicState | undefined, differences: string[]): DropdownOption<string> {
   const date = new Date(r.reportStart).toLocaleDateString('zh-TW')
   return {
     value: rowKey(r),
@@ -253,12 +351,37 @@ function rankingOption(r: TcRanking, mech: MechanicState | undefined): DropdownO
         </span>
         <span className="option-meta finder-time">{formatFightTime(r.fightEnd - r.fightStart).replace(/\.\d$/, '')}</span>
         {mech && (
-          <span className="finder-mech">
-            {mech.status === 'loading' ? '比對中…' : mech.status === 'error' ? '—' : mech.variants === 0 ? '機制相同' : `${mech.variants} 處不同`}
+          <span className="finder-mech" title={differences.length > 0 ? `不同：${differences.join('、')}` : undefined}>
+            {mech.status === 'loading'
+              ? '比對中…'
+              : mech.status === 'error'
+                ? '—'
+                : differences.length === 0
+                  ? '機制相同'
+                  : `${differences.length} 種不同`}
           </span>
         )}
       </span>
     ),
+  }
+}
+
+const IGNORED_KEY = 'finder-ignored-mechanics:'
+
+function loadIgnored(encounter: number): Set<number> {
+  try {
+    const raw = localStorage.getItem(IGNORED_KEY + encounter)
+    return new Set(raw ? (JSON.parse(raw) as number[]) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveIgnored(encounter: number, keys: Set<number>) {
+  try {
+    localStorage.setItem(IGNORED_KEY + encounter, JSON.stringify([...keys]))
+  } catch {
+    // 無法儲存（私密瀏覽等）時只在這次有效
   }
 }
 

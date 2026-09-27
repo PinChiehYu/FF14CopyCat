@@ -1,6 +1,8 @@
 import { mechanicLabel, mergeRepeats, sameNameVariants, type MechanicDifference } from '../analysis/mechanics'
 import { formatFightTime } from '../analysis/timeline'
 
+const MAIN_TIP = '依 cactbot 時間軸列出的機制（玩家需要處理的攻擊），不含輔助判定與連續攻擊的每一下'
+
 const KIND_LABELS: Record<MechanicDifference['kind'], string> = {
   variant: '不同變化',
   'only-mine': '只有我',
@@ -9,15 +11,19 @@ const KIND_LABELS: Record<MechanicDifference['kind'], string> = {
 
 export function Mechanics({
   differences,
+  main,
   abilityName,
   onJump,
 }: {
   differences: MechanicDifference[]
+  /** 只比較主要機制（有 cactbot 資料的 Boss） */
+  main: boolean
   abilityName: (id: number) => string
   onJump: (t: number) => void
 }) {
+  const scope = main ? '主要機制' : '機制（低頻技能）'
   if (differences.length === 0) {
-    return <p className="hint">兩場戰鬥的 Boss 機制（低頻技能）在對齊後相同，沒有隨機變化的差異。</p>
+    return <p className="hint">兩場戰鬥的 Boss {scope}在對齊後相同，沒有隨機變化的差異。</p>
   }
   // 名稱只列一次、不附技能 ID；ID 放在滑鼠提示
   const label = (ids: number[]) => (ids.length === 0 ? '—' : mechanicLabel(ids, [], abilityName, { withIds: false }))
@@ -47,7 +53,8 @@ export function Mechanics({
   return (
     <>
       <p>
-        對齊後共 {rows.length} 處 Boss 機制不同（其中 {rows.filter((d) => d.kind === 'variant').length}{' '}
+        對齊後共 {rows.length} 處 Boss{' '}
+        {main ? <span className="has-tip" title={MAIN_TIP}>主要機制</span> : '機制'}不同（其中 {rows.filter((d) => d.kind === 'variant').length}{' '}
         處是同一時間施放不同技能，通常是隨機變化）。這些時間點的站位或走位差異可能是機制造成，不一定是錯誤。
         「只有一邊」的機制，常是輸出較高的一方提早轉場而跳過。
       </p>

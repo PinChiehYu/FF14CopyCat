@@ -101,7 +101,7 @@
 
 ### Boss 機制差異（`src/analysis/mechanics.ts`）
 
-輸入是對齊後的兩邊 Boss 施放（已經過 `withSharedCasters()` 與 `withoutUnnamedBossCasts()`，完整戰鬥、不裁切）。機制差異的比較仍排除任一邊施放超過 8 次的技能（顯示用，頻繁的技能不算機制；對齊則不限制）。流程（`mechanicDifferences()`）：
+輸入是對齊後的兩邊 Boss 施放（已經過 `withSharedCasters()` 與 `withoutUnnamedBossCasts()`，完整戰鬥、不裁切）。機制差異表用 `mainMechanics.ts` 的 `mainMechanicDifferences()`：有 cactbot 資料的 Boss（`mechanicData.generated.ts`，見下方「主要機制資料」）先只留主要機制的技能 ID，且不以施放次數排除（`maxOccurrences: Infinity`）；沒有資料的 Boss 與站位、建議仍用下列的全部低頻技能。機制差異的比較仍排除任一邊施放超過 8 次的技能（顯示用，頻繁的技能不算機制；對齊則不限制）。流程（`mechanicDifferences()`）：
 
 1. 去重（同一技能 1 秒內算一次）、排除任一邊施放超過 8 次的技能。
 2. 我的施放以 `mineToRef()` 換算成參考時間。
@@ -112,7 +112,14 @@
 其他使用機制差異的地方：
 - 站位差異（`positions.ts` 的 `attachVariants()`）：區段期間或開始前 10 秒內的 `variant` 附在 `Divergence.variant`，卡片標「機制不同」、不列入站位建議。
 - 建議（`advice.ts` 的 `mechanicNote()`）：停手時段前 10 秒內到結束之間的 `variant` 附註在停手建議中。
-- 前輩日誌搜尋的「機制相同」（`mechanicMatch.ts` 的 `variantCount()`）：以同樣的流程只數 `variant` 的列數；尚未套用 `withSharedCasters()`（`loadBossCasts()` 沒有角色資料）。
+- 前輩日誌搜尋的「機制相同」（`mainMechanics.ts` 的 `variantMechanics()`）：`buildAlignment()` 後以 `mainMechanicDifferences()` 比較，`mergeRepeats()` 合併連續結算後，把每個 `variant` 列的技能 ID 對應到所屬的主要機制（該組最小的 ID），回傳「機制 → 不同次數」。畫面依繁中名稱合併同名機制（M8S 的圓形／扇形群狼劍是 cactbot 的兩組、繁中名稱都是「群狼劍」），只數勾選的機制；取消勾選的機制鍵存在 `localStorage` 的 `finder-ignored-mechanics:<encounterID>`。機制名稱在勾選「機制相同」時就一次查完該 Boss 所有主要 ID（`fetchAbilityNames()`，約 60～100 個 ID 一個請求）：實測比對開始後才查名稱時曾查不到（推測碰到 Worker 每分鐘次數限制），失敗會 5 秒後重試。尚未套用 `withSharedCasters()`（`loadBossCasts()` 沒有角色資料）。
+
+#### 主要機制資料（`scripts/gen-mechanics.mjs` → `src/analysis/mechanicData.generated.ts`）
+
+- 從 cactbot 的 `ui/raidboss/data/07-dt/raid/r5s.txt`～`r8s.txt` 抓時間軸，FFLogs encounterID 對應：97＝M5S Dancing Green、98＝M6S Sugar Riot、99＝M7S Brute Abombinator、100＝M8S Howling Blade（依 D1 的 zone 68 與實際報告確認）。
+- 解析 `Ability { id: … }` 條目（含註解掉的 `#Ability`，它們是不同步但實際存在的攻擊），名稱以 `--` 開頭（`--sync--`、`--middle--` 等）的輔助條目不收。同一行的 ID、以及出現在多行的同一 ID 以 union-find 合併成一組機制。產生結果：M5S 31 組 64 個 ID、M6S 43／55、M7S 48／61、M8S 83／94。M5S 的 2／3／4 連指向因各階段的條目共用 ID 而合成一大組（28 個 ID），畫面上名稱最多列 3 個。
+- 換季時在腳本的 `ENCOUNTERS` 加上新 Boss 後重新執行（不要手改產生的檔案）。
+- 實測 M8S 武士（`FXLkqaK32PhQH8Ac` #1 vs `pwTF16cgnB9G7fWM` #29）：機制差異表 9 列（8 列不同變化：風之魔技／土之魔技、掃擊／旋擊群狼劍、群狼劍與摧枯拉朽的不同版本；1 列只有我：空間斬），名稱皆為繁中服名稱。搜尋前輩日誌（武士 PR 90～100，7 筆）每筆 2～6 種主要機制不同，勾選清單 6 項。
 ### 建議（`src/analysis/advice.ts`）
 - 輸入各分析結果、`abilityName`（顯示名稱，可能是繁中）、`englishName`（依名稱判斷的規則使用，例如藥水 `/Gemdraught|Tincture|Draught|Potion/`）、`category`（技能分類）。
 - 減傷／移動建議使用 `AbilityUsage.unmatchedRef` 列出參考有用而我沒有對應使用的時間（最多 5 個）。
@@ -183,7 +190,7 @@
   - 補完 60 天約需 5 天。
 - 補資料進度（2026-09-26 13:07 查詢）：每小時都有執行，每次 126～150 份報告；共掃 495 份、其中繁中服 20 份（約 4%）、200 筆紀錄。進度從 7/28 推進到 7/31（每天約 160 份報告），補到現在還要約 2.5 天，而近期擊殺要等補完才會掃到，因此改為每次先掃最近 2 天。
 - 測試：`crawler.node.test.ts` 以 Node 24 內建的 `node:sqlite` 套用同一份 `schema.sql` 模擬 D1；這個檔案使用 Node 內建模組，Worker 的 tsconfig 排除它、改由 `tsconfig.node.json` 檢查。
-- 前端：`compare/ReferenceFinder.tsx`；`loadBossCasts()`（`load.ts`）只需戰鬥的 ID 與開始／結束，直接用資料庫存的時間抓 Boss 施放；`analysis/mechanicMatch.ts` 的 `variantCount()` 以時間軸對齊後的「不同變化」數量判斷機制是否相同。比對同時最多 3 個請求（Worker 每 IP 每分鐘 60 次）。
+- 前端：`compare/ReferenceFinder.tsx`；`loadBossCasts()`（`load.ts`）只需戰鬥的 ID 與開始／結束，直接用資料庫存的時間抓 Boss 施放；`analysis/mainMechanics.ts` 的 `variantMechanics()` 以時間軸對齊後各主要機制的「不同變化」判斷機制是否相同。比對同時最多 3 個請求（Worker 每 IP 每分鐘 60 次）。
 
 ## MT／ST 判斷（`AUTO_ATTACKS_TAKEN_QUERY`）
 
@@ -326,6 +333,7 @@
 - **分組不衝突**：本站從兩場比較推出的隨機機制組（M5S 14、M7S 12、M8S 10 組）中，能在 cactbot 找到的（M5S 9、M7S 6、M8S 7 組，含 3 組在 `--sync--` 條目）都落在**同一個** cactbot 條目；沒有任何一組被 cactbot 分到不同條目。找不到的都是上述的後續判定 ID。
 - **時間與「從 0 開始」一致**：cactbot 條目時間與我的日誌中同 ID 施放的差距，M5S 前 3 分鐘 0.3～1.3 秒（隨時間慢慢累積）、M7S 全部在 ±0.5 秒內（104／104）、M8S 推進前 0.2～2.2 秒；M8S 推進後（依血量）固定時間比對不到（42／122），cactbot 以 sync 條目重新同步，概念與本站的錨點相同。
 - **可用之處**：機制的可讀名稱（例如 "Wolves' Reign (cones)"，以主要 ID 的繁中名稱顯示）、新 Boss 第一場比較就知道主要 ID 的分組；後續判定的 ID 仍需依時間歸到最近的主要機制，或沿用本站的比較法。
+- **採用**：使用者判斷對玩家重要的是主要 ID，因此機制差異表與搜尋前輩日誌只比較 cactbot 的主要機制（見「Boss 機制差異」的「主要機制資料」）；對齊仍用全部施放。
 
 ## 外部資料來源調查：技能繁中名稱（2026-09-25）
 
@@ -458,6 +466,9 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-27 主要機制資料（cactbot）
+- 新增 `scripts/gen-mechanics.mjs` 產生 `src/analysis/mechanicData.generated.ts`（encounterID → 主要機制的技能 ID 組）；`src/analysis/mainMechanics.ts` 提供 `mainMechanicGroups()`、`mainMechanicDifferences()`、`variantMechanics()`，取代 `mechanicMatch.ts`。`Comparison.tsx` 另算 `mainMechanics` 給機制差異表（`mechanics` 仍給站位與建議）。授權聲明加入 cactbot（Apache-2.0）。
 
 ### 2026-09-27 冷卻技是否好了就用
 - 變更：

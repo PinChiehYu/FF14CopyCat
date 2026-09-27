@@ -97,7 +97,32 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-4. 資料來源與參考（Data sources and references）
+4. cactbot
+----------
+https://github.com/OverlayPlugin/cactbot
+
+本站的 Boss 主要機制資料（src/analysis/mechanicData.generated.ts，由
+scripts/gen-mechanics.mjs 產生）取自 cactbot 零式時間軸（ui/raidboss/data/07-dt/raid/）
+中各機制的技能 ID；本站只保留技能 ID 與其分組，未使用其程式碼。
+The main boss mechanic data on this site (ability IDs and their grouping) is
+derived from the savage raid timelines of cactbot.
+
+Copyright 2017-2024 https://github.com/OverlayPlugin/cactbot
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+
+5. 資料來源與參考（Data sources and references）
 ------------------------------------------------
 - FF Logs（https://www.fflogs.com/）：戰鬥日誌經由官方 API v2 取得；技能圖示來自
   assets.rpglogs.com。繁中服排名由本站依 FF Logs 公開報告自行計算。
@@ -110,6 +135,6 @@ FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved.
 FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.
 本站顯示的遊戲技能圖示、技能／效果／道具／Boss 名稱與戰鬥數據等遊戲內容，版權皆屬 SQUARE ENIX 所有。
 All game icons, names and data shown on this site are the property of SQUARE ENIX CO., LTD.
-本站為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs、XIVAPI、xivanalysis 無任何關係。
+本站為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs、XIVAPI、xivanalysis、cactbot 無任何關係。
 This is an unofficial fan-made tool and is not affiliated with SQUARE ENIX,
-FF Logs, XIVAPI or xivanalysis.
+FF Logs, XIVAPI, xivanalysis or cactbot.

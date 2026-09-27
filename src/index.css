@@ -837,6 +837,33 @@ button:disabled {
   cursor: pointer;
 }
 
+/* 比對的機制：預設收合，展開後可取消勾選不在意的機制 */
+.finder-mechanics {
+  margin-bottom: 8px;
+  font-size: 0.9em;
+}
+
+.finder-mechanics summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.finder-mechanic-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  max-height: 10rem;
+  overflow-y: auto;
+  padding: 6px 2px 2px;
+}
+
+.log-input .finder-mechanic-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+
 /* 處理中與完成後的結果區同高（下拉選單＋摘要列），面板不跳動 */
 .finder-result.filled {
   min-height: 4.4rem;
@@ -1400,8 +1427,14 @@ h3 {
   margin: 0 0 4px;
 }
 
-.positions-summary [title] {
+.positions-summary [title],
+.has-tip {
   cursor: help;
+}
+
+.has-tip {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
 
 .positions-summary .tag {

@@ -326,6 +326,7 @@ function SiteFooter() {
       '參考',
       [
         link('https://github.com/xivanalysis/xivanalysis', 'xivanalysis', '技能窗口與冷卻技規則移植自其職業模組（MIT License）'),
+        link('https://github.com/OverlayPlugin/cactbot', 'cactbot', 'Boss 主要機制取自其時間軸（Apache-2.0）'),
         link('https://ffreplay.vjoi.cn/', 'FFReplay', '播放列與當下狀態的呈現方式'),
       ],
     ],

@@ -9,6 +9,7 @@ import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
 import { buildAlignment, pushDifferences, pushTitle } from '../analysis/alignment'
 import { generateAdvice } from '../analysis/advice'
+import { mainMechanicDifferences, mainMechanicGroups } from '../analysis/mainMechanics'
 import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { attachControl, controlStatuses, controlWindows } from '../analysis/control'
@@ -386,6 +387,19 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       ),
     [mine, reference, alignment],
   )
+  // 機制差異表只列主要機制（cactbot 時間軸列出的技能）；站位與建議仍用全部低頻技能
+  const mainMechanics = useMemo(
+    () =>
+      mainMechanicDifferences(
+        mine.selection.fight.encounterID,
+        mine.bossCasts,
+        reference.bossCasts,
+        alignment.mineToRef,
+        alignment.mineToRef(mine.duration),
+        reference.duration,
+      ),
+    [mine, reference, alignment],
+  )
   const positions = useMemo(() => {
     const mineSamples = mineInRange.playerPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
     const track = compareTracks(mineSamples, refInRange.playerPositions, reference.bossPositions, compareEnd)
@@ -522,7 +536,12 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
           </>
         )}
         <h3>Boss 機制差異</h3>
-        <Mechanics differences={mechanics} abilityName={abilityName} onJump={jumpTo} />
+        <Mechanics
+          differences={mainMechanics}
+          main={mainMechanicGroups(mine.selection.fight.encounterID) !== null}
+          abilityName={abilityName}
+          onJump={jumpTo}
+        />
         <Metrics
           gcd={gcd}
           usage={usage}
@@ -537,7 +556,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         />
       </>
     ),
-    [advice, jumpTo, windows, abilities, abilityName, alignment, mechanics, gcd, usage, job, category, lost, cooldowns],
+    [advice, jumpTo, windows, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
   )
 
   return (
