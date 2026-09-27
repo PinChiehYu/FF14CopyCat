@@ -109,11 +109,20 @@ export async function loadBossCasts(
   return toCasts(events, fight)
 }
 
-function toCasts(events: FFLogsEvent[], fight: Pick<Fight, 'startTime'>): TimedCast[] {
+// FFLogs 對沒有遊戲 ID 的角色（例如 Boss 旁隱形的機制施放者）給的臨時編號：2,000,000＋角色編號，
+// 每份日誌不同（熱舞綠光：2000021 與 2000013），不能拿來跨日誌比對
+const SYNTHETIC_GAME_ID = 2_000_000
+
+/** @param actors 有傳入時附上施放者的遊戲 NPC ID（TimedCast.source；臨時編號不附） */
+function toCasts(events: FFLogsEvent[], fight: Pick<Fight, 'startTime'>, actors?: Actor[]): TimedCast[] {
+  const gameIds = new Map((actors ?? []).filter((a) => a.gameID < SYNTHETIC_GAME_ID).map((a) => [a.id, a.gameID]))
   // 詠唱技能另有 begincast 事件，只取實際施放的 cast
   return events
     .filter((e) => e.type === 'cast' && e.abilityGameID !== undefined)
-    .map((e) => ({ t: toFightTime(e.timestamp, fight.startTime), abilityId: e.abilityGameID! }))
+    .map((e) => {
+      const source = e.sourceID === undefined ? undefined : gameIds.get(e.sourceID)
+      return { t: toFightTime(e.timestamp, fight.startTime), abilityId: e.abilityGameID!, ...(source !== undefined && { source }) }
+    })
 }
 
 // begincast 與 cast 的最大間隔；超過視為不相關（例如詠唱被打斷後又重新施放）
@@ -232,7 +241,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     selection,
     playerCasts: playerCasts(playerEvents, fight, player.id),
     autoAttacks: autoAttacks(playerEvents, fight, player.id),
-    bossCasts: toCasts(bossEvents, fight),
+    bossCasts: toCasts(bossEvents, fight, report.masterData.actors),
     playerPositions: actorPositions(playerEvents, fight, player.id),
     bossPositions: bossPositions(report.masterData.actors, bossEvents, playerEvents, fight),
     // 自身效果與施加在敵人身上的效果（效果 ID 不重複，放在一起供技能窗口使用）
@@ -277,6 +286,23 @@ export function clipSide(side: SideData, endMs: number): SideData {
 /** 移除不需紀錄的技能（例如坦克的挑釁、退避、坦姿開關），時間軸、技能次數與建議都不顯示。 */
 export function withoutAbilities(side: SideData, drop: (abilityId: number) => boolean): SideData {
   return { ...side, playerCasts: side.playerCasts.filter((c) => !drop(c.abilityId)) }
+}
+
+/**
+ * 只保留兩邊日誌都有施放紀錄的敵人（以遊戲 NPC ID 比對，名稱會隨上傳者的客戶端語言不同）的施放；
+ * 沒有遊戲 ID 的施放者（臨時編號，見 SYNTHETIC_GAME_ID）一律保留。
+ * 同一場戰鬥，雜兵的施放可能只被一邊記錄（例如熱舞綠光的青蛙舞者 Frogtourage：參考日誌有其伴舞波動、搖擺哈娑，
+ * 我的日誌完全沒有），這些不是機制差異，也會干擾對齊。
+ */
+export function withSharedCasters(a: SideData, b: SideData): [SideData, SideData] {
+  const casters = (s: SideData) => new Set(s.bossCasts.flatMap((c) => (c.source === undefined ? [] : [c.source])))
+  const inA = casters(a)
+  const inB = casters(b)
+  const keep = (s: SideData, other: Set<number>): SideData => ({
+    ...s,
+    bossCasts: s.bossCasts.filter((c) => c.source === undefined || other.has(c.source)),
+  })
+  return [keep(a, inB), keep(b, inA)]
 }
 
 /**

@@ -26,6 +26,7 @@ import {
   unifyPotions,
   withoutAbilities,
   withoutUnnamedBossCasts,
+  withSharedCasters,
   type Selection,
   type SideData,
 } from './load'
@@ -293,13 +294,15 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   const damage = useDamageSummaries(mineLoaded.selection, refLoaded.selection)
   // 不需紀錄的技能（挑釁、退避、坦姿開關）一開始就移除
   const category = useMemo(() => (id: number) => abilityCategory(id, job), [job])
+  // 只在一邊日誌中有施放紀錄的敵人（例如只被一邊記錄的雜兵）不比較，也不用來對齊
+  const [mineShared, refShared] = useMemo(() => withSharedCasters(mineLoaded, refLoaded), [mineLoaded, refLoaded])
   // 沒有名稱的 Boss 技能（Boss 的演出動作等）只用來對齊時間軸，其餘都不顯示
-  const alignment = useMemo(() => buildAlignment(mineLoaded.bossCasts, refLoaded.bossCasts), [mineLoaded, refLoaded])
+  const alignment = useMemo(() => buildAlignment(mineShared.bossCasts, refShared.bossCasts), [mineShared, refShared])
   // 兩邊的強化藥統一成同一個 ID（依使用後得到的強化藥效果判斷，見 unifyPotions）
   const { mine, ref: reference, potionId } = useMemo(() => {
     const prepare = (side: SideData) => withoutUnnamedBossCasts(withoutAbilities(side, (id) => category(id) === 'ignored'))
-    return unifyPotions(prepare(mineLoaded), prepare(refLoaded))
-  }, [mineLoaded, refLoaded, category])
+    return unifyPotions(prepare(mineShared), prepare(refShared))
+  }, [mineShared, refShared, category])
   const zhNames = useAbilityNames(mine, reference)
   // 顯示用：有繁中名稱時取代 FFLogs 的英文名稱，英文保留在 englishName
   const abilities = useMemo(() => {

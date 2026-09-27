@@ -4,6 +4,8 @@ import { formatFightTime } from './timeline'
 export interface TimedCast {
   t: number
   abilityId: number
+  /** 施放者的遊戲 NPC ID（Boss 施放才有；用來排除只在一邊日誌中出現的施放者，見 load.ts 的 withSharedCasters） */
+  source?: number
 }
 
 export interface Anchor {

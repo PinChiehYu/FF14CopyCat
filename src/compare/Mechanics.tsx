@@ -24,6 +24,10 @@ export function Mechanics({
   // 同一招連續結算的多個時間點合併成一列（顯示第一個時間點）
   const rows = mergeRepeats(differences, abilityName)
 
+  const sameNames = (mine: number[], ref: number[]) => {
+    const names = (ids: number[]) => [...new Set(ids.map(abilityName))].sort().join('、')
+    return names(mine) === names(ref)
+  }
   const cell = (ids: number[], variants: string[]) => {
     const idList = ids.map((id) => `#${id}`).join(' ')
     // 兩邊名稱相同但技能 ID 不同：畫面看起來一樣，以虛線底線提示滑鼠停留查看
@@ -66,7 +70,8 @@ export function Mechanics({
                     {formatFightTime(d.t)}
                   </button>
                 </th>
-                <td className="mech-kind">{KIND_LABELS[d.kind]}</td>
+                {/* 兩邊名稱完全相同的不同變化（例如方向不同的版本）寫「不同版本」，比「不同變化」好懂 */}
+                <td className="mech-kind">{d.kind === 'variant' && sameNames(d.mine, d.ref) ? '不同版本' : KIND_LABELS[d.kind]}</td>
                 {cell(d.mine, variants)}
                 {cell(d.ref, variants)}
               </tr>
