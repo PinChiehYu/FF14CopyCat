@@ -329,11 +329,11 @@ h1 {
 
 /* 頁尾：資料來源、參考與授權聲明 */
 .site-footer {
-  margin-top: 40px;
-  padding-top: 12px;
+  margin-top: 48px;
+  padding: 16px 0 24px;
   border-top: 1px solid var(--border);
   font-size: 0.8em;
-  line-height: 1.8;
+  line-height: 1.6;
   color: var(--text-muted);
 }
 
@@ -341,20 +341,73 @@ h1 {
   margin: 0;
 }
 
-.footer-groups {
+/* 資料來源／參考／使用：各組為「小標籤＋連結」，寬度不夠時整組換行 */
+.footer-credits {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 16px;
+  gap: 8px 32px;
 }
 
+.footer-credit {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.footer-label {
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--text-muted) 75%, transparent);
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+}
+
+/* 連結平時不加底線，滑鼠移上去才顯示 */
 .site-footer a {
-  color: var(--text-muted);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  color: var(--text);
+  text-decoration: none;
 }
 
 .site-footer a:hover {
   color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 版權聲明（左）與授權聲明（右），以分隔線與上方隔開 */
+.footer-legal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 24px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.footer-legal p {
+  flex: 1 1 360px;
+  font-size: 0.95em;
+}
+
+.site-footer a.footer-notice {
+  flex: none;
+  padding: 1px 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.site-footer a.footer-notice:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  text-decoration: none;
 }
 
 .error {
@@ -1939,6 +1992,18 @@ h3 {
 
 /* ---- 手機（窄螢幕）版面：放在檔案最後，才能覆寫前面同權重的規則 ---- */
 @media (max-width: 560px) {
+  /* 頁尾：每組一行，小標籤對齊成一欄 */
+  .footer-credits {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    align-items: baseline;
+    gap: 6px 14px;
+  }
+
+  .footer-credit {
+    display: contents;
+  }
+
   /* 播放列：拉桿獨佔一列，其餘控制收在下一列 */
   .playback {
     gap: 6px;

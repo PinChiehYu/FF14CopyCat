@@ -309,28 +309,48 @@ function SiteFooter() {
       {text}
     </a>
   )
+  // 每組一個灰色小標籤，連結以間距分隔（不用「・」）；版權聲明與授權聲明放在分隔線下方
+  const credits: [string, ReactNode[]][] = [
+    [
+      '資料來源',
+      [
+        link('https://www.fflogs.com/', 'FF Logs', '戰鬥日誌（API v2）與技能圖示；繁中服排名依公開報告自行計算'),
+        link('https://xivapi.com/', 'XIVAPI', '技能、效果、道具與 Boss 名稱等遊戲資料（Boilmaster 鏡像）'),
+      ],
+    ],
+    [
+      '參考',
+      [
+        link('https://github.com/xivanalysis/xivanalysis', 'xivanalysis', '技能窗口與冷卻技規則移植自其職業模組（MIT License）'),
+        link('https://ffreplay.vjoi.cn/', 'FFReplay', '播放列與當下狀態的呈現方式'),
+      ],
+    ],
+    ['使用', [link('https://react.dev/', 'React'), link('https://github.com/nk2028/opencc-js', 'opencc-js', '簡轉繁（MIT；辭典資料 Apache-2.0）')]],
+  ]
   return (
     <footer className="site-footer">
-      <p className="footer-groups">
-        <span>
-          資料來源：{link('https://www.fflogs.com/', 'FF Logs', '戰鬥日誌（API v2）與技能圖示；繁中服排名依公開報告自行計算')}・
-          {link('https://xivapi.com/', 'XIVAPI', '技能、效果、道具與 Boss 名稱等遊戲資料（Boilmaster 鏡像）')}
-        </span>
-        <span>
-          參考：{link('https://github.com/xivanalysis/xivanalysis', 'xivanalysis', '技能窗口規則移植自其職業模組（MIT License）')}・
-          {link('https://ffreplay.vjoi.cn/', 'FFReplay', '播放列與當下狀態的呈現方式')}
-        </span>
-        <span>
-          使用：{link('https://react.dev/', 'React')}・
-          {link('https://github.com/nk2028/opencc-js', 'opencc-js', '簡轉繁（MIT；辭典資料 Apache-2.0）')}
-        </span>
-        <a href={`${import.meta.env.BASE_URL}THIRD_PARTY_NOTICES.txt`} target="_blank" rel="noopener">
+      <div className="footer-credits">
+        {credits.map(([label, links]) => (
+          <div key={label} className="footer-credit">
+            <span className="footer-label">{label}</span>
+            <span className="footer-links">
+              {links.map((l, i) => (
+                <span key={i}>{l}</span>
+              ))}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="footer-legal">
+        <p>
+          FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved.
+          <br />
+          遊戲中的技能圖示、名稱與數據等內容之版權皆屬 SQUARE ENIX 所有。本站為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs 無關。
+        </p>
+        <a className="footer-notice" href={`${import.meta.env.BASE_URL}THIRD_PARTY_NOTICES.txt`} target="_blank" rel="noopener">
           授權聲明
         </a>
-      </p>
-      <p>
-        FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved. 遊戲中的技能圖示、名稱與數據等內容之版權皆屬 SQUARE ENIX 所有。本站為玩家自製的非官方工具，與 SQUARE ENIX、FF Logs 無關。
-      </p>
+      </div>
     </footer>
   )
 }
