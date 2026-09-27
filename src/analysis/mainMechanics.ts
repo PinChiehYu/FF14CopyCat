@@ -36,9 +36,26 @@ export function mainMechanicDifferences(
   const groups = mainMechanicGroups(encounterID)
   if (!groups) return mechanicDifferences(mineBoss, refBoss, mineToRef, mineEnd, refEnd, opts)
   const main = (casts: TimedCast[]) => casts.filter((c) => groups.has(c.abilityId))
-  return mechanicDifferences(main(mineBoss), main(refBoss), mineToRef, mineEnd, refEnd, { maxOccurrences: Infinity, ...opts })
+  const differences = mechanicDifferences(main(mineBoss), main(refBoss), mineToRef, mineEnd, refEnd, {
+    maxOccurrences: Infinity,
+    ...opts,
+  })
+  // 「只有一邊」的主要機制，另一邊同一時間卻有非主要機制的施放：是同一招的不同版本，只是另一邊的版本 cactbot 沒列
+  // （例如三連指向最後一下 #42808 是主要機制，同一時間二連指向的 #42799 不是），不是被跳過的機制
+  const windowMs = opts.windowMs ?? SAME_TIME_MS
+  const minor = (casts: TimedCast[], toRef: (t: number) => number) =>
+    casts.filter((c) => !groups.has(c.abilityId)).map((c) => toRef(c.t))
+  const mineMinor = minor(mineBoss, mineToRef)
+  const refMinor = minor(refBoss, (t) => t)
+  const near = (times: number[], t: number) => times.some((x) => Math.abs(x - t) <= windowMs)
+  return differences.filter(
+    (d) =>
+      !(d.kind === 'only-mine' && near(refMinor, d.t)) && !(d.kind === 'only-ref' && near(mineMinor, d.t)),
+  )
 }
 
+// 與 mechanicDifferences 的預設相同：兩邊相差這麼近以內視為同一時間點
+const SAME_TIME_MS = 1500
 /**
  * 兩場同一 Boss 的戰鬥有哪些主要機制的隨機變化不同（同一時間施放不同技能），回傳各機制不同的次數。
  * 只看「不同變化」：「只有一邊」多半是輸出不同造成的轉場差異，不算隨機機制。
@@ -51,7 +68,7 @@ export function variantMechanics(
   mineDuration: number,
   otherDuration: number,
 ): Map<number, number> {
-  const alignment = buildAlignment(mine, other)
+  const alignment = buildAlignment(mine, other, { knownGroups: mainMechanicGroups(encounterID) ?? undefined })
   const differences = mainMechanicDifferences(
     encounterID,
     mine,

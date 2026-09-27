@@ -298,7 +298,14 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   // 只在一邊日誌中有施放紀錄的敵人（例如只被一邊記錄的雜兵）不比較，也不用來對齊
   const [mineShared, refShared] = useMemo(() => withSharedCasters(mineLoaded, refLoaded), [mineLoaded, refLoaded])
   // 沒有名稱的 Boss 技能（Boss 的演出動作等）只用來對齊時間軸，其餘都不顯示
-  const alignment = useMemo(() => buildAlignment(mineShared.bossCasts, refShared.bossCasts), [mineShared, refShared])
+  // cactbot 同一條目的不同版本（放入 A／B 面等）從第一次對齊就當成同一個機制
+  const alignment = useMemo(
+    () =>
+      buildAlignment(mineShared.bossCasts, refShared.bossCasts, {
+        knownGroups: mainMechanicGroups(mineShared.selection.fight.encounterID) ?? undefined,
+      }),
+    [mineShared, refShared],
+  )
   // 兩邊的強化藥統一成同一個 ID（依使用後得到的強化藥效果判斷，見 unifyPotions）
   const { mine, ref: reference, potionId } = useMemo(() => {
     const prepare = (side: SideData) => withoutUnnamedBossCasts(withoutAbilities(side, (id) => category(id) === 'ignored'))

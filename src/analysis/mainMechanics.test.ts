@@ -42,6 +42,15 @@ describe('main mechanics', () => {
     ])
   })
 
+  it('does not report a one-sided main mechanic when the other side cast a minor version at that time', () => {
+    // 三連指向最後一下（主要機制）對上二連指向同一時間的後續判定（cactbot 沒列）：同一招的不同版本，不是被跳過
+    const mine = [...common, cast(40, 41910), cast(50, 41911)]
+    const ref = [...common, cast(40.3, 99999)]
+    expect(mainMechanicDifferences(M8S, mine, ref, (t) => t, 70_000, 70_000)).toEqual([
+      { t: 50_000, mine: [41911], ref: [], kind: 'only-mine' },
+    ])
+  })
+
   it('counts consecutive resolutions once and ignores one-sided mechanics', () => {
     // 同一招連續結算 3 次算一次；只有一邊的機制（多半是轉場差異）不算隨機機制不同
     const mine = [...common, cast(40, 41885), cast(42, 41885), cast(44, 41885), cast(50, 41910)]

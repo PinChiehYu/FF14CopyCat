@@ -119,6 +119,24 @@ describe('buildAlignment', () => {
     expect(anchors.map((a) => a.abilityId)).toEqual([1, 2, 3])
   })
 
+  it('pairs known versions of a mechanic at the same time from the first pass', () => {
+    // 實例（M5S 3hCzxvn79fRTbQGP #30）：兩邊 A 面／B 面整段相反（相隔 19 秒）。只看技能 ID 時，我的 A 面整段
+    // （放入、指向的多個判定、播放）會配到參考 19 秒後的 A 面；cactbot 把 A／B 面列為同一機制，同一時間就能配上
+    const common = [cast(10, 1), cast(15, 2), cast(20, 3), cast(65, 4), cast(75, 5), cast(80, 6)]
+    const aSide = (t: number) => [cast(t, 10), cast(t + 7, 20), cast(t + 8.2, 21), cast(t + 8.9, 22), cast(t + 10.5, 23), cast(t + 11.1, 30), cast(t + 12.2, 31)]
+    const bSide = (t: number) => [cast(t, 11), cast(t + 7, 24), cast(t + 8.6, 25), cast(t + 10.6, 26), cast(t + 11.2, 32), cast(t + 12.3, 33)]
+    const mine = [...common, ...aSide(27.5), ...bSide(47)]
+    const ref = [...common, ...bSide(27.5), ...aSide(47)]
+    const knownGroups = new Map([
+      [10, 10], [11, 10], // 放入 A 面／B 面
+      [20, 20], [21, 20], [22, 20], [23, 20], [24, 20], [25, 20], [26, 20], // 各種指向
+      [30, 30], [31, 30], [32, 30], [33, 30], // 播放 A 面／B 面
+    ])
+    const { anchors } = buildAlignment(mine, ref, { knownGroups })
+    expect(anchors.every((a) => Math.abs(a.ref - a.mine) <= 500)).toBe(true)
+    expect(pushDifferences(anchors)).toEqual([])
+  })
+
   it('only pairs casts of the same ability within the drift limit', () => {
     // 時間差上限 120 秒：超過的不是同一次機制
     expect(buildAlignment([cast(10, 1)], [cast(140, 1)]).anchors).toEqual([])

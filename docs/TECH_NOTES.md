@@ -64,28 +64,30 @@
 3. **挑選錨點**（`bestChain()`，O(n²) 動態規劃，候選依我的時間、再依參考時間排序）：取兩邊時間都嚴格遞增、分數最高的一串。
    - 每個錨點 +1；與前一個錨點相距不到 1 秒時依比例（`FULL_GAIN_GAP_MS`）。密集的連續施放（熱舞綠光的 Let's Dance! Remix 每 0.75 秒一次、方向隨機）整段挪 3 步能多對上幾個同 ID 的施放，每個都算 1 分時會勝過時間差的穩定（實測 ±2.5 秒的錯配）。
    - 時間差（ref − mine）每跳 1 秒 −0.5、一次最多 −2（`OFFSET_JUMP_PENALTY_PER_S`、`MAX_JUMP_PENALTY`），從戰鬥開始 (0, 0) 起算。所以「從 0 開始、時間差穩定」的一串分數最高；真正的推進只跳一次，之後有 3 個以上錨點就值得。上限避免推進後錨點少時整段被捨棄。
+3.5 **已知的機制分組（cactbot）**：有主要機制資料的 Boss（見「Boss 機制差異」的「主要機制資料」），`Comparison.tsx` 與前輩搜尋把 `mainMechanicGroups()` 以 `knownGroups` 傳給 `buildAlignment()`，**第一次對齊**就把 cactbot 同一條目的不同版本（放入 A／B 面、二連／三連／四連指向、4 拍／8 拍）當成同一個機制（同組 5 秒內算同一次）。實例：M5S `3hCzxvn79fRTbQGP` #30 與我的 A 面／B 面整段相反（相隔 19 秒），只看技能 ID 時我的 0:27.5 放入 A 面、指向的 4 下判定與播放 A 面（7 個錨點，+6.3 分）配到參考 19 秒後的 A 面，跳開再跳回只扣 4 分而勝出（時間差 −0.5～19.3 秒）；第一次對齊錯了，隨機機制組也找不到。加入已知分組後同一時間就配上（−0.5～0.3 秒）。
 4. **隨機機制組與第二次對齊**：第一次對齊有 3 個以上錨點時，以其 `mineToRef` 找出隨機機制組（`variantGroups()`），再做一次步驟 1～3：
    - 找組：「另一邊 5 秒內沒有同一技能」的施放中，相距 1.5 秒內、**互為最近**的一對不同技能歸成同一組（union-find，會連鎖：二連—四連、三連—四連合成一組）。
-   - 第二次對齊時同一組的技能視為同一個機制（候選配對以組為單位；組內 5 秒內的施放算同一次），我的「放入 A 面」就能配參考同一時間的「放入 B 面」，錨點更多。
+   - 第二次對齊時同一組的技能視為同一個機制（候選配對以組為單位；組內 5 秒內的施放算同一次；與已知分組合併，`mergeGroups()`），我的「放入 A 面」就能配參考同一時間的「放入 B 面」，錨點更多。
    - 遊戲資料沒有「同一組隨機機制」的欄位，名稱也不可靠（放入 A 面／B 面名稱不同）；兩邊選到同一個變化時技能 ID 相同，第一次就會配上。只有一邊施放的機制（例如輸出夠高時被跳過的第二次空間斬）另一邊沒有對應，不會歸組。實測找到的組都是同一機制的變化：M8S Stonefang／Windfang、Eminent／Revolutionary Reign、Wolves' Reign 各版本、Hero's Blow 左右；M7S Smash Here／There、Brutish Swing、Lashing Lariat 左右；M5S 放入 A／B 面、二連／三連／四連指向、4 拍／8 拍節奏。
 5. **換算**（`piecewise()`）：(0, 0) 加上所有錨點，錨點間線性內插，最後一個錨點之後斜率 1 外推。兩邊都嚴格遞增，`mineToRef` 與 `refToMine` 共用同一組錨點。
 6. **推進差距**（`pushDifferences()`）：相鄰錨點間時間差跳 ≥ 3 秒，且前一錨點往前 30 秒、後一錨點往後 30 秒內錨點時間差的**中位數**也差 ≥ 3 秒（同號）才算；相距 15 秒內的跳變合併，合併後重算、未達 3 秒的捨棄。`deltaMs` > 0 表示我較慢推進。`Comparison.tsx` 只取比較範圍內的，傳給建議（`pushAdvice()`）、對齊說明列與時間軸 Boss 列。
 
 演進（2026-09-27）：最初以「同一技能的第 n 次」配對（任一邊超過 8 次的技能不用）並取最長遞增子序列。熱舞綠光的隨機順序讓「第 n 次」一再配錯，陸續加上孤立錨點去除、分段去除「跳開又跳回」的段、首尾判斷、依分數挑選等補救（實例：對 `YAzxqkpVfBNmcMwj` #1 誤判 0:54「我快 9.7 秒」、對 `kCcYLfbxnTJ91Md6` #1 誤判「我快 20.2 秒」、對 `BQZ9kMd7KpR8J34D` #11 時間差範圍 −63.8～−0.3 秒並誤判兩個推進；M7S 武士基準誤判「我快 8.0 秒」）。使用者指出「兩邊從 0 開始、A 面／B 面一定同時觸發」後，改為依時間產生候選，補救的步驟（`dropDetours()` 等）與施放次數限制都不再需要而移除，錨點數也增加。
 
-目前 9 組比較的結果（2026-09-27）：
+目前 10 組比較的結果（2026-09-27，加入 cactbot 已知分組後；錨點因同組 5 秒內算一次而略少）：
 
 | 比較 | 錨點 | 時間差（ref − mine） | 推進差距 |
 |---|---|---|---|
-| M5S 我 vs `BQZ9kMd7KpR8J34D` #11 | 175 | −0.6～−0.3 秒 | 無 |
-| M5S 我 vs `WBNDQCdcrP6A1qkv` #16 | 185 | −1.2～−0.3 秒 | 無 |
-| M5S 我 vs `kCcYLfbxnTJ91Md6` #1 | 184 | −1.4～−0.8 秒 | 無 |
-| M5S 我 vs `Kwx3LyFJjz26pYRm` #16 | 188 | −0.7～0.1 秒 | 無 |
-| M5S 我 vs `YAzxqkpVfBNmcMwj` #1 | 182 | −0.5～0.0 秒 | 無 |
-| M8S 武士基準 | 248 | −6.8～0.2 秒 | 參考 6:41.3 我慢 6.7 秒 |
-| M8S 騎士基準 | 219 | −9.3～1.4 秒 | 參考 6:31.2 我慢 8.9 秒 |
-| M7S 武士 | 173 | −0.2～0.8 秒 | 無 |
-| M8S 黑魔驗證 | 220 | −12.5～0.7 秒 | 參考 6:24.9 我慢 11.3 秒 |
+| M5S 我 vs `BQZ9kMd7KpR8J34D` #11 | 177 | −0.6～0.0 秒 | 無 |
+| M5S 我 vs `WBNDQCdcrP6A1qkv` #16 | 178 | −1.2～−0.3 秒 | 無 |
+| M5S 我 vs `kCcYLfbxnTJ91Md6` #1 | 175 | −1.4～−0.8 秒 | 無 |
+| M5S 我 vs `Kwx3LyFJjz26pYRm` #16 | 176 | −0.5～0.1 秒 | 無 |
+| M5S 我 vs `YAzxqkpVfBNmcMwj` #1 | 172 | −0.5～0.0 秒 | 無 |
+| M5S 我 vs `3hCzxvn79fRTbQGP` #30（A／B 面整段相反） | 177 | −0.5～0.3 秒 | 無（沒有已知分組時 −0.5～19.3 秒） |
+| M8S 武士基準 | 232 | −6.8～0.2 秒 | 參考 6:41.3 我慢 6.7 秒 |
+| M8S 騎士基準 | 204 | −9.3～1.4 秒 | 參考 6:31.2 我慢 8.9 秒 |
+| M7S 武士 | 162 | −0.2～0.8 秒 | 無 |
+| M8S 黑魔驗證 | 205 | −12.5～0.7 秒 | 參考 6:24.9 我慢 11.3 秒 |
 
 「我」在 M5S 為 `BF76r8yKh4wGaYkm` #1。每次對齊約 12～50 毫秒（候選較多時 O(n²)）。M5S 沒有依血量推進的轉場，時間差只有 1～2 秒內的誤差；M8S 第一階段結束依血量推進，推進差距都保留。參數（1 秒滿分間距、每秒 −0.5、上限 −2、120 秒）以這 9 組驗證：滿分間距 1～3 秒、施放次數上限 8／16／不限的組合結果都正確，取錨點最多的組合。
 ### 通用指標（`src/analysis/metrics.ts`）
@@ -112,7 +114,8 @@
 其他使用機制差異的地方：
 - 站位差異（`positions.ts` 的 `attachVariants()`）：區段期間或開始前 10 秒內的 `variant` 附在 `Divergence.variant`，卡片標「機制不同」、不列入站位建議。
 - 建議（`advice.ts` 的 `mechanicNote()`）：停手時段前 10 秒內到結束之間的 `variant` 附註在停手建議中。
-- 前輩日誌搜尋的「機制相同」（`mainMechanics.ts` 的 `variantMechanics()`）：`buildAlignment()` 後以 `mainMechanicDifferences()` 比較，`mergeRepeats()` 合併連續結算後，把每個 `variant` 列的技能 ID 對應到所屬的主要機制（該組最小的 ID），回傳「機制 → 不同次數」。畫面依繁中名稱合併同名機制（M8S 的圓形／扇形群狼劍是 cactbot 的兩組、繁中名稱都是「群狼劍」），只數勾選的機制；取消勾選的機制鍵存在 `localStorage` 的 `finder-ignored-mechanics:<encounterID>`。機制名稱在勾選「機制相同」時就一次查完該 Boss 所有主要 ID（`fetchAbilityNames()`，約 60～100 個 ID 一個請求）：實測比對開始後才查名稱時曾查不到（推測碰到 Worker 每分鐘次數限制），失敗會 5 秒後重試。尚未套用 `withSharedCasters()`（`loadBossCasts()` 沒有角色資料）。
+- 「只有一邊」的主要機制，若另一邊同一時間（1.5 秒內）有非主要機制的施放就不列：那是同一招的另一個版本、只是 cactbot 沒列（實例：M5S 三連指向最後一下 #42808 在 cactbot 自成一條，二連指向同一時間的 #42799 不在 cactbot，原本列成「只有我」）。真正被跳過的機制（M8S 第二次空間斬）另一邊同一時間沒有施放，仍列出。
+- 前輩日誌搜尋的「機制相同」（`mainMechanics.ts` 的 `variantMechanics()`）：`buildAlignment()`（同樣傳入已知分組）後以 `mainMechanicDifferences()` 比較，`mergeRepeats()` 合併連續結算後，把每個 `variant` 列的技能 ID 對應到所屬的主要機制（該組最小的 ID），回傳「機制 → 不同次數」。畫面依繁中名稱合併同名機制（M8S 的圓形／扇形群狼劍是 cactbot 的兩組、繁中名稱都是「群狼劍」），只數勾選的機制；取消勾選的機制鍵存在 `localStorage` 的 `finder-ignored-mechanics:<encounterID>`。機制名稱在勾選「機制相同」時就一次查完該 Boss 所有主要 ID（`fetchAbilityNames()`，約 60～100 個 ID 一個請求）：實測比對開始後才查名稱時曾查不到（推測碰到 Worker 每分鐘次數限制），失敗會 5 秒後重試。尚未套用 `withSharedCasters()`（`loadBossCasts()` 沒有角色資料）。
 
 #### 主要機制資料（`scripts/gen-mechanics.mjs` → `src/analysis/mechanicData.generated.ts`）
 
@@ -466,6 +469,9 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-27 對齊使用 cactbot 的機制分組
+- `buildAlignment()` 新增 `knownGroups`：cactbot 同一條目的不同版本從第一次對齊就視為同一機制（`mergeGroups()` 與比較找出的組合併）。修正 M5S 兩邊 A 面／B 面整段相反時，第一次對齊把整段配到另一邊 19 秒後的同名技能。`mainMechanicDifferences()` 不列另一邊同一時間有非主要施放的「只有一邊」。10 組比較結果見「時間軸對齊」。
 
 ### 2026-09-27 主要機制資料（cactbot）
 - 新增 `scripts/gen-mechanics.mjs` 產生 `src/analysis/mechanicData.generated.ts`（encounterID → 主要機制的技能 ID 組）；`src/analysis/mainMechanics.ts` 提供 `mainMechanicGroups()`、`mainMechanicDifferences()`、`variantMechanics()`，取代 `mechanicMatch.ts`。`Comparison.tsx` 另算 `mainMechanics` 給機制差異表（`mechanics` 仍給站位與建議）。授權聲明加入 cactbot（Apache-2.0）。

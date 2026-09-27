@@ -112,6 +112,11 @@ function piecewise(points: { from: number; to: number }[], t: number): number {
 export interface AlignmentOptions {
   /** 同一技能在這段時間內重複施放（多個分身同時施放）視為一次 */
   dedupeMs?: number
+  /**
+   * 已知的機制分組（技能 ID → 組的代表 ID），例如 cactbot 時間軸同一條目的不同版本（放入 A 面／B 面）。
+   * 第一次對齊就把同一組當成同一個機制，兩邊同一時間選到不同版本時也能依時間配上。
+   */
+  knownGroups?: ReadonlyMap<number, number>
 }
 
 /** 去重後的一次施放；key 為技能 ID，或所屬隨機機制組的代表 ID（同一組的技能視為同一個機制） */
@@ -130,7 +135,7 @@ const MAX_DRIFT_MS = 120_000
  * 依時間排序並去重：同一技能（或同一組隨機機制）在短時間內重複施放視為一次，只留第一次。
  * @param groups 技能 ID → 所屬隨機機制組的代表 ID
  */
-function keyedCasts(casts: TimedCast[], dedupeMs: number, groups: Map<number, number> = new Map()): KeyedCast[] {
+function keyedCasts(casts: TimedCast[], dedupeMs: number, groups: ReadonlyMap<number, number> = new Map()): KeyedCast[] {
   const last = new Map<number, number>()
   const out: KeyedCast[] = []
   for (const cast of [...casts].sort((a, b) => a.t - b.t)) {
@@ -256,20 +261,41 @@ function bestChain(pairs: Anchor[]): Anchor[] {
 export function buildAlignment(
   mineBoss: TimedCast[],
   refBoss: TimedCast[],
-  { dedupeMs = 1000 }: AlignmentOptions = {},
+  { dedupeMs = 1000, knownGroups = new Map() }: AlignmentOptions = {},
 ): Alignment {
-  const first = alignWith(mineBoss, refBoss, dedupeMs, new Map())
+  const first = alignWith(mineBoss, refBoss, dedupeMs, knownGroups)
   // 第一次對齊要有足夠的錨點，找出的「同一時間點」才可靠
   if (first.anchors.length < MIN_ANCHORS_FOR_GROUPS) return first
   const groups = variantGroups(mineBoss, refBoss, first.mineToRef, dedupeMs)
-  return groups.size === 0 ? first : alignWith(mineBoss, refBoss, dedupeMs, groups)
+  return groups.size === 0 ? first : alignWith(mineBoss, refBoss, dedupeMs, mergeGroups(knownGroups, groups))
+}
+
+/** 合併兩組「技能 ID → 代表 ID」的分組（有共同技能的組合成一組），代表 ID 取組內最小的。 */
+function mergeGroups(a: ReadonlyMap<number, number>, b: ReadonlyMap<number, number>): Map<number, number> {
+  const parent = new Map<number, number>()
+  const find = (id: number): number => {
+    const p = parent.get(id) ?? id
+    if (p === id) return id
+    const root = find(p)
+    parent.set(id, root)
+    return root
+  }
+  const union = (x: number, y: number) => {
+    const rx = find(x)
+    const ry = find(y)
+    if (rx !== ry) parent.set(Math.max(rx, ry), Math.min(rx, ry))
+  }
+  for (const groups of [a, b]) for (const [id, key] of groups) union(id, key)
+  const merged = new Map<number, number>()
+  for (const id of [...a.keys(), ...b.keys()]) merged.set(id, find(id))
+  return merged
 }
 
 function alignWith(
   mineBoss: TimedCast[],
   refBoss: TimedCast[],
   dedupeMs: number,
-  groups: Map<number, number>,
+  groups: ReadonlyMap<number, number>,
 ): Alignment {
   const mine = keyedCasts(mineBoss, dedupeMs, groups)
   const ref = keyedCasts(refBoss, dedupeMs, groups)
