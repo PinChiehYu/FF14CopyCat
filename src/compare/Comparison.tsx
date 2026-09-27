@@ -410,18 +410,19 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   const windows = useMemo(() => {
     if (!job) return []
     // 各自的 GCD 間隔用來依窗口長度封頂應打的 GCD 數
-    const evaluate = (rule: WindowRule, side: SideData, gcdMs: number | null) =>
-      evaluateWindows(rule, side.buffs, side.playerCasts, job.isGcd, abilityName, gcdMs, side.duration)
+    // fightEndMs：這一側實際的戰鬥長度，被擊殺截斷的窗口照常評分但放寬（被比較範圍截斷的不評分）
+    const evaluate = (rule: WindowRule, side: SideData, gcdMs: number | null, fightEndMs: number) =>
+      evaluateWindows(rule, side.buffs, side.playerCasts, job.isGcd, abilityName, gcdMs, side.duration, fightEndMs)
     // 兩邊各自依日誌的遊戲版本選用規則（例如絕槍的終結之心 7.4 起每個窗口都要求）
     // 規則依對應的國際服版本選用（xivanalysis 依國際服版本撰寫；繁中服 7.2 的技能等同國際服 7.3）
     return pairedWindowRules(job.subType, patches.mine.rules, patches.ref.rules).map(({ mine: m, ref: r }) => {
       const reason = (p: GamePatch) => `${p.key} 版本沒有這條規則`
       return {
-        mine: m ? evaluate(m, mineInRange, gcd?.mine.gcdMs ?? null) : inapplicableSummary(r!, reason(patches.mine)),
-        ref: r ? evaluate(r, refInRange, gcd?.ref.gcdMs ?? null) : inapplicableSummary(m!, reason(patches.ref)),
+        mine: m ? evaluate(m, mineInRange, gcd?.mine.gcdMs ?? null, mine.duration) : inapplicableSummary(r!, reason(patches.mine)),
+        ref: r ? evaluate(r, refInRange, gcd?.ref.gcdMs ?? null, reference.duration) : inapplicableSummary(m!, reason(patches.ref)),
       }
     })
-  }, [job, mineInRange, refInRange, abilityName, gcd, patches])
+  }, [job, mineInRange, refInRange, abilityName, gcd, patches, mine.duration, reference.duration])
   // 兩邊版本的規則不同的技能窗口（版本不同時列在摘要下方）
   const patchDiffs = useMemo(
     () =>

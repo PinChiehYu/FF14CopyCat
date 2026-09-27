@@ -48,10 +48,32 @@ describe('evaluateWindows', () => {
     expect(summary.windows[0].gcds).toBe(3)
   })
 
-  it('does not judge windows cut by the end of the fight', () => {
-    const summary = evaluateWindows(meikyo, [window(900, 2000, true)], [], isGcd, name)
+  it('does not judge windows cut by the comparison range', () => {
+    // 比較範圍在 2 秒結束（另一邊的戰鬥先結束），這一邊實際打到 60 秒：窗口其實還沒結束
+    const summary = evaluateWindows(meikyo, [window(900, 2000, true)], [], isGcd, name, 2500, 2000, 60_000)
     expect(summary).toMatchObject({ judged: 0, passed: 0 })
     expect(summary.windows[0].judged).toBe(false)
+  })
+
+  it('judges a window cut by the kill with requirements reduced to the time left', () => {
+    // 明鏡止水（有層數，平常不依長度封頂）在擊殺前 3 秒才開：最多 ceil((3100 − 250) ÷ 2500) = 2 個 GCD
+    const casts = [
+      { t: 57_000, abilityId: 7481 },
+      { t: 59_500, abilityId: 7482 },
+    ]
+    const summary = evaluateWindows(meikyo, [window(56_900, 60_000, true)], casts, isGcd, name, 2500, 60_000, 60_000)
+    expect(summary).toMatchObject({ judged: 1, passed: 1 })
+    expect(summary.windows[0].rushed).toBe(true)
+  })
+
+  it('lowers each expected action by one in a window cut by the kill', () => {
+    const fof = windowRules('Paladin')[0]
+    const pldGcd = new Set([3538, 16459, 25748, 25749, 25750, 3539, 16460, 36918, 36919, 7384])
+    // 戰逃反應在擊殺前 4 秒才開，只用了一個 GCD：要求 1 次的技能都不再要求
+    const casts = [{ t: 57_000, abilityId: 16459 }]
+    const [w] = evaluateWindows(fof, [{ ...window(56_500, 60_000, true), statusId: 1_000_076 }], casts, (id) => pldGcd.has(id), name, 2500, 60_000, 60_000).windows
+    expect(w).toMatchObject({ judged: true, rushed: true })
+    expect(w.issues.filter((i) => i.startsWith('缺少'))).toEqual([])
   })
 
   it('checks expected actions for Fight or Flight', () => {

@@ -13,8 +13,10 @@ export interface EvaluatedWindow {
   gcds: number
   /** 沒達到規則的地方（空的代表合格） */
   issues: string[]
-  /** 窗口到戰鬥（或比較範圍）結束都還沒結束：不評分 */
+  /** 窗口到比較範圍結束都還沒結束（另一邊的戰鬥先結束，這一邊其實還在打）：不評分 */
   judged: boolean
+  /** 被這一側的戰鬥結束（擊殺）截斷的窗口：照常評分但放寬要求（xivanalysis 的「趕時間」） */
+  rushed?: boolean
 }
 
 export interface WindowSummary {
@@ -42,7 +44,8 @@ export function windowState(w: EvaluatedWindow): WindowState {
 export function windowTitle(w: EvaluatedWindow): string {
   return (
     `${formatFightTime(w.start)}～${formatFightTime(w.end)}：` +
-    (!w.judged ? '到比較範圍結束都還沒結束，不評分' : w.issues.length === 0 ? '合格' : w.issues.join('；'))
+    (!w.judged ? '到比較範圍結束都還沒結束，不評分' : w.issues.length === 0 ? '合格' : w.issues.join('；')) +
+    (w.rushed ? '（戰鬥結束前的窗口，要求依剩餘時間降低）' : '')
   )
 }
 
@@ -64,6 +67,8 @@ const OPENER_MS = 10_000
 const WINDOW_START_OFFSET_MS = 250
 // 無法估計 GCD 時使用的預設值
 const DEFAULT_GCD_MS = 2500
+// 窗口結束點離這一側戰鬥結束這麼近，就視為被擊殺截斷（而不是被比較範圍截斷）
+const FIGHT_END_TOLERANCE_MS = 1000
 
 /** 兩組時段的交集。 */
 function intersect(a: BuffWindow[], b: BuffWindow[]): BuffWindow[] {
@@ -110,6 +115,9 @@ export function ruleWindows(rule: WindowRule, buffs: BuffWindow[], casts: TimedC
  * 依規則評估一側的每個窗口。
  * @param durationMs 這一側（比較範圍內）的戰鬥長度；由技能觸發的窗口超過這個時間時不評分
  * @param gcdMs 這一側估計的 GCD 間隔，用來依窗口長度封頂應打的 GCD 數
+ * @param fightEndMs 這一側實際的戰鬥長度（不裁切）：未結束的窗口若是被擊殺截斷（而不是被比較範圍截斷），
+ *   照常評分但放寬：應打的 GCD 數一律依剩餘時間封頂（含有層數的），每項應使用的技能要求減 1
+ *   （與 xivanalysis 相同：GCD 數依窗口長度封頂；技能減 1 比照其龍騎戰鬥連禱等模組的 isRushedEndOfPullWindow）
  */
 export function evaluateWindows(
   rule: WindowRule,
@@ -119,6 +127,7 @@ export function evaluateWindows(
   abilityName: (id: number) => string,
   gcdMs: number | null = DEFAULT_GCD_MS,
   durationMs = Infinity,
+  fightEndMs?: number,
 ): WindowSummary {
   const names = (ids: number[]) => [...new Set(ids)].map(abilityName).join('、')
   const openerMs = rule.openerMs ?? OPENER_MS
@@ -133,10 +142,11 @@ export function evaluateWindows(
       const issues: string[] = []
       const used = (id: number) => inside.filter((c) => c.abilityId === id).length
       const opener = b.start < openerMs
+      const rushed = b.openEnded && fightEndMs !== undefined && fightEndMs - b.end <= FIGHT_END_TOLERANCE_MS
       if (rule.expectedGcds !== undefined) {
         const fit = Math.ceil((b.end - b.start - WINDOW_START_OFFSET_MS) / (gcdMs ?? DEFAULT_GCD_MS))
         const adjust = rule.gcdAdjust ? rule.gcdAdjust.ids.reduce((sum, id) => sum + used(id), 0) * rule.gcdAdjust.perUse : 0
-        const base = rule.stacks ? rule.expectedGcds : Math.min(rule.expectedGcds, fit)
+        const base = rule.stacks && !rushed ? rule.expectedGcds : Math.min(rule.expectedGcds, fit)
         const expected = Math.max(0, base + adjust)
         if (gcds.length < expected) issues.push(`只打了 ${gcds.length} 個 GCD（應 ${expected} 個）`)
       }
@@ -151,7 +161,8 @@ export function evaluateWindows(
       }
       for (const group of rule.expectedActions ?? []) {
         if (group.onlyIf && !group.onlyIf.some((id) => used(id) > 0)) continue
-        const count = opener && group.openerCount !== undefined ? group.openerCount : group.count
+        const full = opener && group.openerCount !== undefined ? group.openerCount : group.count
+        const count = rushed ? Math.max(0, full - 1) : full
         if (count === 0) continue
         // 問題說明直接列出技能的官方繁中名稱
         if (group.mode === 'each') {
@@ -163,7 +174,7 @@ export function evaluateWindows(
           if (total < count) issues.push(`${names(group.ids)} 合計只用了 ${total} 次（應 ${count} 次）`)
         }
       }
-      return { start: b.start, end: b.end, gcds: gcds.length, issues, judged: !b.openEnded }
+      return { start: b.start, end: b.end, gcds: gcds.length, issues, judged: !b.openEnded || rushed, ...(rushed && { rushed }) }
   })
   const judged = windows.filter((w) => w.judged)
   return { rule, windows, judged: judged.length, passed: judged.filter((w) => w.issues.length === 0).length }

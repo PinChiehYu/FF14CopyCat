@@ -507,6 +507,11 @@ Boss 施放去重（同技能 1 秒內算一次）、排除施放超過 8 次的
 
 使用流程與設計的變更見 DESIGN.md 的「設計變更紀錄」。
 
+### 2026-09-27 技能窗口的戰鬥尾聲放寬
+- xivanalysis 調查（dawntrail 分支）：`ExpectedGcdCountEvaluator` 以 `calculateExpectedGcdsForTime()`＝`min(expected, ceil((end − start) ÷ GCD))` 計算（沒有層數的起點加 weaveDelay），窗口被戰鬥結束截斷時 end 就是戰鬥結束，要求自然降低（有層數的也封頂）；`ExpectedActionsEvaluator` 預設不降低，由各職業的 `adjustCount` 處理。`BuffWindow.isRushedEndOfPullWindow()`＝「效果持續時間 ≥ 戰鬥剩餘時間（從窗口開始算）」，BuffWindow 本身沒有使用，由職業模組呼叫：例如 `drg/modules/BattleLitany.tsx` 在趕時間的窗口每項技能要求減 1（Nastrond 減 `NASTRONDS_PER_WINDOW`）；`pld/modules/FightOrFlight.tsx` 沒有任何尾聲處理。
+- 變更：`evaluateWindows()` 新增 `fightEndMs`（這一側不裁切的戰鬥長度）。未結束（`openEnded`）的窗口結束點離戰鬥結束 ≤ 1 秒時為被擊殺截斷（`EvaluatedWindow.rushed`）：照常評分，GCD 數一律依長度封頂（含 `stacks`），`expectedActions` 每項減 1（減到 0 不要求）；其餘未結束的（被比較範圍截斷）維持不評分。以窗口是否到戰鬥結束判斷，而不是 xivanalysis 的「效果持續時間 ≥ 剩餘時間」，因為我們的窗口結束點已是實際截斷點。
+- 驗證：騎士基準參考的最後一次強化藥（12:23～12:52，擊殺 12:52）由不評分改為合格並註明尾聲；我的最後一次強化藥（被比較範圍 13:01 截斷）仍不評分。
+
 ### 2026-09-27 確認報告改為獨立的定時觸發
 - 變更：`wrangler.toml` 新增 `37 * * * *`；`pruneGoneReports()` 改為匯出、獨立執行（每次最多 40 份，回傳 `checkedReports／removedReports／failedReports`，非私人／刪除的錯誤以 `console.warn` 記錄）；`crawl()` 計算對外請求數並在上限前停止。Worker 已部署。
 - 原因：Workers 免費方案每次執行最多 50 個對外請求，確認排在掃描之後只做到 3 份（見「繁中服排名／實作」）。
