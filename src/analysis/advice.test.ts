@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
-
-const paladin = getJob('Paladin')!
 import { generateAdvice, type AdviceInput } from './advice'
 import type { AbilityUsage } from './metrics'
 import type { TrackPoint } from './positions'
+
+const paladin = getJob('Paladin')!
 
 const names: Record<number, string> = {
   1: 'Ikishoten',
@@ -83,6 +83,21 @@ describe('generateAdvice', () => {
     const lost = advice.find((a) => a.title.startsWith('2:01.0 停手'))
     expect(lost?.title).toContain('（這段期間你已死亡）')
     expect(lost?.detail).toContain('不要死亡')
+  })
+
+  it('groups stops caused by boss control into one low item', () => {
+    const advice = generateAdvice(
+      input({
+        lost: [
+          { mineStart: 100_000, mineEnd: 105_000, refStart: 100_000, refEnd: 105_000, refGcds: 2, control: [1] },
+          { mineStart: 200_000, mineEnd: 204_000, refStart: 200_000, refEnd: 204_000, refGcds: 1, control: [1] },
+        ],
+      }),
+    )
+    // 控場造成的停手不列為停手建議，只合併成一則參考
+    expect(advice).toHaveLength(1)
+    expect(advice[0]).toMatchObject({ severity: 'low', title: '2 段停手是 Boss 控場造成', at: 100_000 })
+    expect(advice[0].detail).toMatch('1:40.0（Ikishoten）、3:20.0（Ikishoten）')
   })
 
   it('summarises lost GCD windows and notes movement differences', () => {
@@ -210,10 +225,10 @@ describe('generateAdvice', () => {
     const advice = generateAdvice(
       input({
         divergences: [
-          // 機制前後，且同時少打 GCD → 優先
+          // 區段中有機制結算，且同時少打 GCD → 優先
           { start: 100_000, end: 110_000, maxDistance: 15, mirror: null, mechanics: [{ t: 108_000, abilityId: 5 }] },
-          // 機制前後（短的也列出）→ 建議
-          { start: 150_000, end: 152_000, maxDistance: 12, mirror: null, mechanics: [{ t: 153_000, abilityId: 1 }] },
+          // 區段中有機制結算（短的也列出）→ 建議
+          { start: 150_000, end: 152_000, maxDistance: 12, mirror: null, mechanics: [{ t: 151_000, abilityId: 1 }] },
           // 附近沒有機制、較長 → 參考
           { start: 200_000, end: 210_000, maxDistance: 20, mirror: null, mechanics: [] },
           // 附近沒有機制、太短 → 不列

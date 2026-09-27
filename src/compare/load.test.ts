@@ -11,6 +11,8 @@ import {
   incompatibility,
   playerCasts,
   unifyPotions,
+  withSharedCasters,
+  withoutUnnamedBossCasts,
   type Selection,
   type SideData,
 } from './load'
@@ -266,5 +268,48 @@ describe('incompatibility', () => {
   it('rejects different encounters or jobs', () => {
     expect(incompatibility(selection(98, 'Viper'), selection(99, 'Viper'))).toMatch('Boss')
     expect(incompatibility(selection(98, 'Viper'), selection(98, 'Samurai'))).toMatch('職業不同（毒蛇劍士 / 武士）')
+  })
+})
+
+describe('boss cast filters', () => {
+  const side = (bossCasts: SideData['bossCasts'], abilities: { gameID: number; name: string }[] = []): SideData => ({
+    selection: { report: { masterData: { abilities } } } as unknown as Selection,
+    playerCasts: [],
+    autoAttacks: [],
+    bossCasts,
+    playerPositions: [],
+    bossPositions: [],
+    buffs: [],
+    bossDebuffs: [],
+    prepull: [],
+    auras: [],
+    hp: [],
+    castBars: [],
+    deaths: [],
+    duration: 600_000,
+  })
+
+  it('keeps only casters present in both logs and casts without a known caster', () => {
+    // 施放者 18000 只在我的日誌中（例如只被一邊記錄的雜兵）；沒有 source 的是臨時編號的施放者，一律保留
+    const [mine, ref] = withSharedCasters(
+      side([{ t: 1000, abilityId: 1, source: 17000 }, { t: 2000, abilityId: 2, source: 18000 }, { t: 3000, abilityId: 3 }]),
+      side([{ t: 1000, abilityId: 1, source: 17000 }, { t: 4000, abilityId: 4 }]),
+    )
+    expect(mine.bossCasts.map((c) => c.abilityId)).toEqual([1, 3])
+    expect(ref.bossCasts.map((c) => c.abilityId)).toEqual([1, 4])
+  })
+
+  it('removes boss casts without a name', () => {
+    const filtered = withoutUnnamedBossCasts(
+      side(
+        [{ t: 1000, abilityId: 42693 }, { t: 2000, abilityId: 42694 }, { t: 3000, abilityId: 42695 }],
+        [
+          { gameID: 42693, name: 'unknown_a6c5' },
+          { gameID: 42694, name: '' },
+          { gameID: 42695, name: 'Deep Cut' },
+        ],
+      ),
+    )
+    expect(filtered.bossCasts.map((c) => c.abilityId)).toEqual([42695])
   })
 })

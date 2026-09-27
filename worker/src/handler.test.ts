@@ -241,9 +241,13 @@ describe('handleRequest', () => {
   })
 
   it('serves Traditional Chinese rankings from the database with validated parameters', async () => {
-    const row = { report: 'A', fight: 1, actor: 2, name: '甲', server: '泰坦', dps: 30000, fight_start: 0, fight_end: 1, report_start: 0 }
+    const row = { report: 'A', fight: 1, actor: 2, name: '甲', server: '泰坦', rdps: 30000, fight_start: 0, fight_end: 1, report_start: 0 }
+    const bound: unknown[][] = []
     const statement: StatementLike = {
-      bind: () => statement,
+      bind: (...args: unknown[]) => {
+        bound.push(args)
+        return statement
+      },
       all: async <T,>() => ({ results: [row as T] }),
       first: async () => null,
       run: async () => ({}),
@@ -251,8 +255,14 @@ describe('handleRequest', () => {
     const withDb: Env = { ...env, DB: { prepare: () => statement, batch: async () => [] } }
     const res = await handleRequest(get('/tc-rankings?encounter=100&difficulty=101&job=Samurai&minPr=90&maxPr=100'), withDb, ctx, null)
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ count: 1, rankings: [{ name: '甲', pr: 100, rank: 1 }] })
-    for (const path of ['/tc-rankings?encounter=100&difficulty=101&job=S%20a', '/tc-rankings?encounter=100&difficulty=101&job=Samurai&minPr=90&maxPr=80']) {
+    expect(await res.json()).toMatchObject({ count: 1, rankings: [{ name: '甲', pr: 100, rank: 1, rdps: 30000 }] })
+    expect(bound[0]).toEqual([100, 101, 'Samurai'])
+    for (const path of [
+      '/tc-rankings?encounter=100&difficulty=101&job=S%20a',
+      '/tc-rankings?encounter=100&difficulty=101&job=Samurai&minPr=90&maxPr=80',
+      '/tc-rankings?difficulty=101&job=Samurai',
+      '/tc-rankings?encounter=100&difficulty=101&job=Samurai&minPr=101',
+    ]) {
       expect((await handleRequest(get(path), withDb, ctx, null)).status, path).toBe(400)
     }
   })

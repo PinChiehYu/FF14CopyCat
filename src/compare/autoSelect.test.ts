@@ -51,7 +51,7 @@ describe('resolveSelection', () => {
     expect(r.note).toBe('這場戰鬥有 2 位毒蛇劍士，請選擇要比較的對象')
   })
 
-  it('explains when the job is absent', () => {
+  it('finds the same job in the chosen fight, and explains when it is absent', () => {
     const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 97, bossName: 'B97', subType: 'Samurai' })
     expect(r.fight?.id).toBe(4)
     expect(r.player?.id).toBe(1)

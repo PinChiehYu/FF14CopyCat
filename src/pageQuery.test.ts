@@ -10,6 +10,8 @@ describe('shareUrl', () => {
   it('builds links for the current fights and players that parse back to the same selection', () => {
     const url = new URL(shareUrl(selection('AAA', 3, 16), selection('BBB', 11, 6), 'https://pinchiehyu.github.io/FF14CopyCat/'))
     expect(url.pathname).toBe('/FF14CopyCat/')
+    // 只帶兩份日誌的連結（不帶 ?v= 等其他參數）
+    expect([...url.searchParams.keys()]).toEqual(['mine', 'ref'])
     expect(parseReportUrl(url.searchParams.get('mine')!)).toMatchObject({ reportCode: 'AAA', fight: 3, sourceId: 16 })
     expect(parseReportUrl(url.searchParams.get('ref')!)).toMatchObject({ reportCode: 'BBB', fight: 11, sourceId: 6 })
   })

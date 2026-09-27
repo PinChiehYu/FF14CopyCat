@@ -8,16 +8,16 @@ export interface ReportRef {
 
 const REPORT_PATH = /^\/reports\/((?:a:)?[A-Za-z0-9]+)\/?$/
 
-/**
- * 解析 FFLogs 報告連結，例如
- * https://www.fflogs.com/reports/AbCd1234#fight=5&type=damage-done&source=3
- * fight / source 可能出現在 hash 或 query string。無法解析時回傳 null。
- */
 /** 組出指定戰鬥與角色的 FFLogs 報告連結（parseReportUrl 可解析回來）。 */
 export function reportUrl(reportCode: string, fightId: number, sourceId: number): string {
   return `https://www.fflogs.com/reports/${reportCode}?fight=${fightId}&source=${sourceId}`
 }
 
+/**
+ * 解析 FFLogs 報告連結，例如
+ * https://www.fflogs.com/reports/AbCd1234#fight=5&type=damage-done&source=3
+ * fight / source 可能出現在 hash 或 query string。無法解析時回傳 null。
+ */
 export function parseReportUrl(input: string): ReportRef | null {
   let url: URL
   try {

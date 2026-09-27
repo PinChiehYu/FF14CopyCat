@@ -31,4 +31,33 @@ describe('main mechanics', () => {
     expect([...variantMechanics(M8S, mine, ref, 70_000, 70_000)]).toEqual([[key, 1]])
     expect(variantMechanics(M8S, mine, mine, 70_000, 70_000).size).toBe(0)
   })
+
+  it('compares main mechanics however often they are cast', () => {
+    // 主要機制不以施放次數排除：每邊 10 次的機制仍比較（沒有資料時超過 8 次的不比）
+    const repeated = (id: number) => Array.from({ length: 10 }, (_, i) => cast(100 + i * 10, id))
+    const mine = [...common, ...repeated(41906), cast(250, 41885)]
+    const ref = [...common, ...repeated(41906), cast(250, 41889)]
+    expect(mainMechanicDifferences(M8S, mine, ref, (t) => t, 300_000, 300_000)).toEqual([
+      { t: 250_000, mine: [41885], ref: [41889], kind: 'variant' },
+    ])
+  })
+
+  it('counts consecutive resolutions once and ignores one-sided mechanics', () => {
+    // 同一招連續結算 3 次算一次；只有一邊的機制（多半是轉場差異）不算隨機機制不同
+    const mine = [...common, cast(40, 41885), cast(42, 41885), cast(44, 41885), cast(50, 41910)]
+    const ref = [...common, cast(40, 41889), cast(42, 41889), cast(44, 41889)]
+    const key = mainMechanicGroups(M8S)!.get(41885)!
+    expect([...variantMechanics(M8S, mine, ref, 70_000, 70_000)]).toEqual([[key, 1]])
+  })
+
+  it('falls back to all infrequent abilities for bosses without data', () => {
+    const autos = Array.from({ length: 20 }, (_, i) => cast(i * 3, 99))
+    const mine = [cast(10, 1), cast(20, 2), cast(30, 3), cast(40, 10), ...autos]
+    const ref = [cast(10, 1), cast(20, 2), cast(30, 3), cast(40, 11)]
+    expect(mainMechanicDifferences(1, mine, ref, (t) => t, 60_000, 60_000)).toEqual([
+      { t: 40_000, mine: [10], ref: [11], kind: 'variant' },
+    ])
+    // 沒有資料時以各處最小的技能 ID 為鍵
+    expect([...variantMechanics(1, mine, ref, 60_000, 60_000)]).toEqual([[10, 1]])
+  })
 })

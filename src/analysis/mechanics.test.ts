@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { mechanicLabel, mergeRepeats, sameNameVariants } from './mechanics'
+import type { TimedCast } from './alignment'
+import { mechanicDifferences, mechanicLabel, mergeRepeats, sameNameVariants } from './mechanics'
 
 describe('sameNameVariants', () => {
   const names: Record<number, string> = { 42788: '搖擺哈娑', 42789: '搖擺哈娑', 37832: '播放A面', 42883: '播放A面' }
@@ -63,8 +64,6 @@ describe('mechanicLabel', () => {
     expect(mechanicLabel([11, 12], [11, 10], (id) => (id === 12 ? '英雄之擊' : name(id)))).toBe('英雄之擊 #12')
   })
 })
-import type { TimedCast } from './alignment'
-import { mechanicDifferences } from './mechanics'
 
 const cast = (seconds: number, abilityId: number): TimedCast => ({ t: seconds * 1000, abilityId })
 const identity = (t: number) => t
@@ -101,6 +100,7 @@ describe('mechanicDifferences', () => {
     expect(mechanicDifferences(mine, ref, identity, 600_000, 600_000)).toEqual([])
   })
 
+  // 沒有主要機制資料的 Boss 才以施放次數排除（有資料時見 mainMechanics.test.ts）
   it('ignores frequent abilities and casts after the shorter fight ends', () => {
     const autos = Array.from({ length: 20 }, (_, i) => cast(i * 3, 99))
     const mine = [...autos, cast(50, 1)]

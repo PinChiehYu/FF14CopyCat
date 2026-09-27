@@ -7,13 +7,19 @@ const debuff = (statusId: number, start: number, end: number): BuffWindow => ({ 
 describe('controlStatuses', () => {
   it('treats a boss debuff as control only when no GCD starts during any of its windows on either side', () => {
     const spotlight = 1_004_471 // 完美收尾：期間沒有 GCD
-    const burn = 1_004_461 // 蹦迪：期間仍有 GCD
+    const burn = 1_004_461 // 蹦迪：期間仍有 GCD（長度在範圍內，排除的原因是 GCD）
     const long = 1_002_088 // 出血：15 秒，太長不算
     const statuses = controlStatuses([
-      { debuffs: [debuff(spotlight, 102_300, 105_300), debuff(burn, 78_300, 101_800), debuff(long, 16_400, 31_400)], gcds: [80_000, 99_500, 106_400] },
+      { debuffs: [debuff(spotlight, 102_300, 105_300), debuff(burn, 99_000, 102_000), debuff(long, 16_400, 31_400)], gcds: [80_000, 99_500, 106_400] },
       { debuffs: [debuff(spotlight, 346_000, 349_100)], gcds: [345_000, 350_000] },
     ])
     expect([...statuses]).toEqual([spotlight])
+  })
+
+  it('ignores debuffs that are too short or have no known end', () => {
+    // 不到 1 秒的、到戰鬥結束都沒消失的不算控場
+    expect(controlStatuses([{ debuffs: [debuff(1, 10_000, 10_800)], gcds: [] }]).size).toBe(0)
+    expect(controlStatuses([{ debuffs: [{ ...debuff(1, 10_000, 13_000), openEnded: true }], gcds: [] }]).size).toBe(0)
   })
 
   it('ignores a GCD that started just before the debuff landed', () => {
@@ -34,10 +40,13 @@ describe('controlWindows / attachControl', () => {
     const lost = [
       { mineStart: 99_500, mineEnd: 106_400, refStart: 99_000, refEnd: 106_000, refGcds: 1 },
       { mineStart: 65_000, mineEnd: 69_000, refStart: 65_000, refEnd: 69_000, refGcds: 1 },
+      // 與控場只重疊 0.5 秒：不算控場造成
+      { mineStart: 105_000, mineEnd: 109_000, refStart: 105_000, refEnd: 109_000, refGcds: 1 },
     ]
     const tagged = attachControl(lost, windows)
     expect(tagged[0].control).toEqual([2, 1])
     expect(tagged[1].control).toBeUndefined()
+    expect(tagged[2].control).toBeUndefined()
   })
 
   it('names control effects and falls back when all are unnamed', () => {

@@ -51,7 +51,7 @@ describe('buildAlignment', () => {
   it('does not group a mechanic that only one side cast', () => {
     // M8S 轉場前第二次空間斬：輸出夠高時被跳過，另一邊在那個時間點沒有對應的技能，不是隨機變化
     const common = [cast(10, 1), cast(20, 2), cast(30, 3), cast(60, 4), cast(70, 5)]
-    const mine = [...common, cast(40, 50), cast(45, 50)]
+    const mine = [...common, cast(40, 50), cast(50, 50)]
     const ref = [...common, cast(40, 50)]
     const first = buildAlignment(mine, ref)
     expect(variantGroups(mine, ref, first.mineToRef, 1000).size).toBe(0)
@@ -117,6 +117,19 @@ describe('buildAlignment', () => {
     const ref = [cast(10, 1), cast(30, 2), cast(40, 3), cast(45, 5)]
     const { anchors } = buildAlignment(mine, ref)
     expect(anchors.map((a) => a.abilityId)).toEqual([1, 2, 3])
+  })
+
+  it('only pairs casts of the same ability within the drift limit', () => {
+    // 時間差上限 120 秒：超過的不是同一次機制
+    expect(buildAlignment([cast(10, 1)], [cast(140, 1)]).anchors).toEqual([])
+    expect(buildAlignment([cast(10, 1)], [cast(100, 1)]).anchors).toHaveLength(1)
+  })
+
+  it('does not group variants when the first pass has too few anchors', () => {
+    // 第一次對齊少於 3 個錨點時「同一時間點」不可靠，不找隨機機制組：同時間的不同技能不會配成錨點
+    const mine = [cast(10, 1), cast(20, 2), cast(40, 10)]
+    const ref = [cast(10, 1), cast(20, 2), cast(40, 11)]
+    expect(buildAlignment(mine, ref).anchors.map((a) => a.abilityId)).toEqual([1, 2])
   })
 
   it('falls back to identity when nothing matches', () => {

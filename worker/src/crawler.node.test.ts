@@ -26,13 +26,14 @@ const tcReport = {
   code: 'TC1',
   startTime: 1_000,
   fights: [
-    { id: 3, encounterID: 100, difficulty: 101, startTime: 10_000, endTime: 110_000, friendlyPlayers: [1, 2] },
+    { id: 3, encounterID: 100, difficulty: 101, startTime: 10_000, endTime: 110_000, friendlyPlayers: [1, 2, 3] },
     { id: 4, encounterID: 100, difficulty: 100, startTime: 200_000, endTime: 300_000, friendlyPlayers: [1, 2] }, // 非零式：不存
   ],
   masterData: {
     actors: [
       { id: 1, name: '席德', server: '泰坦', subType: 'Samurai' },
       { id: 2, name: 'Lavid', server: 'Gilgamesh', subType: 'Paladin' }, // 非繁中服：不存
+      { id: 3, name: '甲', server: '泰坦', subType: 'Paladin' }, // 傷害表沒有 totalRDPS：以 total 代替
     ],
   },
 }
@@ -53,6 +54,7 @@ function fakeGraphql(listed: unknown[]): { graphql: Graphql; calls: string[] } {
               entries: [
                 { id: 1, name: '席德', type: 'Samurai', total: 2_500_000, totalRDPS: 3_000_000 },
                 { id: 2, name: 'Lavid', type: 'Paladin', total: 2_000_000 },
+                { id: 3, name: '甲', type: 'Paladin', total: 2_000_000 },
                 { id: 9, name: 'Limit Break', type: 'LimitBreak', total: 100_000 },
               ],
             },
@@ -70,49 +72,18 @@ describe('crawl', () => {
     const { graphql, calls } = fakeGraphql([tcReport, globalReport])
     const result = await crawl(db, graphql, 10 * 24 * 3600_000, 68)
     // 只有繁中服的報告查傷害表；非繁中服、非零式、非玩家不存
-    expect(result).toMatchObject({ tcReports: 1, parses: 1 })
+    expect(result).toMatchObject({ tcReports: 1, parses: 2 })
     expect(calls.filter((c) => c === 'damage')).toHaveLength(1)
-    const rows = await db.prepare('SELECT report, fight, actor, job, rdps FROM parses').all()
-    expect(rows.results).toEqual([{ report: 'TC1', fight: 3, actor: 1, job: 'Samurai', rdps: 30_000 }])
+    const rows = await db.prepare('SELECT report, fight, actor, job, rdps FROM parses ORDER BY actor').all()
+    expect(rows.results).toEqual([
+      { report: 'TC1', fight: 3, actor: 1, job: 'Samurai', rdps: 30_000 },
+      { report: 'TC1', fight: 3, actor: 3, job: 'Paladin', rdps: 20_000 },
+    ])
 
     // 再掃一次：已處理過的報告不再查傷害表
     const again = fakeGraphql([tcReport, globalReport])
     await crawl(db, again.graphql, 10 * 24 * 3600_000 + 1, 68)
     expect(again.calls.filter((c) => c === 'damage')).toHaveLength(0)
-  })
-
-  it('removes parses of reports that became private or were deleted', async () => {
-    const db = memoryDb()
-    const now = 10 * 24 * 3600_000
-    for (const code of ['OK', 'PRIV', 'GONE', 'FLAKY', 'NEW']) {
-      await db
-        .prepare(
-          "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, 'Samurai', '席德', '泰坦', 1, 0, 1, 0)",
-        )
-        .bind(code)
-        .run()
-      // NEW 剛收錄，還不用確認
-      await db.prepare('INSERT INTO scanned_reports (code, scanned_at) VALUES (?, ?)').bind(code, code === 'NEW' ? now : 0).run()
-    }
-    const checked: string[] = []
-    const graphql: Graphql = async <T>(query: string, vars: Record<string, unknown>) => {
-      if (query.includes('reports(')) return { rateLimitData: { pointsSpentThisHour: 10 }, reportData: { reports: { has_more_pages: false, data: [] } } } as T
-      const code = vars.code as string
-      checked.push(code)
-      if (code === 'PRIV') throw new Error('You do not have permission to view this report.')
-      if (code === 'GONE') throw new Error('This report does not exist.')
-      if (code === 'FLAKY') throw new Error('Too many requests')
-      return { reportData: { report: { code } } } as T
-    }
-    expect(await pruneGoneReports(db, graphql, now)).toEqual({ checkedReports: 3, removedReports: 2, failedReports: 1 })
-    expect(checked.sort()).toEqual(['FLAKY', 'GONE', 'OK', 'PRIV'])
-    const left = await db.prepare('SELECT report FROM parses ORDER BY report').all<{ report: string }>()
-    expect(left.results.map((r) => r.report)).toEqual(['FLAKY', 'NEW', 'OK'])
-
-    // 一小時後：暫時失敗的再確認一次，已確認的一天內不再確認
-    checked.length = 0
-    await pruneGoneReports(db, graphql, now + 3600_000)
-    expect(checked).toEqual(['FLAKY'])
   })
 
   it('stops before the per-run request limit and resumes the same page next time', async () => {
@@ -122,14 +93,18 @@ describe('crawl', () => {
     // 一頁 60 份繁中服報告：每份都要查傷害表，這次執行查不完
     const reports = Array.from({ length: 60 }, (_, i) => ({ ...tcReport, code: `R${i}` }))
     let damage = 0
+    let listings = 0
     const graphql: Graphql = async <T>(query: string) => {
+      if (query.includes('reports(')) listings++
       if (query.includes('reports(')) return { rateLimitData: { pointsSpentThisHour: 10 }, reportData: { reports: { has_more_pages: true, data: reports } } } as T
       damage++
       return { reportData: { report: {} } } as T
     }
     const first = await crawl(db, graphql, now, 68)
     expect(first.skipped).toBe('subrequests')
-    expect(damage).toBeLessThan(50)
+    // Workers 免費方案每次執行最多 50 個對外請求（另留給權杖等）：GraphQL 請求不超過 47 個
+    expect(listings + damage).toBeLessThanOrEqual(47)
+    expect(listings + damage).toBeGreaterThanOrEqual(45)
     // 頁碼不推進；已處理的報告記為已掃描，下次同一頁只處理剩下的
     expect(await db.prepare("SELECT value FROM crawl_state WHERE key = 'zone68:recent_page'").first()).toBeNull()
     const before = damage
@@ -256,5 +231,41 @@ describe('tcRankings', () => {
     expect(percentile(1, 1)).toBe(100)
     expect(percentile(1, 100)).toBe(100)
     expect(percentile(100, 100)).toBe(0)
+  })
+})
+
+describe('pruneGoneReports', () => {
+  it('removes parses of reports that became private or were deleted', async () => {
+    const db = memoryDb()
+    const now = 10 * 24 * 3600_000
+    for (const code of ['OK', 'PRIV', 'GONE', 'FLAKY', 'NEW']) {
+      await db
+        .prepare(
+          "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, 'Samurai', '席德', '泰坦', 1, 0, 1, 0)",
+        )
+        .bind(code)
+        .run()
+      // NEW 剛收錄，還不用確認
+      await db.prepare('INSERT INTO scanned_reports (code, scanned_at) VALUES (?, ?)').bind(code, code === 'NEW' ? now : 0).run()
+    }
+    const checked: string[] = []
+    const graphql: Graphql = async <T>(query: string, vars: Record<string, unknown>) => {
+      if (query.includes('reports(')) return { rateLimitData: { pointsSpentThisHour: 10 }, reportData: { reports: { has_more_pages: false, data: [] } } } as T
+      const code = vars.code as string
+      checked.push(code)
+      if (code === 'PRIV') throw new Error('You do not have permission to view this report.')
+      if (code === 'GONE') throw new Error('This report does not exist.')
+      if (code === 'FLAKY') throw new Error('Too many requests')
+      return { reportData: { report: { code } } } as T
+    }
+    expect(await pruneGoneReports(db, graphql, now)).toEqual({ checkedReports: 3, removedReports: 2, failedReports: 1 })
+    expect(checked.sort()).toEqual(['FLAKY', 'GONE', 'OK', 'PRIV'])
+    const left = await db.prepare('SELECT report FROM parses ORDER BY report').all<{ report: string }>()
+    expect(left.results.map((r) => r.report)).toEqual(['FLAKY', 'NEW', 'OK'])
+
+    // 一小時後：暫時失敗的再確認一次，已確認的一天內不再確認
+    checked.length = 0
+    await pruneGoneReports(db, graphql, now + 3600_000)
+    expect(checked).toEqual(['FLAKY'])
   })
 })
