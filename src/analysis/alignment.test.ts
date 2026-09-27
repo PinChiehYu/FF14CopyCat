@@ -25,23 +25,23 @@ describe('buildAlignment', () => {
     }
   })
 
-  it('matches the nth occurrence and merges simultaneous casts', () => {
+  it('pairs casts of the same ability by time and merges simultaneous casts', () => {
     const mine = [cast(10, 7), cast(10.2, 7), cast(40, 7)]
     const ref = [cast(10.5, 7), cast(40.5, 7)]
     const { anchors } = buildAlignment(mine, ref)
-    expect(anchors.map((a) => [a.occurrence, a.mine, a.ref])).toEqual([
-      [1, 10_000, 10_500],
-      [2, 40_000, 40_500],
+    expect(anchors.map((a) => [a.abilityId, a.mine, a.ref])).toEqual([
+      [7, 10_000, 10_500],
+      [7, 40_000, 40_500],
     ])
   })
 
   it('pairs the variants of a mechanic whose order is random', () => {
-    // A 面／B 面先後隨機（熱舞綠光）：兩邊順序相反，配出的錨點時間差 ±20 秒，前後的錨點都一致
+    // A 面／B 面先後隨機（熱舞綠光）：兩邊順序相反；依時間配對、同一時間兩邊不同的技能歸成一組
     const common = [cast(10, 1), cast(20, 2), cast(30, 3), cast(70, 4), cast(80, 5), cast(90, 6)]
     const mine = [...common, cast(40, 10), cast(60, 11)]
     const ref = [...common, cast(40, 11), cast(60, 10)]
     const { anchors, mineToRef } = buildAlignment(mine, ref)
-    // 同一時間兩邊不同技能（10／11）歸成同一組，我的第 1 次配參考的第 1 次
+    // 同一時間兩邊不同技能（10／11）歸成同一組，我的放入 A 面配參考同一時間的放入 B 面
     expect(anchors.map((a) => [a.abilityId, a.mine, a.ref])).toContainEqual([10, 40_000, 40_000])
     expect(anchors.map((a) => [a.abilityId, a.mine, a.ref])).toContainEqual([11, 60_000, 60_000])
     expect(mineToRef(50_000)).toBe(50_000)
@@ -54,43 +54,32 @@ describe('buildAlignment', () => {
     const mine = [...common, cast(40, 50), cast(45, 50)]
     const ref = [...common, cast(40, 50)]
     const first = buildAlignment(mine, ref)
-    expect(variantGroups(mine, ref, first.mineToRef, 1000, 8).size).toBe(0)
+    expect(variantGroups(mine, ref, first.mineToRef, 1000).size).toBe(0)
   })
 
   it('groups abilities cast at the same time only when both sides differ there', () => {
     const common = [cast(10, 1), cast(20, 2), cast(30, 3), cast(60, 4), cast(70, 5)]
     const mine = [...common, cast(40, 10), cast(50, 11)]
     const ref = [...common, cast(40, 11), cast(50, 10)]
-    const groups = variantGroups(mine, ref, buildAlignment(mine, ref).mineToRef, 1000, 8)
+    const groups = variantGroups(mine, ref, buildAlignment(mine, ref).mineToRef, 1000)
     expect(groups.get(10)).toBe(groups.get(11))
     expect(groups.has(1)).toBe(false)
   })
 
-  it('drops a run of several mismatched anchors', () => {
-    // 實例（M5S）：B 面的放入與播放（兩個 ID）連續 3 個錨點都配到參考早 20 秒的那一次
+  it('does not pair the same ability across a swapped random order', () => {
+    // 實例（M5S）：A／B 面相反時，同 ID 的放入與播放在另一邊早 20 秒；依時間配對不會配到那一次
     const common = [cast(10, 1), cast(15, 2), cast(20, 3), cast(65, 4), cast(75, 5), cast(80, 6)]
     const mine = [...common, cast(27, 10), cast(47, 11), cast(58, 12), cast(59, 13)]
     const ref = [...common, cast(27, 11), cast(38, 12), cast(39, 13), cast(47, 10)]
     const { anchors, mineToRef } = buildAlignment(mine, ref)
-    // 配錯的都去掉（放入 A／B 面歸成同一組後正確配對），剩下的錨點時間差都是 0
+    // 錨點的時間差都是 0（放入 A／B 面歸成同一組後同一時間配對）
     expect(anchors.every((a) => a.ref === a.mine)).toBe(true)
     expect(anchors.map((a) => a.abilityId)).toEqual(expect.arrayContaining([1, 2, 3, 4, 5, 6]))
     expect(mineToRef(50_000)).toBe(50_000)
   })
 
-  it('drops a longer detour of mismatched anchors that returns to the same offset', () => {
-    // 實例（M5S）：B 面整段 5 個錨點都配到參考早 20 秒的那段，之後回到原本的時間差
-    const common = [cast(10, 1), cast(14, 2), cast(18, 3), cast(80, 4), cast(90, 5), cast(100, 6)]
-    const bSide = [40, 42, 44, 46, 48].map((s, i) => cast(s, 10 + i))
-    const mine = [...common, ...bSide]
-    const ref = [...common, ...bSide.map((c) => ({ ...c, t: c.t - 20_000 }))]
-    const { anchors } = buildAlignment(mine, ref)
-    expect(anchors.map((a) => a.abilityId)).toEqual([1, 2, 3, 4, 5, 6])
-    expect(pushDifferences(anchors)).toEqual([])
-  })
-
-  it('drops a mismatched last anchor', () => {
-    // 尾聲的隨機機制不同（我 4 拍、參考 8 拍），參考較晚才出現的 4 拍配到我最後一次
+  it('pairs the last random mechanic with the one at the same time', () => {
+    // 尾聲的隨機機制不同（我 4 拍、參考 8 拍），參考較晚才出現的 4 拍不會配到我這一次
     const common = [cast(10, 1), cast(20, 2), cast(30, 3), cast(40, 4)]
     const mine = [...common, cast(50, 10)]
     const ref = [...common, cast(50, 11), cast(70, 10)]
@@ -107,18 +96,19 @@ describe('buildAlignment', () => {
   })
 
   it('keeps the anchors around a real push', () => {
-    // 60 秒後參考都早 10 秒：前後兩邊的時間差不同，不是孤立錨點
+    // 60 秒後參考都早 10 秒（依血量推進）：時間差跳一次後維持
     const mine = [cast(10, 1), cast(20, 2), cast(30, 3), cast(60, 4), cast(70, 5), cast(80, 6)]
     const ref = [cast(10, 1), cast(20, 2), cast(30, 3), cast(50, 4), cast(60, 5), cast(70, 6)]
     expect(buildAlignment(mine, ref).anchors).toHaveLength(6)
   })
 
-  it('ignores frequent abilities such as auto-attacks', () => {
+  it('pairs frequent abilities with the same cast at the same time, not a neighbouring one', () => {
+    // 每 3 秒一次的技能，參考晚 0.5 秒：配到同一次（時間差 0.5 秒），不會配到相鄰的一次（差 2.5／3.5 秒）
     const autos = (offset: number) => Array.from({ length: 20 }, (_, i) => cast(offset + i * 3, 99))
-    const mine = [...autos(0), cast(30, 1)]
-    const ref = [...autos(1), cast(33, 1)]
-    const { anchors } = buildAlignment(mine, ref)
-    expect(anchors.map((a) => a.abilityId)).toEqual([1])
+    const { anchors, mineToRef } = buildAlignment(autos(1), autos(1.5))
+    expect(anchors).toHaveLength(20)
+    expect(anchors.every((a) => a.ref - a.mine === 500)).toBe(true)
+    expect(mineToRef(30_000)).toBe(30_500)
   })
 
   it('drops pairings that contradict the time order', () => {
@@ -139,7 +129,7 @@ describe('buildAlignment', () => {
 describe('pushDifferences', () => {
   // 錨點：[我的秒數, 參考的秒數]
   const anchors = (pairs: [number, number][]): Anchor[] =>
-    pairs.map(([m, r], i) => ({ mine: m * 1000, ref: r * 1000, abilityId: i + 1, occurrence: 1 }))
+    pairs.map(([m, r], i) => ({ mine: m * 1000, ref: r * 1000, abilityId: i + 1 }))
 
   it('finds a persistent jump such as pushing a phase later than the reference', () => {
     // 第一階段兩邊同步；參考 100 秒推進、我 109 秒才推進；轉場後時間差維持 −9 秒

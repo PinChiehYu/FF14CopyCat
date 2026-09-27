@@ -14,8 +14,6 @@ export interface Anchor {
   /** 參考日誌中的戰鬥時間 */
   ref: number
   abilityId: number
-  /** 該技能在各自日誌中的第幾次施放（從 1 開始） */
-  occurrence: number
 }
 
 export interface Alignment {
@@ -114,44 +112,36 @@ function piecewise(points: { from: number; to: number }[], t: number): number {
 export interface AlignmentOptions {
   /** 同一技能在這段時間內重複施放（多個分身同時施放）視為一次 */
   dedupeMs?: number
-  /** 施放次數超過此值的技能（自動攻擊、反覆出現的招式）不當錨點，避免次數錯位 */
-  maxOccurrences?: number
 }
 
-interface Occurrence extends TimedCast {
-  key: string
-  occurrence: number
+/** 去重後的一次施放；key 為技能 ID，或所屬隨機機制組的代表 ID（同一組的技能視為同一個機制） */
+interface KeyedCast extends TimedCast {
+  key: number
 }
 
 // 同一組隨機機制（見 variantGroups）的技能在這段時間內都算同一次機制（一次機制常由多個判定技能組成）
 const GROUP_DEDUPE_MS = 5000
 // 第一次對齊至少要有這麼多錨點才找隨機機制組
 const MIN_ANCHORS_FOR_GROUPS = 3
+// 兩邊同一機制的時間差最多這麼多（依血量推進的轉場會讓時間差逐步拉大；騎士基準到戰鬥最後差 61 秒）
+const MAX_DRIFT_MS = 120_000
 
 /**
- * 依時間排序編號：同一技能（或同一組隨機機制）的第 n 次。
- * @param groups 技能 ID → 所屬隨機機制組的代表 ID；同一組的技能共用編號
+ * 依時間排序並去重：同一技能（或同一組隨機機制）在短時間內重複施放視為一次，只留第一次。
+ * @param groups 技能 ID → 所屬隨機機制組的代表 ID
  */
-function occurrences(
-  casts: TimedCast[],
-  dedupeMs: number,
-  groups: Map<number, number> = new Map(),
-): { list: Occurrence[]; counts: Map<number, number> } {
-  const sorted = [...casts].sort((a, b) => a.t - b.t)
+function keyedCasts(casts: TimedCast[], dedupeMs: number, groups: Map<number, number> = new Map()): KeyedCast[] {
   const last = new Map<number, number>()
-  const counts = new Map<number, number>()
-  const list: Occurrence[] = []
-  for (const cast of sorted) {
+  const out: KeyedCast[] = []
+  for (const cast of [...casts].sort((a, b) => a.t - b.t)) {
     const group = groups.get(cast.abilityId)
-    const id = group ?? cast.abilityId
-    const prev = last.get(id)
+    const key = group ?? cast.abilityId
+    const prev = last.get(key)
     if (prev !== undefined && cast.t - prev < (group !== undefined ? GROUP_DEDUPE_MS : dedupeMs)) continue
-    last.set(id, cast.t)
-    const occurrence = (counts.get(id) ?? 0) + 1
-    counts.set(id, occurrence)
-    list.push({ ...cast, occurrence, key: `${group !== undefined ? 'g' : ''}${id}#${occurrence}` })
+    last.set(key, cast.t)
+    out.push({ ...cast, key })
   }
-  return { list, counts }
+  return out
 }
 
 // 兩邊不同技能相距這麼近（對齊後）才算同一個時間點的隨機變化；同一技能在另一邊這麼近以內有施放就不算
@@ -161,7 +151,7 @@ const SAME_ABILITY_WINDOW_MS = 5000
 /**
  * 隨機機制組：對齊後同一時間點兩邊施放不同技能（例如放入 A 面／B 面、二連／三連／四連指向），
  * 互為最近的一對就歸成同一組（會連鎖，例如二連—四連、三連—四連合成一組）。遊戲資料沒有這種分組，
- * 兩邊選到同一個變化時技能 ID 相同、本來就不會配錯，所以只需要從這兩場不同的地方找。
+ * 兩邊選到同一個變化時技能 ID 相同、本來就會配上，所以只需要從這兩場不同的地方找。
  * 回傳 技能 ID → 組的代表 ID（只含有被歸組的技能）。
  */
 export function variantGroups(
@@ -169,12 +159,9 @@ export function variantGroups(
   refBoss: TimedCast[],
   mineToRef: (t: number) => number,
   dedupeMs: number,
-  maxOccurrences: number,
 ): Map<number, number> {
-  const side = (casts: TimedCast[], toRef: (t: number) => number) => {
-    const { list, counts } = occurrences(casts, dedupeMs)
-    return list.filter((c) => (counts.get(c.abilityId) ?? 0) <= maxOccurrences).map((c) => ({ t: toRef(c.t), abilityId: c.abilityId }))
-  }
+  const side = (casts: TimedCast[], toRef: (t: number) => number) =>
+    keyedCasts(casts, dedupeMs).map((c) => ({ t: toRef(c.t), abilityId: c.abilityId }))
   const mine = side(mineBoss, mineToRef)
   const ref = side(refBoss, (t) => t)
   const unmatched = (list: TimedCast[], other: TimedCast[]) =>
@@ -212,80 +199,35 @@ export function variantGroups(
   for (const root of new Set(groups.values())) groups.set(root, root)
   return groups
 }
-// 時間差（ref − mine）相差這麼多以上就算不同的一段
-const LEVEL_MS = 3000
-// 跳開又跳回的一段在我的時間上最長多久（更長的視為真的不同，不去掉）
-const DETOUR_MAX_MS = 30_000
-// 第一段或最後一段少於這麼多個錨點、而相鄰那段至少這麼多個時，視為配錯
-const EDGE_MIN_ANCHORS = 3
 
-/** 依時間差把連續的錨點分段：與目前這段時間差的中位數相差 LEVEL_MS 以上就開始新的一段。 */
-function levels(anchors: Anchor[]): Anchor[][] {
-  const offset = (a: Anchor) => a.ref - a.mine
-  const out: Anchor[][] = []
-  for (const a of anchors) {
-    const current = out.at(-1)
-    if (current && Math.abs(offset(a) - median(current.map(offset))) < LEVEL_MS) current.push(a)
-    else out.push([a])
-  }
-  return out
-}
-
-/**
- * 去掉配錯的錨點：隨機順序的機制（例如熱舞綠光開場的 A 面／B 面先後、尾聲的 4 拍／8 拍節奏）會讓
- * 「同一技能的第 n 次」配到另一段機制，時間差「跳開又跳回」，扭曲時間軸並被誤判成推進差距。
- * 依時間差分段後，去掉：
- * - 夾在兩段之間、前後兩段時間差一致、而且在我的時間上不超過 30 秒的一段（連續配錯好幾個也能整段去掉：
- *   M5S 開場 B 面整段 5 個錨點都差 −20 秒）
- * - 第一段或最後一段錨點很少、而相鄰那段錨點夠多時（尾聲配錯，後面沒有錨點可以「跳回」）
- * 每次去掉一段後重新分段。真正的推進是跳過去就不回來（前後兩段不同），不會被去掉。
- */
-function dropDetours(anchors: Anchor[]): Anchor[] {
-  const offset = (a: Anchor) => a.ref - a.mine
-  const level = (l: Anchor[]) => median(l.map(offset))
-  const span = (l: Anchor[]) => l[l.length - 1].mine - l[0].mine
-  let list = anchors
-  for (;;) {
-    const ls = levels(list)
-    // 先找中間跳開又跳回的段；都沒有了才看首尾（否則開場只有兩個正確錨點時，會先被當成配錯的首段）
-    let detour = ls.findIndex(
-      (l, k) =>
-        k > 0 && k < ls.length - 1 && Math.abs(level(ls[k - 1]) - level(ls[k + 1])) < LEVEL_MS && span(l) <= DETOUR_MAX_MS,
-    )
-    if (detour < 0 && ls.length >= 2) {
-      const edge = (k: number, neighbor: number) => ls[k].length < EDGE_MIN_ANCHORS && ls[neighbor].length >= EDGE_MIN_ANCHORS
-      // 開打時兩邊同步（隱含的 (0, 0) 錨點），時間差接近 0 的第一段不算配錯
-      if (Math.abs(level(ls[0])) >= LEVEL_MS && edge(0, 1)) detour = 0
-      else if (edge(ls.length - 1, ls.length - 2)) detour = ls.length - 1
-    }
-    if (detour < 0) return list
-    const drop = new Set(ls[detour])
-    list = list.filter((a) => !drop.has(a))
-  }
-}
 // 挑選錨點時，時間差每跳 1 秒扣掉的分數（以錨點數計），一次跳動最多扣這麼多：小抖動照樣扣分，
-// 大跳動的扣分有上限（真正的推進後錨點少時也不會被整段捨棄）。以 9 組實際比較驗證，上限 0.5～5 結果都相同
+// 大跳動的扣分有上限（真正的推進後錨點少時也不會被整段捨棄）
 const OFFSET_JUMP_PENALTY_PER_S = 0.5
 const MAX_JUMP_PENALTY = 2
+// 錨點與前一個錨點相距這麼久以上才得滿分 1，較近的依比例：密集的連續施放（熱舞綠光的 Let's Dance! Remix 每 0.75 秒一次，
+// 方向隨機）整段挪 3 步能多對上幾個同 ID 的施放，每個都算 1 分時會勝過時間差的穩定（±2.5 秒的錯配）
+const FULL_GAIN_GAP_MS = 1000
 
 /**
- * 依 mine 排序的配對中，取兩邊時間都遞增、分數最高的一串：每個錨點 +1，時間差（ref − mine）每跳 1 秒 −0.5、
- * 一次最多 −2（從戰鬥開始 (0, 0) 起算）。只取最長的一串時，隨機順序的機制配錯的錨點若比較多（一次機制有多個判定，
- * 例如熱舞綠光的指向機制），會整串勝過中間正確的錨點（M5S 開場 A／B 面相反時，錯配 11 個對正確 6 個）；
- * 錯配要跳開再跳回（而且常連續錯好幾段），扣分多於多出的錨點；真正的推進只跳一次，之後有 3 個以上錨點就會保留。
+ * 從候選配對中，取兩邊時間都遞增、分數最高的一串：每個錨點 +1（與前一個錨點相距不到 1 秒時依比例），
+ * 時間差（ref − mine）每跳 1 秒 −0.5、一次最多 −2，從戰鬥開始 (0, 0) 起算。兩場從 0 同步開始，時間差只在推進（依血量的轉場）時改變、之後維持，
+ * 所以分數最高的一串就是「從 0 開始、同一個機制對同一個機制」的配對：時間軸固定的戰鬥（熱舞綠光）
+ * 時間差一直接近 0；推進後時間差跳一次、之後的錨點都在新的時間差上。
+ * @param pairs 依 mine、再依 ref 排序
  */
 function bestChain(pairs: Anchor[]): Anchor[] {
   const offset = (a: Anchor) => a.ref - a.mine
   const penalty = (ms: number) => Math.min((Math.abs(ms) / 1000) * OFFSET_JUMP_PENALTY_PER_S, MAX_JUMP_PENALTY)
+  const gain = (gap: number) => Math.min(1, gap / FULL_GAIN_GAP_MS)
   const score: number[] = []
   const prev: number[] = []
   pairs.forEach((p, i) => {
-    let best = 1 - penalty(offset(p))
+    let best = gain(p.mine) - penalty(offset(p))
     let from = -1
     for (let j = 0; j < i; j++) {
       const q = pairs[j]
       if (q.mine >= p.mine || q.ref >= p.ref) continue
-      const s = score[j] + 1 - penalty(offset(p) - offset(q))
+      const s = score[j] + gain(p.mine - q.mine) - penalty(offset(p) - offset(q))
       if (s > best) {
         best = s
         from = j
@@ -303,52 +245,49 @@ function bestChain(pairs: Anchor[]): Anchor[] {
   return result.reverse()
 }
 
-
 /**
  * 以 Boss 技能為錨點對齊兩份日誌的時間軸。
- * 錨點 = 兩份日誌中「同一技能的第 n 次施放」，錨點之間線性內插，
- * 戰鬥開始 (0, 0) 為隱含錨點，最後一個錨點之後以斜率 1 外推。
- * 對齊兩次：第一次找出兩邊同一時間施放不同技能的隨機機制組（variantGroups），第二次把同一組的技能
- * 當成同一個機制編號（例如我的第 1 次「放入 A 面」配參考的第 1 次「放入 B 面」），隨機順序不同時也能正確配對。
+ * 1. 候選配對：兩邊同一技能、時間差在 MAX_DRIFT_MS 內的所有施放（不依「第幾次」，所以隨機順序不同也配得上）。
+ * 2. 取分數最高的一串（bestChain：從 0 開始、時間差穩定）。
+ * 3. 對齊兩次：第一次找出同一時間點兩邊施放不同技能的隨機機制組（variantGroups，例如放入 A 面／B 面），
+ *    第二次把同一組的技能當成同一個機制（例如我的「放入 A 面」配參考同一時間的「放入 B 面」）。
+ * 錨點之間線性內插，戰鬥開始 (0, 0) 為隱含錨點，最後一個錨點之後以斜率 1 外推。
  */
 export function buildAlignment(
   mineBoss: TimedCast[],
   refBoss: TimedCast[],
-  { dedupeMs = 1000, maxOccurrences = 8 }: AlignmentOptions = {},
+  { dedupeMs = 1000 }: AlignmentOptions = {},
 ): Alignment {
-  const first = alignWith(mineBoss, refBoss, dedupeMs, maxOccurrences, new Map())
+  const first = alignWith(mineBoss, refBoss, dedupeMs, new Map())
   // 第一次對齊要有足夠的錨點，找出的「同一時間點」才可靠
   if (first.anchors.length < MIN_ANCHORS_FOR_GROUPS) return first
-  const groups = variantGroups(mineBoss, refBoss, first.mineToRef, dedupeMs, maxOccurrences)
-  return groups.size === 0 ? first : alignWith(mineBoss, refBoss, dedupeMs, maxOccurrences, groups)
+  const groups = variantGroups(mineBoss, refBoss, first.mineToRef, dedupeMs)
+  return groups.size === 0 ? first : alignWith(mineBoss, refBoss, dedupeMs, groups)
 }
 
 function alignWith(
   mineBoss: TimedCast[],
   refBoss: TimedCast[],
   dedupeMs: number,
-  maxOccurrences: number,
   groups: Map<number, number>,
 ): Alignment {
-  const mine = occurrences(mineBoss, dedupeMs, groups)
-  const ref = occurrences(refBoss, dedupeMs, groups)
-  const refByKey = new Map(ref.list.map((o) => [o.key, o]))
-  const rare = (id: number) => {
-    const key = groups.get(id) ?? id
-    return (mine.counts.get(key) ?? 0) <= maxOccurrences && (ref.counts.get(key) ?? 0) <= maxOccurrences
-  }
+  const mine = keyedCasts(mineBoss, dedupeMs, groups)
+  const ref = keyedCasts(refBoss, dedupeMs, groups)
+  // 依時間配對，頻繁施放的技能也不會像「第 n 次」那樣錯位，因此不限制施放次數
+  const refByKey = new Map<number, KeyedCast[]>()
+  for (const r of ref) if (r.t > 0) refByKey.set(r.key, [...(refByKey.get(r.key) ?? []), r])
 
+  // 同一技能（或同一組）在時間差上限內的所有施放都是候選；已依時間排序，候選依 mine、再依 ref 排序
   const candidates: Anchor[] = []
-  for (const o of mine.list) {
-    const match = refByKey.get(o.key)
-    if (match && rare(o.abilityId) && o.t > 0 && match.t > 0) {
-      candidates.push({ mine: o.t, ref: match.t, abilityId: o.abilityId, occurrence: o.occurrence })
+  for (const m of mine) {
+    if (m.t <= 0) continue
+    for (const r of refByKey.get(m.key) ?? []) {
+      if (Math.abs(r.t - m.t) <= MAX_DRIFT_MS) candidates.push({ mine: m.t, ref: r.t, abilityId: m.abilityId })
     }
   }
-  // bestChain 保證兩邊都嚴格遞增（同一時間點只會留一個）；去掉配錯的段後仍遞增（只刪除，不改順序）
-  const anchors = dropDetours(bestChain(candidates))
+  // bestChain 保證兩邊都嚴格遞增（同一時間點只會留一個），因此兩個方向都能分段內插
+  const anchors = bestChain(candidates)
   const points = [{ mine: 0, ref: 0 }, ...anchors]
-  // 兩邊都嚴格遞增，因此兩個方向都能分段內插
   const forward = points.map((p) => ({ from: p.mine, to: p.ref }))
   const backward = points.map((p) => ({ from: p.ref, to: p.mine }))
 
