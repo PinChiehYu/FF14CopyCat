@@ -56,7 +56,7 @@ export function Mechanics({
         對齊後共 {rows.length} 處 Boss{' '}
         {main ? <span className="has-tip" title={MAIN_TIP}>主要機制</span> : '機制'}不同（其中 {rows.filter((d) => d.kind === 'variant').length}{' '}
         處是同一時間施放不同技能，通常是隨機變化）。這些時間點的站位或走位差異可能是機制造成，不一定是錯誤。
-        「只有一邊」的機制，常是輸出較高的一方提早轉場而跳過。
+        推進時間不同（例如轉場提早）造成的只有一邊的機制不列出。
       </p>
       <table className="metrics-table mechanics">
         <thead>

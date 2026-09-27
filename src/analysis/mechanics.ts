@@ -20,6 +20,8 @@ export interface MechanicOptions {
   dedupeMs?: number
   /** 施放次數超過此值的技能（自動攻擊等）不比較 */
   maxOccurrences?: number
+  /** 推進差距的時段（參考時間）：這段時間內只有一邊的施放不列出 */
+  pushes?: { refStart: number; refEnd: number }[]
 }
 
 /**
@@ -120,7 +122,7 @@ export function mechanicDifferences(
   mineToRef: (t: number) => number,
   mineEnd: number,
   refEnd: number,
-  { windowMs = 1500, sameAbilityWindowMs = 5000, dedupeMs = 1000, maxOccurrences = 8 }: MechanicOptions = {},
+  { windowMs = 1500, sameAbilityWindowMs = 5000, dedupeMs = 1000, maxOccurrences = 8, pushes = [] }: MechanicOptions = {},
 ): MechanicDifference[] {
   const mineAll = dedupe(mineBoss, dedupeMs)
   const refAll = dedupe(refBoss, dedupeMs)
@@ -132,10 +134,25 @@ export function mechanicDifferences(
   const mine = mineAll.filter((c) => rare(c.abilityId)).map((c) => ({ t: mineToRef(c.t), abilityId: c.abilityId }))
   const ref = refAll.filter((c) => rare(c.abilityId))
 
-  const hasSame = (a: TimedCast, list: TimedCast[]) =>
-    list.some((b) => b.abilityId === a.abilityId && Math.abs(a.t - b.t) <= sameAbilityWindowMs)
-  const mineOnly = mine.filter((c) => c.t <= end && !hasSame(c, ref))
-  const refOnly = ref.filter((c) => c.t <= end && !hasSame(c, mine))
+  // 同一技能一對一配對（時間最近的先配）：連續多下的機制（例如幻狼劍 4 下）第一下版本不同時，
+  // 我的第一下不會配到參考的第二下，而讓參考的第一下落單
+  const pairs: { m: number; r: number; gap: number }[] = []
+  mine.forEach((a, m) =>
+    ref.forEach((b, r) => {
+      if (a.abilityId === b.abilityId && Math.abs(a.t - b.t) <= sameAbilityWindowMs) pairs.push({ m, r, gap: Math.abs(a.t - b.t) })
+    }),
+  )
+  const mineMatched = new Set<number>()
+  const refMatched = new Set<number>()
+  for (const p of pairs.sort((a, b) => a.gap - b.gap)) {
+    if (mineMatched.has(p.m) || refMatched.has(p.r)) continue
+    mineMatched.add(p.m)
+    refMatched.add(p.r)
+  }
+  // 推進時段內只有一邊的施放是推進時間不同造成的（例如較慢的一方在轉場前多一次空間斬），不算機制差異
+  const inPush = (t: number) => pushes.some((p) => t >= p.refStart && t <= p.refEnd)
+  const mineOnly = mine.filter((c, i) => c.t <= end && !mineMatched.has(i))
+  const refOnly = ref.filter((c, i) => c.t <= end && !refMatched.has(i))
 
   // 依時間把沒配對的施放合併成時間點（同一時間多個技能算一個機制）
   const events = [
@@ -154,10 +171,12 @@ export function mechanicDifferences(
     }
   }
 
-  return groups.map((g) => ({
-    t: g.t,
-    mine: [...g.mine],
-    ref: [...g.ref],
-    kind: g.mine.size > 0 && g.ref.size > 0 ? 'variant' : g.mine.size > 0 ? 'only-mine' : 'only-ref',
-  }))
+  return groups
+    .map((g): MechanicDifference => ({
+      t: g.t,
+      mine: [...g.mine],
+      ref: [...g.ref],
+      kind: g.mine.size > 0 && g.ref.size > 0 ? 'variant' : g.mine.size > 0 ? 'only-mine' : 'only-ref',
+    }))
+    .filter((d) => d.kind === 'variant' || !inPush(d.t))
 }

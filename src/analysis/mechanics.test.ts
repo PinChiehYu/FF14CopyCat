@@ -93,6 +93,25 @@ describe('mechanicDifferences', () => {
     ])
   })
 
+  it('pairs each cast of the same ability once, nearest first', () => {
+    // 實例（M8S 幻狼劍，每 2 秒一下）：第一下版本不同（我 41922、參考 41923），其餘相同。
+    // 我的第一下不能配到參考的第二下，否則參考的第一下會落單成「只有參考」
+    const mine = [cast(350.8, 41922), cast(352.9, 41922), cast(354.9, 41922), cast(356.9, 41922)]
+    const ref = [cast(350.8, 41923), cast(352.9, 41922), cast(354.9, 41922), cast(356.9, 41922)]
+    expect(mechanicDifferences(mine, ref, identity, 600_000, 600_000)).toEqual([
+      { t: 350_800, mine: [41922], ref: [41923], kind: 'variant' },
+    ])
+  })
+
+  it('ignores one-sided casts during a push', () => {
+    // 我推進較慢，在轉場前多一次空間斬：推進時段內只有一邊的施放不算機制差異
+    const mine = [cast(10, 1), cast(384.1, 42831)]
+    const ref = [cast(10, 1)]
+    const pushes = [{ refStart: 382_500, refEnd: 386_500 }]
+    expect(mechanicDifferences(mine, ref, identity, 600_000, 600_000, { pushes })).toEqual([])
+    expect(mechanicDifferences(mine, ref, identity, 600_000, 600_000)).toHaveLength(1)
+  })
+
   it('treats the same ability a few seconds apart as the same mechanic', () => {
     // 轉場附近對齊差 3 秒，不應列成「只有我」與「只有參考」
     const mine = [cast(339.7, 5), cast(351.7, 6)]

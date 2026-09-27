@@ -397,8 +397,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         alignment.mineToRef,
         alignment.mineToRef(mine.duration),
         reference.duration,
+        { pushes },
       ),
-    [mine, reference, alignment],
+    [mine, reference, alignment, pushes],
   )
   // 機制差異表只列主要機制（cactbot 時間軸列出的技能）；站位與建議仍用全部低頻技能
   const mainMechanics = useMemo(
@@ -410,8 +411,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         alignment.mineToRef,
         alignment.mineToRef(mine.duration),
         reference.duration,
+        { pushes },
       ),
-    [mine, reference, alignment],
+    [mine, reference, alignment, pushes],
   )
   const positions = useMemo(() => {
     const mineSamples = mineInRange.playerPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
