@@ -73,7 +73,11 @@ export function Windows({
           const icon = abilities.get(displayId)
           return (
             <tr key={mine.rule.key}>
-              <th title={[icon?.englishName, ...new Set([mine.rule.patchNote, ref.rule.patchNote])].filter(Boolean).join('\n')}>
+              <th
+                title={[mine.rule.action && ruleName(mine.rule, abilityName), icon?.englishName, ...new Set([mine.rule.patchNote, ref.rule.patchNote])]
+                  .filter(Boolean)
+                  .join('\n')}
+              >
                 {icon && (
                   <img
                     className={`usage-icon${isStatusId(displayId) ? ' status-icon' : ''}`}
@@ -82,7 +86,15 @@ export function Windows({
                     loading="lazy"
                   />
                 )}
-                {ruleName(mine.rule, abilityName)}
+                {/* 「技能後 N 秒」的窗口：名稱後只附小字秒數（完整說明在滑鼠提示），避免名稱欄換行 */}
+                {mine.rule.action ? (
+                  <>
+                    {abilityName(mine.rule.action.id)}
+                    <span className="rule-duration">{mine.rule.action.durationMs / 1000}秒</span>
+                  </>
+                ) : (
+                  ruleName(mine.rule, abilityName)
+                )}
               </th>
               <td>
                 <Chips summary={mine} toRef={mineToRef} onJump={onJump} />
