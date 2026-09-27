@@ -431,7 +431,44 @@ button:disabled {
 
 .comparison h2 {
   font-size: 1.2em;
-  margin: 0 0 8px;
+  margin: 0;
+}
+
+/* 標題列：「比較結果」與右側的複製分享連結按鈕 */
+.comparison-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.share-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 12px;
+  font-size: 0.85em;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.share-link:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.share-link.copied {
+  color: var(--kill);
+  border-color: var(--kill);
+}
+
+.share-icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
 }
 
 .hint {

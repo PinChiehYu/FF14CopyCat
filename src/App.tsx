@@ -6,6 +6,7 @@ import { playersInFight } from './fflogs/report'
 import { isStandardParty, jobName, jobRole, sortByPartySlot } from './jobs/names'
 import { Comparison } from './compare/Comparison'
 import { ReferenceFinder } from './compare/ReferenceFinder'
+import { ShareLink } from './compare/ShareLink'
 import type { Selection } from './compare/load'
 import type { Actor, Fight, Report } from './fflogs/types'
 import { parseReportUrl, reportUrl, type ReportRef } from './fflogs/url'
@@ -292,7 +293,10 @@ export default function App() {
 
       {mine && reference && (
         <section className="comparison">
-          <h2>比較結果</h2>
+          <div className="comparison-head">
+            <h2>比較結果</h2>
+            <ShareLink mine={mine} reference={reference} />
+          </div>
           <Comparison mine={mine} reference={reference} />
         </section>
       )}
