@@ -317,6 +317,16 @@
   - 重錘掠刷、莫古利激流、馬蒂恩懲罰
   - 六合星導腳、三連詠唱
 
+## 外部資料來源調查：cactbot 戰鬥時間軸（2026-09-27）
+
+目的：確認能否用 cactbot（OverlayPlugin/cactbot，Apache-2.0）的時間軸檔案得知「哪些技能是同一個隨機機制」，以及是否能與本站的對齊與繁中服日誌配合。檔案：`ui/raidboss/data/07-dt/raid/r5s.txt`／`r7s.txt`／`r8s.txt`（raw.githubusercontent.com）。格式：`時間 "名稱" Ability { id: ["A39E", "A39D", …], source: "…" }`，同一個時間點的隨機變化（或同一招的多個 ID）寫在同一個條目的 id 陣列；另有 `--sync--` 條目（重新同步用）、`jump`／`label`。以 scratchpad 腳本比對 M5S（`BF76r8yKh4wGaYkm` #1 vs `BQZ9kMd7KpR8J34D` #11）、M7S 武士、M8S 騎士三組比較：
+
+- **技能 ID 一致**：cactbot 的 16 進位 ID 就是繁中服日誌的技能 ID（例：Flip to A-side A750＝42880、Stonefang/Windfang A39D～A3A2＝41885～41890、Eminent/Revolutionary Reign A911～A914＝43281～43284、Wolves' Reign (circles) A398／A7AF＝41880／42927）。繁中服與國際服共用遊戲資料的技能 ID。
+- **cactbot 只列每個機制的主要 ID**：日誌中 Boss 施放的不同 ID 只有 44%（M5S）、70%（M7S）、51%（M8S）出現在 cactbot；沒有的是多段判定與隱形施放者的 ID（例：Get Down! 的後續判定、Play A-Side #37832、各指向的第 2～4 段、M8S Wind Surge ×92、Stonefang #41905）。所以 cactbot 無法取代日誌推出的資料，只能補充。
+- **分組不衝突**：本站從兩場比較推出的隨機機制組（M5S 14、M7S 12、M8S 10 組）中，能在 cactbot 找到的（M5S 9、M7S 6、M8S 7 組，含 3 組在 `--sync--` 條目）都落在**同一個** cactbot 條目；沒有任何一組被 cactbot 分到不同條目。找不到的都是上述的後續判定 ID。
+- **時間與「從 0 開始」一致**：cactbot 條目時間與我的日誌中同 ID 施放的差距，M5S 前 3 分鐘 0.3～1.3 秒（隨時間慢慢累積）、M7S 全部在 ±0.5 秒內（104／104）、M8S 推進前 0.2～2.2 秒；M8S 推進後（依血量）固定時間比對不到（42／122），cactbot 以 sync 條目重新同步，概念與本站的錨點相同。
+- **可用之處**：機制的可讀名稱（例如 "Wolves' Reign (cones)"，以主要 ID 的繁中名稱顯示）、新 Boss 第一場比較就知道主要 ID 的分組；後續判定的 ID 仍需依時間歸到最近的主要機制，或沿用本站的比較法。
+
 ## 外部資料來源調查：技能繁中名稱（2026-09-25）
 
 | 來源 | 結果 |
