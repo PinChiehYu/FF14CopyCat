@@ -261,25 +261,46 @@ function dropDetours(anchors: Anchor[]): Anchor[] {
     list = list.filter((a) => !drop.has(a))
   }
 }
-/** 依 mine 排序的配對中，取 ref 嚴格遞增的最長子序列，去掉時間順序矛盾的錯誤配對。 */
-function longestIncreasing(pairs: Anchor[]): Anchor[] {
-  const tails: number[] = []
-  const prev = new Array<number>(pairs.length)
-  pairs.forEach((pair, i) => {
-    let lo = 0
-    let hi = tails.length
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1
-      if (pairs[tails[mid]].ref < pair.ref) lo = mid + 1
-      else hi = mid
+// 挑選錨點時，時間差每跳 1 秒扣掉的分數（以錨點數計）
+const OFFSET_JUMP_PENALTY_PER_S = 0.5
+
+/**
+ * 依 mine 排序的配對中，取兩邊時間都遞增、分數最高的一串：每個錨點 +1，時間差（ref − mine）每跳 1 秒 −0.5
+ * （從戰鬥開始 (0, 0) 起算）。只取最長的一串時，隨機順序的機制配錯的錨點若比較多（一次機制有多個判定，
+ * 例如熱舞綠光的指向機制），會整串勝過中間正確的錨點（M5S 開場 A／B 面相反時，錯配 11 個對正確 6 個）；
+ * 錯配要跳開再跳回，扣分遠多於多出的錨點。真正的推進只跳一次（例如 9 秒扣 4.5），之後的錨點多，仍會保留。
+ */
+function bestChain(pairs: Anchor[]): Anchor[] {
+  const offset = (a: Anchor) => a.ref - a.mine
+  // 實驗用：globalThis.__jump 設定每次跳動的扣分（暫時）
+  const jumpCost = (globalThis as { __jump?: number }).__jump ?? OFFSET_JUMP_PENALTY_PER_S
+  const penalty = (ms: number) => Math.min((Math.abs(ms) / 1000) * 0.5, jumpCost)
+  const score: number[] = []
+  const prev: number[] = []
+  pairs.forEach((p, i) => {
+    let best = 1 - penalty(offset(p))
+    let from = -1
+    for (let j = 0; j < i; j++) {
+      const q = pairs[j]
+      if (q.mine >= p.mine || q.ref >= p.ref) continue
+      const s = score[j] + 1 - penalty(offset(p) - offset(q))
+      if (s > best) {
+        best = s
+        from = j
+      }
     }
-    prev[i] = lo > 0 ? tails[lo - 1] : -1
-    tails[lo] = i
+    score[i] = best
+    prev[i] = from
+  })
+  let end = -1
+  score.forEach((s, i) => {
+    if (end < 0 || s > score[end]) end = i
   })
   const result: Anchor[] = []
-  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) result.push(pairs[k])
+  for (let k = end; k >= 0; k = prev[k]) result.push(pairs[k])
   return result.reverse()
 }
+
 
 /**
  * 以 Boss 技能為錨點對齊兩份日誌的時間軸。
@@ -322,11 +343,10 @@ function alignWith(
       candidates.push({ mine: o.t, ref: match.t, abilityId: o.abilityId, occurrence: o.occurrence })
     }
   }
-  // 同一時間點多個技能只留第一個，確保內插區段長度 > 0
-  // 去掉孤立錨點後兩邊仍嚴格遞增（只刪除，不改順序）
-  const anchors = dropDetours(longestIncreasing(candidates).filter((a, i, all) => i === 0 || a.mine > all[i - 1].mine))
+  // bestChain 保證兩邊都嚴格遞增（同一時間點只會留一個）；去掉配錯的段後仍遞增（只刪除，不改順序）
+  const anchors = dropDetours(bestChain(candidates))
   const points = [{ mine: 0, ref: 0 }, ...anchors]
-  // LIS 保證 ref 嚴格遞增、上面的過濾保證 mine 嚴格遞增，因此兩個方向都能分段內插
+  // 兩邊都嚴格遞增，因此兩個方向都能分段內插
   const forward = points.map((p) => ({ from: p.mine, to: p.ref }))
   const backward = points.map((p) => ({ from: p.ref, to: p.mine }))
 

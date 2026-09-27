@@ -5,20 +5,20 @@ const cast = (seconds: number, abilityId: number): TimedCast => ({ t: seconds * 
 
 describe('buildAlignment', () => {
   it('interpolates between anchors and extrapolates after the last one', () => {
-    // 參考日誌第二個機制早了 10 秒（例如輸出較高而提早轉場）
-    const mine = [cast(10, 1), cast(60, 2), cast(90, 3)]
-    const ref = [cast(10, 1), cast(50, 2), cast(80, 3)]
+    // 參考日誌第二個機制起早了 10 秒（例如輸出較高而提早轉場）；推進後有 3 個以上錨點才會保留這次跳動
+    const mine = [cast(10, 1), cast(60, 2), cast(90, 3), cast(95, 4), cast(100, 5)]
+    const ref = [cast(10, 1), cast(50, 2), cast(80, 3), cast(85, 4), cast(90, 5)]
     const { anchors, mineToRef } = buildAlignment(mine, ref)
 
-    expect(anchors.map((a) => a.abilityId)).toEqual([1, 2, 3])
+    expect(anchors.map((a) => a.abilityId)).toEqual([1, 2, 3, 4, 5])
     expect(mineToRef(5_000)).toBe(5_000)
     expect(mineToRef(35_000)).toBe(30_000) // 10→10 與 60→50 之間
-    expect(mineToRef(100_000)).toBe(90_000) // 最後錨點之後斜率 1
+    expect(mineToRef(110_000)).toBe(100_000) // 最後錨點之後斜率 1
   })
 
   it('inverts the mapping with refToMine', () => {
-    const mine = [cast(10, 1), cast(60, 2), cast(90, 3)]
-    const ref = [cast(10, 1), cast(50, 2), cast(80, 3)]
+    const mine = [cast(10, 1), cast(60, 2), cast(90, 3), cast(95, 4), cast(100, 5)]
+    const ref = [cast(10, 1), cast(50, 2), cast(80, 3), cast(85, 4), cast(90, 5)]
     const { mineToRef, refToMine } = buildAlignment(mine, ref)
     for (const t of [0, 5_000, 35_000, 75_000, 100_000]) {
       expect(refToMine(mineToRef(t))).toBeCloseTo(t)
@@ -27,11 +27,11 @@ describe('buildAlignment', () => {
 
   it('matches the nth occurrence and merges simultaneous casts', () => {
     const mine = [cast(10, 7), cast(10.2, 7), cast(40, 7)]
-    const ref = [cast(12, 7), cast(45, 7)]
+    const ref = [cast(10.5, 7), cast(40.5, 7)]
     const { anchors } = buildAlignment(mine, ref)
     expect(anchors.map((a) => [a.occurrence, a.mine, a.ref])).toEqual([
-      [1, 10_000, 12_000],
-      [2, 40_000, 45_000],
+      [1, 10_000, 10_500],
+      [2, 40_000, 40_500],
     ])
   })
 
