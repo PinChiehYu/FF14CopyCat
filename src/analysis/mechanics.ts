@@ -20,6 +20,11 @@ export interface MechanicOptions {
   dedupeMs?: number
   /** 施放次數超過此值的技能（自動攻擊等）不比較 */
   maxOccurrences?: number
+  /**
+   * 技能 ID → 所屬機制（同一機制的不同版本，例如左右方向）。另一邊有更近的同機制其他版本時，
+   * 同一技能不跨到較遠的一次配對（例如每下方向隨機的連續攻擊，不會配到下一下的同方向）
+   */
+  groupOf?: (id: number) => number | undefined
   /** 推進差距的時段（參考時間）：這段時間內只有一邊的施放不列出 */
   pushes?: { refStart: number; refEnd: number }[]
 }
@@ -122,7 +127,7 @@ export function mechanicDifferences(
   mineToRef: (t: number) => number,
   mineEnd: number,
   refEnd: number,
-  { windowMs = 1500, sameAbilityWindowMs = 5000, dedupeMs = 1000, maxOccurrences = 8, pushes = [] }: MechanicOptions = {},
+  { windowMs = 1500, sameAbilityWindowMs = 5000, dedupeMs = 1000, maxOccurrences = 8, pushes = [], groupOf = () => undefined }: MechanicOptions = {},
 ): MechanicDifference[] {
   const mineAll = dedupe(mineBoss, dedupeMs)
   const refAll = dedupe(refBoss, dedupeMs)
@@ -136,10 +141,18 @@ export function mechanicDifferences(
 
   // 同一技能一對一配對（時間最近的先配）：連續多下的機制（例如幻狼劍 4 下）第一下版本不同時，
   // 我的第一下不會配到參考的第二下，而讓參考的第一下落單
+  // 另一邊比 gap 更近處有同機制的其他版本
+  const closerVersion = (a: TimedCast, others: TimedCast[], gap: number) => {
+    const g = groupOf(a.abilityId)
+    return g !== undefined && others.some((o) => o.abilityId !== a.abilityId && groupOf(o.abilityId) === g && Math.abs(o.t - a.t) < gap)
+  }
   const pairs: { m: number; r: number; gap: number }[] = []
   mine.forEach((a, m) =>
     ref.forEach((b, r) => {
-      if (a.abilityId === b.abilityId && Math.abs(a.t - b.t) <= sameAbilityWindowMs) pairs.push({ m, r, gap: Math.abs(a.t - b.t) })
+      const gap = Math.abs(a.t - b.t)
+      if (a.abilityId !== b.abilityId || gap > sameAbilityWindowMs) return
+      if (closerVersion(a, ref, gap) || closerVersion(b, mine, gap)) return
+      pairs.push({ m, r, gap })
     }),
   )
   const mineMatched = new Set<number>()

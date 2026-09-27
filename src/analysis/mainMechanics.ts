@@ -38,6 +38,7 @@ export function mainMechanicDifferences(
   const main = (casts: TimedCast[]) => casts.filter((c) => groups.has(c.abilityId))
   const differences = mechanicDifferences(main(mineBoss), main(refBoss), mineToRef, mineEnd, refEnd, {
     maxOccurrences: Infinity,
+    groupOf: (id) => groups.get(id),
     ...opts,
   })
   // 「只有一邊」的主要機制，另一邊同一時間卻有非主要機制的施放：是同一招的不同版本，只是另一邊的版本 cactbot 沒列

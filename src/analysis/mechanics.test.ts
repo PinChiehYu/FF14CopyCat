@@ -103,6 +103,17 @@ describe('mechanicDifferences', () => {
     ])
   })
 
+  it('prefers a version of the same mechanic at the same time over the same ability one hit away', () => {
+    // 實例（M5S 放縱勁舞，每 2.4 秒一下、方向 42861／42862 隨機）：我 61、62，參考 62、61。
+    // 同 ID 相隔 2.4 秒也在 5 秒內，但同一時間另一邊有同機制的另一個方向：兩下都是不同版本
+    const mine = [cast(183.7, 42861), cast(186.1, 42862)]
+    const ref = [cast(183.5, 42862), cast(185.9, 42861)]
+    const groupOf = (id: number) => (id === 42861 || id === 42862 ? 42861 : undefined)
+    expect(mechanicDifferences(mine, ref, identity, 600_000, 600_000, { groupOf }).map((d) => d.kind)).toEqual(['variant', 'variant'])
+    // 不知道分組時跨下配對，差異被藏起來
+    expect(mechanicDifferences(mine, ref, identity, 600_000, 600_000)).toEqual([])
+  })
+
   it('ignores one-sided casts during a push', () => {
     // 我推進較慢，在轉場前多一次空間斬：推進時段內只有一邊的施放不算機制差異
     const mine = [cast(10, 1), cast(384.1, 42831)]

@@ -17,8 +17,8 @@ const ENCOUNTERS = {
 }
 
 // 例：29.5 "Stonefang/Windfang" Ability { id: ["A39E", "A39D"], source: "Howling Blade" }
-// 註解掉的 #Ability（不同步但仍是實際攻擊）也收錄
-const LINE = /^\s*[\d.]+\s+"([^"]*)"\s+#?Ability\s*\{\s*id:\s*(\[[^\]]*\]|"[0-9A-Fa-f]+")/
+// 註解掉的 #Ability／# Ability（不同步但仍是實際攻擊）也收錄
+const LINE = /^\s*[\d.]+\s+"([^"]*)"\s+(?:#\s*)?Ability\s*\{\s*id:\s*(\[[^\]]*\]|"[0-9A-Fa-f]+")/
 
 function parse(text) {
   const parent = new Map()
