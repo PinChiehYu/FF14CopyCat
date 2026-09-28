@@ -348,6 +348,23 @@ function BossArena({
   )
 }
 
+// 手機寬度的分頁
+type PositionsTab = 'arena' | 'status' | 'cards'
+const POSITIONS_TABS: [PositionsTab, string][] = [
+  ['arena', '俯視圖'],
+  ['status', '當下狀態'],
+  ['cards', '站位差異'],
+]
+const POSITIONS_TAB_KEY = 'positionsTab'
+function readPositionsTab(): PositionsTab {
+  try {
+    const saved = localStorage.getItem(POSITIONS_TAB_KEY)
+    return saved === 'status' || saved === 'cards' ? saved : 'arena'
+  } catch {
+    return 'arena'
+  }
+}
+
 // two-bosses：場地、兩場的 Boss 都畫；aligned：我的位置對齊到參考的 Boss；boss：以 Boss 為中心
 type ArenaMode = 'two-bosses' | 'aligned' | 'boss'
 const ARENA_MODE_KEY = 'arenaMode'
@@ -483,6 +500,16 @@ export function Positions({
       // 無法儲存時只影響下次開啟的預設值
     }
   }
+  // 手機寬度：俯視圖／當下狀態／站位差異以分頁切換（整區太長，播放時看不完）；桌面不顯示分頁、全部顯示。記在瀏覽器
+  const [tab, setTab] = useState<PositionsTab>(readPositionsTab)
+  const changeTab = (next: PositionsTab) => {
+    setTab(next)
+    try {
+      localStorage.setItem(POSITIONS_TAB_KEY, next)
+    } catch {
+      // 無法儲存時只影響下次開啟的預設值
+    }
+  }
   const now = nearest(track, cursor)
   const hasData = track.some((p) => p.distance !== null)
   if (!hasData) return <p className="hint">這兩份日誌沒有足夠的位置資料。</p>
@@ -501,7 +528,7 @@ export function Positions({
   const bossFramed = divergences.filter((d) => d.bossFrame).length
 
   return (
-    <section className="positions">
+    <section className="positions" data-tab={tab}>
       {/* 一行摘要，說明放在滑鼠提示 */}
       <p className="positions-summary">
         <span
@@ -543,6 +570,22 @@ export function Positions({
         duration={duration}
         onSeek={onSeek}
       />
+      {/* 只在手機寬度顯示（CSS），隱藏未選的區塊 */}
+      <div className="positions-tabs" role="tablist" aria-label="站位與當下狀態">
+        {POSITIONS_TABS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            className={tab === key ? 'active' : undefined}
+            onClick={() => changeTab(key)}
+          >
+            {label}
+            {key === 'cards' && ` ${divergences.length}`}
+          </button>
+        ))}
+      </div>
       <div className="positions-body">
         <div className="arena-panel">
           <div className="arena-modes" role="group" aria-label="俯視圖視角">
@@ -635,7 +678,18 @@ export function Positions({
         </div>
         {status}
       </div>
-      <DivergenceCards divergences={divergences} track={track} cursor={cursor} abilityName={abilityName} onJump={onJump} />
+      <DivergenceCards
+        divergences={divergences}
+        track={track}
+        cursor={cursor}
+        abilityName={abilityName}
+        shownKey={tab}
+        onJump={(t) => {
+          onJump(t)
+          // 手機在「站位差異」分頁點卡片時，換到俯視圖看這段的站位（桌面沒有分頁，不影響）
+          changeTab('arena')
+        }}
+      />
     </section>
   )
 }
@@ -653,12 +707,15 @@ function DivergenceCards({
   cursor,
   abilityName,
   onJump,
+  shownKey,
 }: {
   divergences: Divergence[]
   track: TrackPoint[]
   cursor: number
   abilityName: (id: number) => string
   onJump: (t: number) => void
+  /** 卡片列被重新顯示時改變（手機分頁）：隱藏時量不到位置，顯示後要再置中 */
+  shownKey?: string
 }) {
   const strip = useRef<HTMLOListElement>(null)
   const active = divergences.findIndex((d) => cursor >= d.start && cursor <= d.end)
@@ -667,12 +724,12 @@ function DivergenceCards({
   useEffect(() => {
     const el = strip.current
     const card = el?.children[active] as HTMLElement | undefined
-    if (!el || !card) return
+    if (!el || !card || el.clientWidth === 0) return
     // 以畫面上的位置計算卡片在列中的位置：offsetLeft 是相對於 offsetParent（頁面），
     // 頁面內容置中、左邊有空白（寬螢幕）時會多算這段距離，卡片被捲到左邊只剩右半
     const cardLeft = el.scrollLeft + card.getBoundingClientRect().left - el.getBoundingClientRect().left
     el.scrollLeft = Math.max(0, cardLeft - (el.clientWidth - card.offsetWidth) / 2)
-  }, [active])
+  }, [active, shownKey])
 
   if (divergences.length === 0) return null
   return (

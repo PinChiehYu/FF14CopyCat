@@ -1483,6 +1483,32 @@ h3 {
   font-size: 0.8em;
 }
 
+/* 手機寬度才顯示（見 @media），桌面全部區塊同時顯示 */
+.positions-tabs {
+  display: none;
+  gap: 4px;
+  margin: 0 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.positions-tabs button {
+  flex: 1;
+  padding: 6px 4px;
+  font: inherit;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.positions-tabs button.active {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
 .positions-body {
   display: flex;
   flex-wrap: wrap;
@@ -2448,6 +2474,28 @@ h3 {
 
   .usage-stats {
     grid-template-columns: 1fr 1fr;
+  }
+
+  /* 站位與當下狀態：整區太長，俯視圖／當下狀態／站位差異以分頁切換，一次一個、一個畫面看得完 */
+  .positions-tabs {
+    display: flex;
+  }
+
+  .positions[data-tab='arena'] .status-panel,
+  .positions[data-tab='arena'] .divergence-cards,
+  .positions[data-tab='status'] .arena-panel,
+  .positions[data-tab='status'] .divergence-cards,
+  .positions[data-tab='cards'] .arena-panel,
+  .positions[data-tab='cards'] .status-panel {
+    display: none;
+  }
+
+  .positions[data-tab='cards'] .divergence-cards {
+    margin-top: 0;
+  }
+
+  .positions .distance-chart {
+    height: 60px;
   }
 
   /* 當下狀態：換到俯視圖下方佔滿整列，兩位玩家左右並排，播放時一個畫面看得到 */

@@ -494,6 +494,9 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 手機版分頁
+- `Positions.tsx`：`section.positions` 設 `data-tab`（`arena`／`status`／`cards`，`localStorage` 的 `positionsTab`），新增 `.positions-tabs`（桌面 `display: none`）；`@media (max-width: 560px)` 依 `data-tab` 隱藏 `.arena-panel`／`.status-panel`／`.divergence-cards`，距離圖 60 px。只用 CSS 切換，三個區塊都保持掛載（播放狀態、卡片置中不重算）。`DivergenceCards` 新增 `shownKey`：隱藏時 `clientWidth` 為 0 不捲動，分頁換回時依 `shownKey` 重新置中；卡片的 `onJump` 另外切到 `arena` 分頁。
+
 ### 2026-09-28 最近技能依 GCD 分組
 - `StatusPanel` 的 `RecentActions` 新增 `isGcd`（`Comparison.tsx` 的 `job.isGcd`，沒有職業規則時全部視為 GCD），由舊到新分組後取最新 `MAX_RECENT_GROUPS`（4）組；`RECENT_MS` 8 秒、`RECENT_SOLID_MS` 4 秒內不透明、之後線性降到 0.35。CSS：`.recent-group`、`.recent-action.gcd`（24 px）／`.ogcd`（16 px）／`.newest`，`.recent-actions` 固定 26 px 高、`overflow: hidden`。
 - 開發時注意：連續修改多個檔案的 props 時，Vite 可能停在改到一半的模組版本（頁面空白、console 為 `isGcd is not a function`，模組 `?t=` 為舊的時間戳），重新啟動 dev server 即可。
