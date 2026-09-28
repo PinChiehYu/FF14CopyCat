@@ -666,6 +666,8 @@ export function Positions({
             `無法選中：${UNTARGETABLE_TITLE}`,
             '可能對稱：你的位置接近參考位置的對稱點，可能是攻略或分配不同。',
             `以 Boss 為基準：${BOSS_FRAME_TITLE}；距離圖底部的細條標示這些時段。`,
+            `相對 Boss 相同：${SAME_TO_BOSS_TITLE}（卡片中灰色的機制）。`,
+            '卡片的機制：「我 時間 · 參考 時間」為兩邊各自結算的時間（各自的戰鬥時間，— 為那一邊這段沒有結算）；「相距 · 距王 我／參考」為結算當下兩人的距離與各自離自己 Boss 的距離（yalm，— 為沒有位置資料）。滑鼠停在「機制不同」上可看兩邊不同的機制。',
           ].join('\n')}
         />
       </p>
@@ -736,6 +738,16 @@ export function Positions({
             >
               以 Boss 為中心
             </button>
+            <HelpTip
+              text={[
+                '圖上角落的狀態（Boss 無法選取、轉場等時段）：',
+                '・Boss 不在場：這個時間點沒有 Boss 的位置資料。',
+                `・暫以場地顯示：以 Boss 為中心時，${solo ? '' : '至少一邊'}沒有 Boss 的位置或面向，暫時改以場地顯示。`,
+                !solo && '・未對齊：對齊 Boss 時，至少一邊沒有 Boss 的位置，你的位置以原始位置顯示。',
+              ]
+                .filter(Boolean)
+                .join('\n')}
+            />
           </div>
           {/* 圖例與提示（左上）、距離（左下）疊在俯視圖內，不另佔行；右上是北方的 N */}
           <div className="arena-wrap">
@@ -785,14 +797,11 @@ export function Positions({
                   </>
                 )}
               </div>
+              {/* 狀態的說明在視角按鈕旁的「?」 */}
               <div className="arena-hints">
-                {!now?.boss && <span title="這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）">Boss 不在場</span>}
-                {mode === 'boss' && !bossFrameReady && (
-                  <span title="這個時間點至少一邊沒有 Boss 的位置或面向（Boss 無法選取、轉場等），暫以場地顯示">暫以場地顯示</span>
-                )}
-                {arenaMode === 'aligned' && !solo && !alignedNow && (
-                  <span title="這個時間點至少一邊沒有 Boss 的位置（Boss 無法選取、轉場等），你的位置以原始位置顯示">未對齊</span>
-                )}
+                {!now?.boss && <span>Boss 不在場</span>}
+                {mode === 'boss' && !bossFrameReady && <span>暫以場地顯示</span>}
+                {arenaMode === 'aligned' && !solo && !alignedNow && <span>未對齊</span>}
               </div>
             </div>
             {now?.distance != null && (
@@ -889,12 +898,12 @@ function DivergenceCards({
           kind === 'variant' && 'by-variant',
           i === active && 'active',
         ]
+        // 滑鼠提示只放資料（哪些機制不同）；分類的意義在站位摘要的「?」
         const variantTitle = d.variant
           ? [
-              `兩邊的 Boss 隨機機制不同（${formatFightTime(d.variant.t)}）`,
+              formatFightTime(d.variant.t),
               `我：${mechanicLabel(d.variant.mine, d.variant.ref, abilityName)}`,
               `參考：${mechanicLabel(d.variant.ref, d.variant.mine, abilityName)}`,
-              '站位不同多半是機制造成，不是站錯',
             ].join('\n')
           : undefined
         return (
@@ -913,28 +922,12 @@ function DivergenceCards({
                     機制不同
                   </span>
                 )}
-                {kind === 'untargetable' && (
-                  <span className="tag" title={UNTARGETABLE_TITLE}>
-                    Boss 無法選中
-                  </span>
-                )}
-                {kind === 'mirror' && (
-                  <span className="tag" title="你的位置接近參考位置的對稱點，可能是攻略或分配不同；不列入站位建議">
-                    可能是{MIRROR_LABELS[d.mirror!]}站位
-                  </span>
-                )}
+                {kind === 'untargetable' && <span className="tag">Boss 無法選中</span>}
+                {kind === 'mirror' && <span className="tag">可能是{MIRROR_LABELS[d.mirror!]}站位</span>}
                 {kind === 'mechanic' && <span className="tag mechanic">機制</span>}
-                {kind === 'same-to-boss' && (
-                  <span className="tag" title={SAME_TO_BOSS_TITLE}>
-                    相對 Boss 相同
-                  </span>
-                )}
+                {kind === 'same-to-boss' && <span className="tag">相對 Boss 相同</span>}
                 {kind === 'route' && <span className="card-sub">移動路線不同</span>}
-                {d.bossFrame && (
-                  <span className="tag" title={`${BOSS_FRAME_TITLE}\n這段兩場 Boss 最遠相距 ${(d.bossGap ?? 0).toFixed(0)} yalm`}>
-                    以 Boss 為基準
-                  </span>
-                )}
+                {d.bossFrame && <span className="tag">以 Boss 為基準</span>}
               </span>
               {unique.length > 0 && (
                 <span className="card-mechanics">
@@ -946,16 +939,12 @@ function DivergenceCards({
                       <span
                         key={m.name}
                         className={['card-mechanic', now && 'now', m.sameToBoss && 'same-to-boss'].filter(Boolean).join(' ')}
-                        title={m.sameToBoss ? SAME_TO_BOSS_TITLE : undefined}
                       >
                         <span className="card-mechanic-name">{m.name}</span>
-                        <span className="card-sub" title="兩邊各自結算的時間（各自的戰鬥時間）；—：這段期間那一邊沒有結算">
+                        <span className="card-sub">
                           我 {m.mine !== undefined ? formatFightTime(m.mine) : '—'} · 參考 {m.ref !== undefined ? formatFightTime(m.ref) : '—'}
                         </span>
-                        <span
-                          className="card-sub"
-                          title={`結算當下（yalm）\n兩人相距：${yalm(distance)}${d.bossFrame ? '（以各自 Boss 為基準）' : ''}\n我離我的 Boss：${yalm(m.mineToBoss)}\n參考離參考的 Boss：${yalm(m.refToBoss)}\n—：沒有位置資料`}
-                        >
+                        <span className="card-sub">
                           {distance != null && `相距 ${distance.toFixed(1)} · `}距王 {yalm(m.mineToBoss)}／{yalm(m.refToBoss)}
                         </span>
                       </span>

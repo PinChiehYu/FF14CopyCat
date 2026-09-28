@@ -2208,7 +2208,6 @@ h3 {
 .tag.variant {
   color: var(--accent);
   border-color: var(--accent);
-  cursor: help;
 }
 
 .divergence-card > button:hover {

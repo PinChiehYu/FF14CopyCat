@@ -78,11 +78,12 @@ function GcdSection({
       <h3>
         {reference ? '少打 GCD 的時段' : '停手時段'}
         <HelpTip
-          text={
+          text={[
             reference
-              ? '你的 GCD 間隔超過 1.5 個 GCD（且至少多 1 秒）、參考在同一段（依 Boss 機制對齊）仍施放 GCD 的時段。雙方都停手的時段（Boss 無法攻擊等）不列入。'
-              : 'GCD 間隔超過 1.5 個 GCD（且至少多 1 秒）的時段；Boss 無法選中與死亡的時間已扣除，少打的 GCD 數依你的 GCD 間隔估計。'
-          }
+              ? '你的 GCD 間隔超過 1.5 個 GCD（且至少多 1 秒）、參考在同一段（依 Boss 機制對齊）仍施放 GCD 的時段；「參考打 N 個 GCD」即你少打的數量。雙方都停手的時段（Boss 無法攻擊等）不列入。'
+              : 'GCD 間隔超過 1.5 個 GCD（且至少多 1 秒）的時段；「約少 N 個 GCD」依你的 GCD 間隔估計，Boss 無法選中與死亡的時間已扣除。',
+            '控場：你身上有 Boss 施加、期間無法施放的效果，停手是機制造成（滑鼠停在標籤上可看效果名稱）。',
+          ].join('\n')}
         />
       </h3>
       {lost.length === 0 ? (
@@ -104,19 +105,17 @@ function GcdSection({
                 </button>
                 <span>停手 {seconds(w.mineEnd - w.mineStart)} 秒</span>
                 {reference ? (
-                  <span title="參考在同一段（對齊後）打的 GCD 數">
+                  <span>
                     參考打 <strong>{w.refGcds}</strong> 個 GCD
                   </span>
                 ) : (
-                  <span title="依你的 GCD 間隔估計這段少打的 GCD 數（扣除 Boss 無法選中與死亡的時間）">
+                  <span>
                     約少 <strong>{w.refGcds}</strong> 個 GCD
                   </span>
                 )}
+                {/* 滑鼠提示只放控場效果的名稱；「控場」的意義在標題的「?」 */}
                 {w.control && (
-                  <span
-                    className="tag control"
-                    title={`你身上有 Boss 施加的控場效果：${controlNames(w.control, abilityName ?? ((id) => `#${id}`))}\n期間無法施放，停手是機制造成${reference ? '（參考在同一段仍在施放）' : ''}`}
-                  >
+                  <span className="tag control" title={controlNames(w.control, abilityName ?? ((id) => `#${id}`))}>
                     控場
                   </span>
                 )}
