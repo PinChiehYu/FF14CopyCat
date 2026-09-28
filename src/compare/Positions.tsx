@@ -65,12 +65,13 @@ function quantile(sorted: number[], q: number): number {
 const VIEW_WINDOW_MS = 10_000
 // 圖至少涵蓋這麼大（yalm）
 const MIN_VIEW_YALM = 30
-// 範圍對齊到這個格距（yalm），播放時不會一直微幅縮放
-const VIEW_STEP_YALM = 5
+// 範圍外框每邊留的空間（yalm）
+const VIEW_MARGIN_YALM = 3
 
 /**
- * 圖的範圍（正方形、置中）：游標前後 10 秒內兩位玩家的位置，加上 Boss 在這段時間大部分所在的位置
+ * 圖的目標範圍（正方形、置中）：游標前後 10 秒內兩位玩家的位置，加上 Boss 在這段時間大部分所在的位置
  * （排除少數極端位置）；這段時間沒有資料時以時間上最接近的資料為準。
+ * 連續值（不對齊格距）；實際顯示的範圍由 useSmoothView 平滑跟隨，避免對齊格距時在兩個格點間來回跳（抖動）。
  */
 function bounds(players: PositionSample[][], boss: PositionSample[], cursor: number): { minX: number; minY: number; size: number } {
   const near = (s: PositionSample[], t: number) => s.filter((p) => Math.abs(p.t - t) <= VIEW_WINDOW_MS)
@@ -95,12 +96,49 @@ function bounds(players: PositionSample[][], boss: PositionSample[], cursor: num
   }
   if (xs.length === 0) return { minX: 80, minY: 80, size: 40 }
   const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
-  const step = VIEW_STEP_YALM
-  // 留邊後取 5 yalm 的倍數，中心也對齊 5 yalm
-  const size = Math.ceil((Math.max(maxX - minX, maxY - minY, MIN_VIEW_YALM) + 6) / (step * 2)) * step * 2
-  const cx = Math.round((minX + maxX) / 2 / step) * step
-  const cy = Math.round((minY + maxY) / 2 / step) * step
+  const size = Math.max(maxX - minX, maxY - minY, MIN_VIEW_YALM) + VIEW_MARGIN_YALM * 2
+  const cx = (minX + maxX) / 2
+  const cy = (minY + maxY) / 2
   return { minX: cx - size / 2, minY: cy - size / 2, size }
+}
+
+interface View {
+  minX: number
+  minY: number
+  size: number
+}
+
+// 顯示範圍追上目標範圍的時間常數（游標時間）：約 1 秒追上 63%，倍速播放時跟著變快
+const VIEW_EASE_MS = 1000
+// 游標一次移動超過這麼久（拖曳、點卡片跳轉）時直接換到目標範圍
+const VIEW_SNAP_MS = 2000
+
+/**
+ * 平滑跟隨目標範圍：依游標前進的時間以指數方式靠近目標（連續平移、縮放）。
+ * 跳轉、換視角（resetKey 改變）或當下的點會跑出顯示範圍時直接換到目標，圓點不會跑到圖外。
+ * 以 state 記住上一次的範圍（React「儲存前一次 render 的資訊」的做法）：游標或視角改變時才更新，
+ * 更新後的 render 游標相同（dt = 0），不會再次更新。
+ */
+function useSmoothView(target: View, cursor: number, keep: (Point | null)[], resetKey: string): View {
+  const [prev, setPrev] = useState<{ view: View; cursor: number; key: string } | null>(null)
+  let view = target
+  if (prev && prev.key === resetKey) {
+    const dt = Math.abs(cursor - prev.cursor)
+    if (dt <= VIEW_SNAP_MS) {
+      const k = 1 - Math.exp(-dt / VIEW_EASE_MS)
+      const eased: View = {
+        minX: prev.view.minX + (target.minX - prev.view.minX) * k,
+        minY: prev.view.minY + (target.minY - prev.view.minY) * k,
+        size: prev.view.size + (target.size - prev.view.size) * k,
+      }
+      const inside = (p: Point | null) =>
+        !p ||
+        (p.x >= eased.minX + 1 && p.x <= eased.minX + eased.size - 1 && p.y >= eased.minY + 1 && p.y <= eased.minY + eased.size - 1)
+      if (keep.every(inside)) view = eased
+    }
+  }
+  if (!prev || prev.cursor !== cursor || prev.key !== resetKey) setPrev({ view, cursor, key: resetKey })
+  return view
 }
 
 /** Boss 在圖外時，在圖邊畫指向它的箭頭（從圖中心往 Boss 方向與內縮邊框的交點）。 */
@@ -197,18 +235,15 @@ function Arena({
   mineBossSamples: PositionSample[]
 }) {
   const twoBosses = mode === 'two-bosses'
-  const { minX, minY, size } = bounds(
-    [twoBosses ? mineSamples : mineAlignedSamples, refSamples],
-    twoBosses ? [...bossSamples, ...mineBossSamples] : bossSamples,
-    cursor,
-  )
-  const scale = MAP_SIZE / size
-  const px = (p: Point) => ({ x: (p.x - minX) * scale, y: (p.y - minY) * scale })
   // track 的 mine 是原始位置；對齊 Boss 時改用平移後的位置
   const mineSource = twoBosses ? mineSamples : mineAlignedSamples
   // 當下的位置直接在游標時間內插（track 每 0.5 秒一點，取最近的點播放時會一格一格跳）
   const mine = positionAt(mineSource, cursor)
   const ref = positionAt(refSamples, cursor)
+  const target = bounds([mineSource, refSamples], twoBosses ? [...bossSamples, ...mineBossSamples] : bossSamples, cursor)
+  const { minX, minY, size } = useSmoothView(target, cursor, [mine, ref], mode)
+  const scale = MAP_SIZE / size
+  const px = (p: Point) => ({ x: (p.x - minX) * scale, y: (p.y - minY) * scale })
   const refBoss = positionAt(bossSamples, cursor, BOSS_LIMITS)
   const mineBoss = twoBosses ? positionAt(mineBossSamples, cursor, BOSS_LIMITS) : null
   // 軌跡：前 5 秒的 track 取樣，接到當下的位置
@@ -253,9 +288,6 @@ function relativeAt(player: Point | null, bossSamples: PositionSample[], t: numb
   return pose ? toBossFrame(player, pose) : null
 }
 
-// 以 Boss 為中心：範圍對齊到這個格距（yalm）
-const BOSS_VIEW_STEP_YALM = 10
-
 /**
  * 以 Boss 為中心的俯視圖：Boss 在中央、面向朝上，兩位玩家各自換算成相對於自己那一場 Boss 的位置，
  * 兩場的 Boss 站位、面向不同也能比較「站在 Boss 的哪一側」。虛線為正面／側面／背面的分界（±45°、±135°）。
@@ -284,13 +316,14 @@ function BossArena({
   const rel = (p: TrackPoint) => relAt(p.t)
   // 當下的位置直接在游標時間內插（不取 track 的 0.5 秒取樣，播放時才不會一格一格跳）
   const current = relAt(cursor)
-  // 範圍：游標前後 10 秒內離 Boss 最遠的距離，對齊 10 yalm
+  // 範圍：游標前後 10 秒內離 Boss 最遠的距離
   const around = track.filter((p) => Math.abs(p.t - cursor) <= VIEW_WINDOW_MS && p.t % 1000 === 0).map(rel)
   const far = Math.max(
     MIN_VIEW_YALM / 2,
     ...around.flatMap((r) => [r.mine, r.ref]).filter((p): p is Point => p !== null).map((p) => Math.hypot(p.x, p.y) + 3),
   )
-  const size = Math.ceil((far * 2) / BOSS_VIEW_STEP_YALM) * BOSS_VIEW_STEP_YALM
+  // 連續值，平滑跟隨（原本對齊 10 yalm，播放時會在兩個大小間跳動）
+  const { size } = useSmoothView({ minX: -far, minY: -far, size: far * 2 }, cursor, [current.mine, current.ref], 'boss')
   const scale = MAP_SIZE / size
   const c = MAP_SIZE / 2
   const px = (p: Point) => ({ x: c + p.x * scale, y: c + p.y * scale })

@@ -494,6 +494,10 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 俯視圖範圍平滑跟隨
+- `Positions.tsx`：`bounds()` 改回傳連續的目標範圍（移除 `VIEW_STEP_YALM`、`BOSS_VIEW_STEP_YALM` 的對齊）；新增 `useSmoothView(target, cursor, keep, resetKey)`：`k = 1 − exp(−Δ游標 / 1000 ms)` 靠近目標，`Δ > 2000 ms`、`resetKey`（視角）改變、或 `keep`（當下的玩家位置）落在範圍內縮 1 yalm 之外時直接用目標。以 state 記住上一次的範圍、游標或視角改變時才 `setState`（render 內讀 ref 會被 oxlint 的 react(refs) 警告）。暫停時不再 render，範圍停在最後一次的位置（可能還沒完全追上目標）。
+- 量測方式：以程式逐 50 ms 設定播放列拉桿，記錄參考 Boss 圓點在畫面上的位移（Boss 多半靜止，位移即畫面範圍的變化）；以 Boss 為中心則記錄第一圈（5 yalm）半徑的變化率。
+
 ### 2026-09-28 俯視圖在游標時間內插
 - `Positions.tsx` 的 `Arena`／`BossArena` 當下位置改為 `positionAt(samples, cursor)`（Boss 用 `BOSS_LIMITS`、面向 `bossPoseAt(…, cursor)`），原本是 `nearest(track, cursor)`（track 每 0.5 秒）；軌跡為游標前的 track 取樣再接上當下位置。`BossArena` 新增 `refSamples`。站位判定（track、距離圖、卡片、左下角的判定距離）不變。
 
