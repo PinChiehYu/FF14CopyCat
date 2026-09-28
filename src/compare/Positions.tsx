@@ -661,8 +661,10 @@ function DivergenceCards({
     const el = strip.current
     const card = el?.children[active] as HTMLElement | undefined
     if (!el || !card) return
-    const left = card.offsetLeft - (el.clientWidth - card.offsetWidth) / 2
-    el.scrollLeft = Math.max(0, left)
+    // 以畫面上的位置計算卡片在列中的位置：offsetLeft 是相對於 offsetParent（頁面），
+    // 頁面內容置中、左邊有空白（寬螢幕）時會多算這段距離，卡片被捲到左邊只剩右半
+    const cardLeft = el.scrollLeft + card.getBoundingClientRect().left - el.getBoundingClientRect().left
+    el.scrollLeft = Math.max(0, cardLeft - (el.clientWidth - card.offsetWidth) / 2)
   }, [active])
 
   if (divergences.length === 0) return null

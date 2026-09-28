@@ -472,6 +472,8 @@
 - **Actions 變數未生效**：原本以 repo variable `API_BASE` 注入 Worker 網址，建置時讀到空值導致正式站連 `localhost:8787`；網址非機密，改寫在 `src/config.ts`。
 - **Cloudflare Secret 未部署的版本**：在儀表板刪除 Secret 而未按 Deploy 時，會產生未部署的新版本；下次 `wrangler deploy` 會以最新設定為準而使 Secret 消失。用 `npx wrangler secret list`、`versions list`、`deployments status` 檢查。
 - **wrangler login**：自動開啟瀏覽器失敗時，用 `npx wrangler login --browser=false` 取得網址讓使用者手動開啟。
+- **卡片列置中用 offsetLeft 在寬螢幕錯位**（2026-09-28）：站位差異卡片列原本以 `card.offsetLeft` 計算捲動位置，但卡片列沒有 `position`，`offsetLeft` 相對於頁面，頁面內容置中、左邊有空白時多算這段距離，播放換卡時卡片被捲到左邊只剩右半（1024 px 寬的測試畫面左邊只有 16 px，看不出來）。改用 `getBoundingClientRect()` 相對於卡片列計算。驗證方式：`document.body.style.paddingLeft = '400px'` 模擬寬螢幕，修正前中心偏 −400 px。
+- **瀏覽器面板在背景時無法驗證播放**：面板被遮住時 `requestAnimationFrame` 暫停，按播放時間不會前進（截圖也是空白）；改以程式設定播放列拉桿的值（`input` 事件）逐秒推進游標。
 - **GitHub SSH**：本機 `known_hosts` 有 GitHub 2023 年前的舊 RSA 金鑰導致警告；使用者需自行把 SSH 金鑰加到 GitHub。
 - **npm 安裝腳本**：npm 11 預設阻擋 esbuild、workerd 的 postinstall（allow-scripts 警告），實際不影響建置與 `wrangler dev`。
 - **瀏覽器平滑捲動**：同時對頁面（`scrollIntoView` smooth）與內層容器（`scrollTo` smooth）平滑捲動時，瀏覽器會中斷內層捲動；內層改為立即設定 `scrollLeft`。
