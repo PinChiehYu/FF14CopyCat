@@ -1604,6 +1604,20 @@ h3 {
   stroke: var(--ref);
 }
 
+/* Boss 面向：圓點外指向面向的三角形 */
+.arena .boss-facing {
+  fill: var(--text-muted);
+  opacity: 0.85;
+}
+
+.arena .boss-facing.mine {
+  fill: var(--mine);
+}
+
+.arena .boss-facing.ref {
+  fill: var(--ref);
+}
+
 .arena .edge-arrow.mine polygon {
   fill: var(--mine);
 }

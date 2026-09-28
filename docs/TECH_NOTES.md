@@ -492,6 +492,10 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 俯視圖的 Boss 面向
+- `Positions.tsx` 的 `BossMarker` 新增 `facing`（`bossPoseAt()` 的面向，沒有時不畫），在圓點外畫三角形（尖端 19 px、底邊在 8 px、半寬 6 px；俯視圖只平移縮放不翻轉，面向向量 (cos, sin) 直接用於畫面座標）。
+- 驗證方向慣例：以坦克位置對照（每秒取樣「Boss → 坦克」方向相對於 Boss 面向的角度）。M7S `dbN4HXY3QPzMRvDw` #4 絕槍戰士（主坦）647 筆中 390 筆（60%）在 ±30° 內，確認 (cos θ, sin θ) 為 Boss 正面；M8S `hqNYDGK9A4pmWVXB` #18 騎士分布較散（換坦、副坦時間）。
+
 ### 2026-09-28 以 Boss 為基準判定站位；站位差異分類統一
 - 變更：`compareTracks()` 第五個參數改為選項物件（`mineBoss`、`arenaCenter`、`stepMs`），`TrackPoint` 新增 `arenaDistance`／`bossGap`／`bossFrame`，`distance` 改為判定用距離；`divergences()` 設 `bossFrame`／`bossGap`；`attachBossDistances()` 的 `sameToBoss` 改依面向旋轉；新增 `divergenceKind()`、`BOSS_FRAME_GAP_YALM`。`Comparison.tsx` 傳入 `mineBoss: mineBossSamples`。`Positions.tsx`：距離圖底部 `boss-frame-strip`（`bossFrame` 取樣間隔 1 秒內合併）、卡片／摘要／色塊改用 `divergenceKind()`、摘要與卡片的「以 Boss 為基準」標籤、俯視圖下方改為「相對 Boss 相距」；`advice.ts` 的 `positionAdvice()` 改用 `divergenceKind()`，以 Boss 為基準的段在說明加上兩場 Boss 的距離。
 - 調查（scratchpad 腳本，5 組比較基準，每 0.5 秒）：兩邊都有 Boss 位置與面向的取樣中，兩場 Boss 相距 > 8 yalm 的比例 M7S（`dbN4HXY3QPzMRvDw` #4 vs `YbakGgfzPQjJ4MK7` #5）47%、M6S（`WATKBdHRh7m8PNQt` #11 vs `QZ8tGLMJbzrAaHwP` #13）20%、M8S 騎士 6%、M8S 武士 3%、M5S（`BF76r8yKh4wGaYkm` #1 vs `b3ph7JxjD4BkVL6Q` #20）3%。這些取樣中「場地 > 8、旋轉後 ≤ 8」M7S 322、M6S 132、M8S 54／18、M5S 11 筆；「場地 ≤ 8、旋轉後 > 8」M7S 27、M6S 29、M8S 12／6、M5S 1 筆（持續 ≥ 2 秒：M7S 5:55、8:00.5、10:06；M6S 4:10、4:35；M8S 騎士 2:46.5）；「場地 ≤ 8、只平移 > 8」M7S 46 筆（只平移在 M7S 放大距離）。

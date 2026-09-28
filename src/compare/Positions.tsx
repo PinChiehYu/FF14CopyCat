@@ -21,6 +21,10 @@ import { formatFightTime } from '../analysis/timeline'
 // 地圖上顯示游標前多久的移動軌跡
 const TRAIL_MS = 5000
 const MAP_SIZE = 360
+// Boss 面向三角形（像素，相對於 Boss 圓點中心；圓點半徑 9）
+const FACING_TIP_PX = 19
+const FACING_BASE_PX = 8
+const FACING_HALF_WIDTH_PX = 6
 const CHART_WIDTH = 1000
 const CHART_HEIGHT = 90
 // 距離圖底部標示「以各自 Boss 為基準」時段的細條高度，與相鄰取樣合併的間隔
@@ -123,23 +127,45 @@ function EdgeArrow({ target, label, className }: { target: Point; label: string;
   )
 }
 
-/** Boss 標記：在圖內畫圓點，在圖外畫邊緣箭頭並標示離 from 多遠。 */
+/**
+ * Boss 標記：在圖內畫圓點（有面向資料時加上指向面向的三角形），在圖外畫邊緣箭頭並標示離 from 多遠。
+ * @param facing Boss 面向（弧度，方向為 (cos, sin)，與座標同一平面；見 bossPoseAt）；沒有資料時不畫面向
+ */
 function BossMarker({
   at,
   px,
   from,
   label,
   className,
+  facing,
 }: {
   at: Point
   px: (p: Point) => Point
   from: Point | null | undefined
   label: string
   className: string
+  facing?: number
 }) {
   const p = px(at)
   if (p.x >= 0 && p.x <= MAP_SIZE && p.y >= 0 && p.y <= MAP_SIZE) {
-    return <circle className={`boss-dot ${className}`} cx={p.x} cy={p.y} r={9} />
+    const nose =
+      facing === undefined
+        ? null
+        : (() => {
+            // 俯視圖只平移縮放、不翻轉，面向向量在畫面上方向相同
+            const dx = Math.cos(facing)
+            const dy = Math.sin(facing)
+            const point = (along: number, side: number) =>
+              `${(p.x + dx * along - dy * side).toFixed(1)},${(p.y + dy * along + dx * side).toFixed(1)}`
+            return `${point(FACING_TIP_PX, 0)} ${point(FACING_BASE_PX, FACING_HALF_WIDTH_PX)} ${point(FACING_BASE_PX, -FACING_HALF_WIDTH_PX)}`
+          })()
+    return (
+      <g>
+        <title>{`${label}${facing === undefined ? '（沒有面向資料）' : ''}`}</title>
+        <circle className={`boss-dot ${className}`} cx={p.x} cy={p.y} r={9} />
+        {nose && <polygon className={`boss-facing ${className}`} points={nose} />}
+      </g>
+    )
   }
   const distance = from ? ` ${Math.hypot(at.x - from.x, at.y - from.y).toFixed(0)} yalm` : ''
   return <EdgeArrow target={p} label={`${label}${distance}`} className={className} />
@@ -191,6 +217,9 @@ function Arena({
   const now = nearest(track, cursor)
   const mine = now ? mineAt(now) : null
   const mineBoss = twoBosses && now ? positionAt(mineBossSamples, now.t, BOSS_LIMITS) : null
+  // Boss 面向（前後 5 秒內有取樣才有）
+  const refFacing = now ? bossPoseAt(bossSamples, now.t)?.facing : undefined
+  const mineFacing = twoBosses && now ? bossPoseAt(mineBossSamples, now.t)?.facing : undefined
   // 每 5 yalm 一條格線
   const grid = Array.from({ length: Math.ceil(size / 5) + 1 }, (_, i) => Math.ceil(minX / 5) * 5 + i * 5)
   const gridY = Array.from({ length: Math.ceil(size / 5) + 1 }, (_, i) => Math.ceil(minY / 5) * 5 + i * 5)
@@ -206,9 +235,16 @@ function Arena({
       <polyline className="trail ref" points={trail((p) => p.ref)} />
       <polyline className="trail mine" points={trail(mineAt)} />
       {now?.boss && (
-        <BossMarker at={now.boss} px={px} from={now.ref} label={twoBosses ? '參考 Boss' : 'Boss'} className={twoBosses ? 'ref' : ''} />
+        <BossMarker
+          at={now.boss}
+          px={px}
+          from={now.ref}
+          label={twoBosses ? '參考 Boss' : 'Boss'}
+          className={twoBosses ? 'ref' : ''}
+          facing={refFacing}
+        />
       )}
-      {mineBoss && <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" />}
+      {mineBoss && <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" facing={mineFacing} />}
       {now?.ref && <circle className="dot ref" cx={px(now.ref).x} cy={px(now.ref).y} r={6} />}
       {mine && <circle className="dot mine" cx={px(mine).x} cy={px(mine).y} r={6} />}
       <text className="north" x={MAP_SIZE - 14} y={16}>
