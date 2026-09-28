@@ -601,13 +601,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-/* 名稱相同但技能 ID 不同的機制：虛線底線提示滑鼠停留查看說明 */
-.mechanics td.id-variant {
-  text-decoration: underline dotted var(--text-muted);
-  text-underline-offset: 3px;
-  cursor: help;
-}
-
 .hint-inline {
   font-size: 0.85em;
   color: var(--text-muted);
@@ -1507,16 +1500,6 @@ h3 {
   align-items: center;
   gap: 6px;
   margin: 0 0 4px;
-}
-
-.positions-summary [title],
-.has-tip {
-  cursor: help;
-}
-
-.has-tip {
-  text-decoration: underline dotted;
-  text-underline-offset: 3px;
 }
 
 .positions-summary .tag {

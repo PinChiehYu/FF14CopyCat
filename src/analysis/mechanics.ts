@@ -51,17 +51,6 @@ export function mechanicLabel(
     .join('、')
 }
 
-/** 兩邊同名但技能 ID 不同的名稱（例如左右兩種版本），名稱相同但實際是不同變化。 */
-export function sameNameVariants(mine: number[], ref: number[], abilityName: (id: number) => string): string[] {
-  const names = new Set(mine.map(abilityName))
-  return [...new Set(ref.map(abilityName))].filter((name) => {
-    if (!names.has(name)) return false
-    const a = mine.filter((id) => abilityName(id) === name)
-    const b = ref.filter((id) => abilityName(id) === name)
-    return a.some((id) => !b.includes(id)) || b.some((id) => !a.includes(id))
-  })
-}
-
 export interface MergedDifference extends MechanicDifference {
   /** 合併的最後一個時間點（參考時間） */
   last: number

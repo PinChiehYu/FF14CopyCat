@@ -1,16 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { TimedCast } from './alignment'
-import { mechanicDifferences, mechanicLabel, mergeRepeats, sameNameVariants } from './mechanics'
+import { mechanicDifferences, mechanicLabel, mergeRepeats } from './mechanics'
 
-describe('sameNameVariants', () => {
-  const names: Record<number, string> = { 42788: '搖擺哈娑', 42789: '搖擺哈娑', 37832: '播放A面', 42883: '播放A面' }
+describe('mechanicLabel', () => {
+  const names: Record<number, string> = { 42788: '搖擺哈娑', 42789: '搖擺哈娑' }
   const name = (id: number) => names[id]
-
-  it('finds names used on both sides with different IDs', () => {
-    expect(sameNameVariants([42789], [42788], name)).toEqual(['搖擺哈娑'])
-    expect(sameNameVariants([37832, 42883], [37832, 42883], name)).toEqual([])
-    expect(sameNameVariants([42789], [37832], name)).toEqual([])
-  })
 
   it('can leave the ID out of the label', () => {
     expect(mechanicLabel([42789], [42788], name, { withIds: false })).toBe('搖擺哈娑')

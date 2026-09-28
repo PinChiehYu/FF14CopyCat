@@ -33,7 +33,7 @@ import {
 } from './load'
 import { AdviceList } from './AdviceList'
 import { HelpTip } from './HelpTip'
-import { Mechanics } from './Mechanics'
+import { Mechanics, MechanicsHeading } from './Mechanics'
 import { Metrics } from './Metrics'
 import { Positions } from './Positions'
 import { Timeline } from './Timeline'
@@ -697,7 +697,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         )}
         {!solo && (
           <>
-            <h3>Boss 機制差異</h3>
+            <MechanicsHeading main={mainMechanicGroups(mine.selection.fight.encounterID) !== null} />
             <Mechanics
               differences={mainMechanics}
               main={mainMechanicGroups(mine.selection.fight.encounterID) !== null}

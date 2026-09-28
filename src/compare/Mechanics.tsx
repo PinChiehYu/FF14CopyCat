@@ -1,7 +1,26 @@
-import { mechanicLabel, mergeRepeats, sameNameVariants, type MechanicDifference } from '../analysis/mechanics'
+import { mechanicLabel, mergeRepeats, type MechanicDifference } from '../analysis/mechanics'
 import { formatFightTime } from '../analysis/timeline'
+import { HelpTip } from './HelpTip'
 
-const MAIN_TIP = '依 cactbot 時間軸列出的機制（玩家需要處理的攻擊），不含輔助判定與連續攻擊的每一下'
+/** 「Boss 機制差異」標題旁的說明 */
+function mechanicsHelp(main: boolean): string {
+  return [
+    main
+      ? '只比較主要機制：cactbot 時間軸列出的玩家需要處理的攻擊，不含輔助判定與連續攻擊的每一下。'
+      : '比較 Boss 的低頻技能（這個 Boss 沒有 cactbot 資料）。',
+    '不同變化：同一時間兩邊施放不同技能，通常是隨機變化；不同版本：名稱相同但技能 ID 不同，通常是方向或位置不同。',
+    '這些時間點的站位或走位差異可能是機制造成，不一定是錯誤。推進時間不同（例如轉場提早）造成的只有一邊的機制不列出。',
+  ].join('\n')
+}
+
+export function MechanicsHeading({ main }: { main: boolean }) {
+  return (
+    <h3>
+      Boss 機制差異
+      <HelpTip text={mechanicsHelp(main)} />
+    </h3>
+  )
+}
 
 const KIND_LABELS: Record<MechanicDifference['kind'], string> = {
   variant: '不同變化',
@@ -34,30 +53,11 @@ export function Mechanics({
     const names = (ids: number[]) => [...new Set(ids.map(abilityName))].sort().join('、')
     return names(mine) === names(ref)
   }
-  const cell = (ids: number[], variants: string[]) => {
-    const idList = ids.map((id) => `#${id}`).join(' ')
-    // 兩邊名稱相同但技能 ID 不同：畫面看起來一樣，以虛線底線提示滑鼠停留查看
-    const title =
-      variants.length > 0
-        ? `${variants.join('、')}：名稱相同但技能 ID 不同，通常是方向或位置不同的版本（${idList}）`
-        : ids.length > 1
-          ? idList
-          : undefined
-    return (
-      <td title={title} className={variants.length > 0 ? 'id-variant' : undefined}>
-        {label(ids)}
-      </td>
-    )
-  }
 
   return (
     <>
-      <p>
-        對齊後共 {rows.length} 處 Boss{' '}
-        {main ? <span className="has-tip" title={MAIN_TIP}>主要機制</span> : '機制'}不同（其中 {rows.filter((d) => d.kind === 'variant').length}{' '}
-        處是同一時間施放不同技能，通常是隨機變化）。這些時間點的站位或走位差異可能是機制造成，不一定是錯誤。
-        推進時間不同（例如轉場提早）造成的只有一邊的機制不列出。
-      </p>
+      {/* 各處的類型在表格中，這裡只列總數 */}
+      <p>共 {rows.length} 處不同。</p>
       <table className="metrics-table mechanics">
         <thead>
           <tr>
@@ -69,7 +69,6 @@ export function Mechanics({
         </thead>
         <tbody>
           {rows.map((d) => {
-            const variants = sameNameVariants(d.mine, d.ref, abilityName)
             return (
               <tr key={d.t}>
                 <th>
@@ -79,8 +78,8 @@ export function Mechanics({
                 </th>
                 {/* 兩邊名稱完全相同的不同變化（例如方向不同的版本）寫「不同版本」，比「不同變化」好懂 */}
                 <td className="mech-kind">{d.kind === 'variant' && sameNames(d.mine, d.ref) ? '不同版本' : KIND_LABELS[d.kind]}</td>
-                {cell(d.mine, variants)}
-                {cell(d.ref, variants)}
+                <td>{label(d.mine)}</td>
+                <td>{label(d.ref)}</td>
               </tr>
             )
           })}
