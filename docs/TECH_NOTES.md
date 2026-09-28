@@ -473,6 +473,7 @@
 - **Cloudflare Secret 未部署的版本**：在儀表板刪除 Secret 而未按 Deploy 時，會產生未部署的新版本；下次 `wrangler deploy` 會以最新設定為準而使 Secret 消失。用 `npx wrangler secret list`、`versions list`、`deployments status` 檢查。
 - **wrangler login**：自動開啟瀏覽器失敗時，用 `npx wrangler login --browser=false` 取得網址讓使用者手動開啟。
 - **卡片列置中用 offsetLeft 在寬螢幕錯位**（2026-09-28）：站位差異卡片列原本以 `card.offsetLeft` 計算捲動位置，但卡片列沒有 `position`，`offsetLeft` 相對於頁面，頁面內容置中、左邊有空白時多算這段距離，播放換卡時卡片被捲到左邊只剩右半（1024 px 寬的測試畫面左邊只有 16 px，看不出來）。改用 `getBoundingClientRect()` 相對於卡片列計算。驗證方式：`document.body.style.paddingLeft = '400px'` 模擬寬螢幕，修正前中心偏 −400 px。
+- **FFLogs 護盾吸收事件的座標過時**：`absorbed` 事件的 `targetResources` 常是之前的位置，同一時間與其他事件並存時會讓位置瞬間跳回；位置取樣已排除（見技術變更紀錄 2026-09-28「位置取樣去除過時座標」）。
 - **瀏覽器面板在背景時無法驗證播放**：面板被遮住時 `requestAnimationFrame` 暫停，按播放時間不會前進（截圖也是空白）；改以程式設定播放列拉桿的值（`input` 事件）逐秒推進游標。
 - **GitHub SSH**：本機 `known_hosts` 有 GitHub 2023 年前的舊 RSA 金鑰導致警告；使用者需自行把 SSH 金鑰加到 GitHub。
 - **npm 安裝腳本**：npm 11 預設阻擋 esbuild、workerd 的 postinstall（allow-scripts 警告），實際不影響建置與 `wrangler dev`。
@@ -493,6 +494,11 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-28 位置取樣去除過時座標
+- `load.ts` 的 `actorPositions()`：略過 `absorbed` 事件；同一時間多筆時自己施放（`sourceID` 為該角色）的優先；新增 `withoutSpikes()`：某筆與前後兩筆的速度都 > 12 yalm/秒（衝刺約 7.8）且前後兩筆相距不到來回距離的一半時移除（單向的衝刺、擊退保留）。Boss 位置同樣經過這個函式。
+- 調查（4 份日誌，各事件座標與 ±300 ms 內自己施放事件的座標相差 > 1 yalm 的比例）：`absorbed` 9.0%（最大 7.3 yalm）、`heal` 5.4%、`damage` 5.2%、`calculatedheal` 0.5%、`cast` 0.2%、`calculateddamage` 0.1%。治療、受傷的差距多半是移動中（0.3 秒可移動約 2 yalm），護盾吸收的座標則常停在過去的位置（例 M8S 騎士 1:43.44 與 1:42.55 完全相同）。
+- 結果：尖點 M8S 騎士 1 → 0、M7S 武士 2 → 0、另兩份 0；取樣數不變（同一時間換成較可靠的一筆）。
 
 ### 2026-09-28 死區鏡頭與時間軸連續捲動
 - `Positions.tsx`：`bounds()`／`useSmoothView()` 改為 `contentBox()`（前 2 秒到後 3 秒的玩家與 Boss 取樣，加上當下內插位置；Boss 以陣列分開傳入，避免兩場 Boss 取樣混在同一陣列時 `positionAt` 失效）、`fitView()`（至少 30 yalm、每邊 5 yalm）與 `useDeadZoneView()`：內容外框在上一次範圍內縮 2 yalm 之內、且上一次大小 ≤ 目標 × 1.6 時沿用上一次範圍；否則以 `k = 1 − exp(−Δ/1000 ms)` 靠近目標，當下位置在新範圍內縮 1 yalm 之外時直接用目標。`BossArena` 同樣改用前 2 秒到後 3 秒、只調整大小。移除 `BOSS_RANGE_QUANTILE`、`quantile()`。畫圖順序改為 我的軌跡 → 參考軌跡 → 我的圓點 → 參考圓點。

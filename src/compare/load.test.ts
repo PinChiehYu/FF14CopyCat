@@ -32,6 +32,35 @@ describe('actorPositions', () => {
       { t: 2000, x: 105, y: 98 },
     ])
   })
+
+  it('ignores stale absorbed coordinates and prefers own events at the same time', () => {
+    const events: FFLogsEvent[] = [
+      { timestamp: 1000, type: 'cast', sourceID: 6, sourceResources: { x: 10000, y: 10000 } },
+      // 護盾吸收帶的是過時的座標
+      { timestamp: 2000, type: 'absorbed', sourceID: 9, targetID: 6, targetResources: { x: 9000, y: 9000 } },
+      // 同一時間：別人對我的治療排在前面，但自己施放的較可靠
+      { timestamp: 3000, type: 'heal', sourceID: 9, targetID: 6, targetResources: { x: 10300, y: 10000 } },
+      { timestamp: 3000, type: 'cast', sourceID: 6, sourceResources: { x: 10200, y: 10000 } },
+    ]
+    expect(actorPositions(events, fight, 6)).toEqual([
+      { t: 0, x: 100, y: 100 },
+      { t: 2000, x: 102, y: 100 },
+    ])
+  })
+
+  it('removes there-and-back spikes but keeps one-way dashes', () => {
+    const cast = (t: number, x: number) => ({ timestamp: t, type: 'cast', sourceID: 6, sourceResources: { x: x * 100, y: 10000 } })
+    const events: FFLogsEvent[] = [
+      cast(1000, 100),
+      cast(1500, 100.2),
+      cast(1550, 98), // 0.05 秒跳回 2.2 yalm 又回來：尖點
+      cast(1600, 100.3),
+      cast(2000, 100.5),
+      cast(2300, 110), // 衝刺：單向，保留
+      cast(2600, 110.2),
+    ]
+    expect(actorPositions(events, fight, 6).map((s) => s.x)).toEqual([100, 100.2, 100.3, 100.5, 110, 110.2])
+  })
 })
 
 describe('bossPositions', () => {

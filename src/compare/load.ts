@@ -94,18 +94,41 @@ interface Resources {
 
 /** 從事件的 source/targetResources 取出某角色的位置，依時間排序並去除同時間的重複取樣。 */
 export function actorPositions(events: FFLogsEvent[], fight: Fight, actorId: number): PositionSample[] {
-  const samples: PositionSample[] = []
+  const samples: (PositionSample & { own: boolean })[] = []
   for (const e of events) {
-    const res = (e.sourceID === actorId ? e.sourceResources : e.targetID === actorId ? e.targetResources : undefined) as
-      | Resources
-      | undefined
+    // 護盾吸收（absorbed）的座標常是過時的（例：M8S 騎士基準 1:43.44 回到 0.9 秒前的位置，一瞬間跳回 1.86 yalm）
+    if (e.type === 'absorbed') continue
+    const own = e.sourceID === actorId
+    const res = (own ? e.sourceResources : e.targetID === actorId ? e.targetResources : undefined) as Resources | undefined
     if (res?.x === undefined || res.y === undefined) continue
-    const sample: PositionSample = { t: toFightTime(e.timestamp, fight.startTime), x: res.x / 100, y: res.y / 100 }
+    const sample = { t: toFightTime(e.timestamp, fight.startTime), x: res.x / 100, y: res.y / 100, own } as PositionSample & { own: boolean }
     if (typeof res.facing === 'number') sample.facing = res.facing / 100
     samples.push(sample)
   }
-  samples.sort((a, b) => a.t - b.t)
-  return samples.filter((s, i) => i === 0 || s.t !== samples[i - 1].t)
+  // 同一時間多筆時優先用自己施放的事件（座標取自自己，最可靠）
+  samples.sort((a, b) => a.t - b.t || Number(b.own) - Number(a.own))
+  const unique = samples
+    .filter((s, i) => i === 0 || s.t !== samples[i - 1].t)
+    .map(({ own: _own, ...s }) => s as PositionSample)
+  return withoutSpikes(unique)
+}
+
+// 相鄰取樣的速度超過這個值（yalm/秒，衝刺約 7.8）視為不合理
+const SPIKE_SPEED = 12
+
+/**
+ * 去除「去了又回來」的尖點：與前後兩筆都以不合理的速度移動、且前後兩筆彼此接近（不到來回距離的一半）的取樣，
+ * 是座標過時或錯誤的事件。衝刺、擊退等單向的大幅移動（前後兩筆相距遠）不會被移除。
+ */
+function withoutSpikes(samples: PositionSample[]): PositionSample[] {
+  const speed = (a: PositionSample, b: PositionSample) => Math.hypot(b.x - a.x, b.y - a.y) / Math.max(1, b.t - a.t) * 1000
+  return samples.filter((s, i) => {
+    const a = samples[i - 1]
+    const b = samples[i + 1]
+    if (!a || !b) return true
+    const there = Math.hypot(s.x - a.x, s.y - a.y) + Math.hypot(b.x - s.x, b.y - s.y)
+    return !(speed(a, s) > SPIKE_SPEED && speed(s, b) > SPIKE_SPEED && Math.hypot(b.x - a.x, b.y - a.y) < there / 2)
+  })
 }
 
 /** 施放次數最多的敵人（沒有 subType 為 Boss 的角色時才用）。 */
