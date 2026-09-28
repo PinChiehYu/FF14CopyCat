@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
 import { generateAdvice, generateSoloAdvice, type AdviceInput, type SoloAdviceInput } from './advice'
+import { DOT_RULES } from '../jobs/dotRules'
 import type { WindowRule } from '../jobs/windows'
 import type { AbilityUsage } from './metrics'
 import type { TrackPoint } from './positions'
@@ -338,6 +339,19 @@ describe('generateSoloAdvice', () => {
 
   it('returns nothing when there is nothing to improve', () => {
     expect(generateSoloAdvice(solo())).toEqual([])
+  })
+
+  it('flags DoT uptime below the target and early refreshes', () => {
+    const rule = DOT_RULES.Samurai[0]
+    const dot = { rule, uptime: 78, clipPerMinMs: 35_000, clips: [{ t: 144_000, ms: 3600 }], applications: 10 }
+    const advice = generateSoloAdvice(solo({ dots: [{ mine: dot, ref: null }] }))
+    expect(advice.map((a) => [a.severity, a.title])).toEqual([
+      ['high', '#1001228 覆蓋率 78.0%（目標 90%）'],
+      ['medium', '#1001228 提早續上：每分鐘覆蓋掉 35.0 秒'],
+    ])
+    expect(advice[1].at).toBe(144_000)
+    // 達到目標、沒有達到提醒門檻時不提
+    expect(generateSoloAdvice(solo({ dots: [{ mine: { ...dot, uptime: 95, clipPerMinMs: 500 }, ref: null }] }))).toEqual([])
   })
 
   it('judges by rules only, without comparing to a reference', () => {

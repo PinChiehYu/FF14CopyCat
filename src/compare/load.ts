@@ -1,6 +1,7 @@
 import type { TimedCast } from '../analysis/alignment'
 import {
   debuffsOnPlayer,
+  enemyDebuffApplications,
   enemyDebuffWindows,
   hpSamples,
   playerAuras,
@@ -8,6 +9,7 @@ import {
   selfBuffWindows,
   type Aura,
   type BuffWindow,
+  type DebuffApplication,
   type HpSample,
 } from '../analysis/buffs'
 import type { PositionSample } from '../analysis/positions'
@@ -36,6 +38,8 @@ export interface SideData {
   bossPositions: PositionSample[]
   /** 玩家自己給自己的效果，以及玩家施加在敵人身上的效果的時段（技能窗口分析用） */
   buffs: BuffWindow[]
+  /** 玩家對敵人施加或續上效果的每一次（DoT 提早續上的計算用） */
+  debuffApplications: DebuffApplication[]
   /** 敵人施加在玩家身上的 debuff（找出 Boss 強制控場用） */
   bossDebuffs: BuffWindow[]
   /** 開打當下玩家自己施加、身上已有的效果 ID（推知開打前用過的技能） */
@@ -309,6 +313,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     buffs: [...selfBuffWindows(playerEvents, fight, player.id), ...enemyDebuffWindows(playerEvents, fight, player.id)].sort(
       (a, b) => a.start - b.start,
     ),
+    debuffApplications: enemyDebuffApplications(playerEvents, fight, player.id),
     bossDebuffs: debuffsOnPlayer(playerEvents, fight, player.id),
     prepull: prepullEffects(playerEvents, player.id),
     auras: playerAuras(playerEvents, fight, player.id),
@@ -339,6 +344,7 @@ export function clipSide(side: SideData, endMs: number): SideData {
     buffs: side.buffs
       .filter((b) => b.start <= endMs)
       .map((b) => (b.end > endMs ? { ...b, end: endMs, openEnded: true } : b)),
+    debuffApplications: before(side.debuffApplications),
     bossDebuffs: side.bossDebuffs
       .filter((b) => b.start <= endMs)
       .map((b) => (b.end > endMs ? { ...b, end: endMs, openEnded: true } : b)),

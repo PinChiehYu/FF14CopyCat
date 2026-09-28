@@ -35,6 +35,9 @@ import {
 import { AdviceList } from './AdviceList'
 import { HelpTip } from './HelpTip'
 import { Mechanics, MechanicsHeading } from './Mechanics'
+import { Dots, DotsHeading } from './Dots'
+import { DOT_RULES, fflogsStatusId } from '../jobs/dotRules'
+import { evaluateDot } from '../analysis/dots'
 import { Metrics } from './Metrics'
 import { Positions } from './Positions'
 import { Timeline } from './Timeline'
@@ -118,6 +121,8 @@ function useAbilityNames(mine: SideData, reference: SideData | null): Map<number
       ...windowRules(job).flatMap(ruleIds),
       // 冷卻技（兩邊都沒用過時也要顯示名稱）
       ...(COOLDOWN_RULES[job] ?? []).flatMap((g) => g.ids),
+      // DoT 效果
+      ...(DOT_RULES[job] ?? []).flatMap((r) => r.statusIds.map(fflogsStatusId)),
       // 普通攻擊（沒有名稱的 Boss 普通攻擊沿用它的名稱）
       AUTO_ATTACK,
     ]
@@ -563,6 +568,15 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       ref: r && !solo ? evaluate(r, refInRange) : null,
     }))
   }, [job, patches, mineInRange, refInRange, abilities, solo])
+  // DoT 覆蓋率與提早續上：兩邊各自、只看比較範圍內
+  const dots = useMemo(
+    () =>
+      (DOT_RULES[mine.selection.player.subType] ?? []).map((rule) => ({
+        mine: evaluateDot(rule, mineInRange),
+        ref: solo ? null : evaluateDot(rule, refInRange),
+      })),
+    [mine, mineInRange, refInRange, solo],
+  )
   const englishName = useCallback(
     (id: number) => {
       const a = abilities.get(id)
@@ -583,6 +597,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         penalties: mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down'),
         // 強化藥：得到強化藥效果的次數（含開打前）
         potionUses: mineInRange.buffs.filter((b) => b.statusId === MEDICATED).length,
+        dots,
       })
     }
     return generateAdvice({
@@ -605,8 +620,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       mineDurationMs: mineInRange.duration,
       pushes,
       cooldowns,
+      dots,
     })
-  }, [solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns])
+  }, [solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns, dots])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)
@@ -649,6 +665,12 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
             />
           </>
         )}
+        {dots.length > 0 && (
+          <>
+            <DotsHeading />
+            <Dots dots={dots} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
+          </>
+        )}
         {!solo && (
           <>
             <MechanicsHeading main={mainMechanicGroups(mine.selection.fight.encounterID) !== null} />
@@ -675,7 +697,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         />
       </>
     ),
-    [solo, advice, jumpTo, windows, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
+    [solo, advice, jumpTo, windows, dots, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
   )
 
   return (

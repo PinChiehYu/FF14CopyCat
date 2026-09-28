@@ -142,6 +142,13 @@
 - 解析 `Ability { id: … }` 條目（含註解掉的 `#Ability`／`# Ability`，它們是不同步但實際存在的攻擊；`# Ability`〔# 後有空格〕原本沒被正規表示式讀到，漏了 M5S 放縱勁舞 `182.2 "Let's Dance! (Cleave) 1" # Ability { id: ["A76D", "A76E"] }` 的分組，兩個方向 42861／42862 被當成兩個機制），名稱以 `--` 開頭（`--sync--`、`--middle--` 等）的輔助條目不收。同一行的 ID、以及出現在多行的同一 ID 以 union-find 合併成一組機制。產生結果：M5S 30 組 64 個 ID、M6S 43／55、M7S 48／61、M8S 83／94。M5S 的 2／3／4 連指向因各階段的條目共用 ID 而合成一大組（28 個 ID），畫面上名稱最多列 3 個。
 - 換季時在腳本的 `ENCOUNTERS` 加上新 Boss 後重新執行（不要手改產生的檔案）。
 - 實測 M8S 武士（`FXLkqaK32PhQH8Ac` #1 vs `pwTF16cgnB9G7fWM` #29）：機制差異表 9 列（8 列不同變化：風之魔技／土之魔技、掃擊／旋擊群狼劍、群狼劍與摧枯拉朽的不同版本；1 列只有我：空間斬），名稱皆為繁中服名稱。搜尋前輩日誌（武士 PR 90～100，7 筆）每筆 2～6 種主要機制不同，勾選清單 6 項。
+### DoT（`src/jobs/dotRules.ts`、`src/analysis/dots.ts`）
+- 資料：`buffs.ts` 的 `enemyDebuffWindows()`（玩家施加在敵人身上的效果時段，同一效果多個目標合併）與新增的 `enemyDebuffApplications()`（每次 `applydebuff`／`refreshdebuff`，含目標 ID）→ `SideData.debuffApplications`，`clipSide()` 一併裁切。FFLogs 會記錄 `refreshdebuff`（實例：M8S 武士基準的彼岸花 applydebuff 10、refreshdebuff 3、removedebuff 9 次；87.61 秒施加、144.00 秒續上，覆蓋掉 3.6 秒）。
+- `evaluateDot()`：覆蓋率＝規則內各效果時段的聯集扣掉 Boss 無法選中（`SideData.untargetable`）÷（戰鬥長度 − 無法選中）；提早續上＝同一效果、同一目標的下一次施加時上一次剩下的時間（`持續時間 −（這次 − 上次）`，負值不算），總和 ÷ 可選中的分鐘數。`clipSeverity()` 依規則的門檻。
+- 規則移植自 xivanalysis dawntrail（commit b240252）的 `core/modules/DoTs.tsx` 與各職業模組（sam/Higanbana、drg/Debuffs、ast/Combust、whm／sch／sge／brd／blm 的 DoTs、rpr/DeathsDesign）。xivanalysis 的算法：覆蓋率為每個上過 DoT 的敵人各自（扣掉該敵人的無敵時間）後**平均**；提早續上為每個敵人各自換算每分鐘後**相加**，沒有容許值；checklist 目標預設 95%；賢者、黑魔的單體＋範圍版覆蓋率相加；黑魔 7.2 以前用另一個 Thunder 模組（本站對應的國際服版本都 ≥ 7.2，不需要）。
+- 與 xivanalysis 的差異：覆蓋率合併所有敵人（不平均；M8S 第二階段 Boss 是另一個角色、短暫上過 DoT 的小怪也不會拉低）、排除的時間用 Boss 無法選中（沒有逐敵人的無敵資料）、提早續上以可選中的總時間換算（不逐敵人相加）、吟遊詩人兩條 DoT 各自判斷（xivanalysis 取平均）。槍刃戰士音速破（xivanalysis 只檢查跳數）、騎士厄運流轉等其餘範圍 DoT 沒有移植（xivanalysis 也沒有覆蓋率檢查）。
+- 狀態 ID 以 `/abilities` 查繁中名稱確認（彼岸花、櫻花繚亂、天輝、蠱毒法、焚灼、均衡注藥III、均衡失衡、烈毒咬箭、狂風蝕箭、高階雷電、高階中雷電、死亡烙印）。
+
 ### 建議（`src/analysis/advice.ts`）
 - 輸入各分析結果、`abilityName`（顯示名稱，可能是繁中）、`englishName`（依名稱判斷的規則使用，例如藥水 `/Gemdraught|Tincture|Draught|Potion/`）、`category`（技能分類）。
 - 減傷／移動建議使用 `AbilityUsage.unmatchedRef` 列出參考有用而我沒有對應使用的時間（最多 5 個）。
@@ -499,6 +506,10 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-29 DoT 覆蓋率與提早續上
+- 新增 `SideData.debuffApplications`、`jobs/dotRules.ts`、`analysis/dots.ts`、`compare/Dots.tsx`，建議新增 `dotAdvice()`（比較與只有我都用）。演算法與移植差異見「前端資料處理／DoT」。
+- 實測（本機）：M8S 武士基準 彼岸花 我 94.0%、提早 1.4 秒／分，參考 89.7%、0.9 秒／分；黑魔驗證 高階雷電＋高階中雷電 我 93.8%、1.1 秒／分，參考 97.0%、2.1 秒／分（我未達 95% 且低於參考 → 建議）。
 
 ### 2026-09-28 只有我的日誌時的分析、兩邊分開載入、繁中服 PR
 - Worker `tcRankings()` 新增 `position` 參數（`RankPosition`：`pr`、`better`），`/tc-rankings` 接受 `rdps`（整數）與 `player`（`名稱@伺服器`，各段 1～40 字、不含空白與 @）。

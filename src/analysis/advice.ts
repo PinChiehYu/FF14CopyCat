@@ -18,6 +18,8 @@ import { formatFightTime } from './timeline'
 import { isPotionName } from '../fflogs/report'
 import { controlNames } from './control'
 import type { WindowSummary } from './windows'
+import { clipSeverity, type DotSummary } from './dots'
+import { fflogsStatusId } from '../jobs/dotRules'
 
 export type Severity = 'high' | 'medium' | 'low'
 
@@ -62,6 +64,14 @@ export interface AdviceInput {
   pushes?: PushDifference[]
   /** 冷卻技是否好了就用（xivanalysis 的 CooldownDowntime） */
   cooldowns?: CooldownPair[]
+  /** DoT 覆蓋率與提早續上（xivanalysis 的 DoTs），兩邊依規則順序對應 */
+  dots?: DotPair[]
+}
+
+/** 同一條 DoT 規則兩邊的結果；沒有參考時 ref 為 null */
+export interface DotPair {
+  mine: DotSummary
+  ref: DotSummary | null
 }
 
 // 機制差異發生在時段開始前不久（VARIANT_LEAD_MS）也視為相關（機制通常先施放、後結算），與站位差異相同
@@ -502,6 +512,43 @@ function cooldownAdvice(input: Pick<AdviceInput, 'cooldowns' | 'abilityName' | '
   return items
 }
 
+// 提早續上最多列出幾次
+const MAX_CLIPS_LISTED = 3
+// 覆蓋率比目標低這麼多（百分點）以上列為優先
+const DOT_UPTIME_HIGH_GAP = 10
+
+/**
+ * DoT（xivanalysis 的 DoTs）：覆蓋率未達目標、提早續上達到門檻時提出；有參考時只在我比參考差時提。
+ * 時間：我的戰鬥時間以 mineToRef 換成參考時間。
+ */
+function dotAdvice(input: { dots?: DotPair[]; abilityName: (id: number) => string; mineToRef: (t: number) => number }): Advice[] {
+  const items: Advice[] = []
+  for (const { mine, ref } of input.dots ?? []) {
+    const name = mine.rule.statusIds.map((id) => input.abilityName(fflogsStatusId(id))).join('／')
+    const target = mine.rule.uptimeTarget
+    if (mine.uptime < target && (!ref || mine.uptime < ref.uptime)) {
+      items.push({
+        severity: target - mine.uptime >= DOT_UPTIME_HIGH_GAP ? 'high' : 'medium',
+        title: `${name} 覆蓋率 ${mine.uptime.toFixed(1)}%（目標 ${target}%${ref ? `，參考 ${ref.uptime.toFixed(1)}%` : ''}）`,
+        detail: '掉了就補上，覆蓋率越高輸出越高（Boss 無法選中的時間不算）；對照時間軸找出掉了的時段。',
+      })
+    }
+    const severity = clipSeverity(mine)
+    if (severity && mine.clipPerMinMs !== null && (!ref || ref.clipPerMinMs === null || mine.clipPerMinMs > ref.clipPerMinMs)) {
+      const worst = [...mine.clips].sort((a, b) => b.ms - a.ms).slice(0, MAX_CLIPS_LISTED)
+      items.push({
+        severity,
+        title: `${name} 提早續上：每分鐘覆蓋掉 ${seconds(mine.clipPerMinMs)} 秒${ref?.clipPerMinMs != null ? `（參考 ${seconds(ref.clipPerMinMs)} 秒）` : ''}`,
+        detail:
+          `覆蓋最多的：${[...worst].sort((a, b) => a.t - b.t).map((c) => `${formatFightTime(input.mineToRef(c.t))}（剩 ${seconds(c.ms)} 秒）`).join('、')}。` +
+          '還沒結束就再施加會浪費剩下的傷害，等快結束時再續上。',
+        at: worst.length > 0 ? input.mineToRef(worst[0].t) : undefined,
+      })
+    }
+  }
+  return items
+}
+
 const ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2 }
 
 function sortAdvice(items: Advice[]): Advice[] {
@@ -523,6 +570,8 @@ export interface SoloAdviceInput {
   penalties: { statusId: number; start: number; end: number }[]
   /** 整場的強化藥使用次數；沒有規則可判斷（例如找不到強化藥）時為 null */
   potionUses: number | null
+  /** DoT（ref 為 null） */
+  dots?: DotPair[]
 }
 
 /**
@@ -577,6 +626,7 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
   }
 
   items.push(...cooldownAdvice({ cooldowns: input.cooldowns, abilityName, mineToRef: (t) => t }))
+  items.push(...dotAdvice({ dots: input.dots, abilityName, mineToRef: (t) => t }))
 
   // 技能窗口：依規則評分，有不合格就提出（沒有參考可比較合格率）
   for (const summary of input.windows) {
@@ -627,11 +677,12 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...gcdSpeedAdvice(input),
     ...pushAdvice(input),
     ...cooldownAdvice(input),
+    ...dotAdvice(input),
     ...windowAdvice(input),
     ...prepullAdvice(input),
     ...usageAdvice(input),
     ...positionAdvice(input),
   ]
-  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 冷卻技 → 技能窗口 → 開打前 → 技能 → 站位）
+  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 冷卻技 → DoT → 技能窗口 → 開打前 → 技能 → 站位）
   return sortAdvice(items)
 }

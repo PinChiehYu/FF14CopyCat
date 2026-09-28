@@ -565,6 +565,36 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* DoT：覆蓋率未達目標標紅；提早續上依嚴重程度上色 */
+.dot-cell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot-low {
+  color: var(--error);
+}
+
+.dot-clip {
+  padding: 1px 6px;
+  font: inherit;
+  font-size: 0.9em;
+}
+
+.dot-clip.low {
+  color: var(--text);
+}
+
+.dot-clip.medium {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.dot-clip.high {
+  color: var(--error);
+  border-color: var(--error);
+}
+
 /* 固定欄寬後，較長的規則名稱（例如「技能 後 20 秒」）改為換行，不超出欄位 */
 .windows-table tbody th {
   white-space: normal;

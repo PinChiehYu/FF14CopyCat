@@ -185,6 +185,27 @@ export function hpAt(samples: HpSample[], t: number): HpSample | undefined {
   return found
 }
 
+/** 玩家對敵人施加（或續上）效果的一次紀錄 */
+export interface DebuffApplication {
+  t: number
+  statusId: number
+  targetId: number
+}
+
+/**
+ * 玩家施加在敵人身上的效果的每次施加與續上（applydebuff、refreshdebuff），依時間排序；
+ * DoT 提早續上（覆蓋掉剩餘時間）的計算用，見 analysis/dots.ts。
+ */
+export function enemyDebuffApplications(events: FFLogsEvent[], fight: Fight, actorId: number): DebuffApplication[] {
+  const list: DebuffApplication[] = []
+  for (const e of events) {
+    if (e.sourceID !== actorId || e.targetID === undefined || e.targetID === actorId || e.abilityGameID === undefined) continue
+    if (e.type !== 'applydebuff' && e.type !== 'refreshdebuff') continue
+    list.push({ t: toFightTime(e.timestamp, fight.startTime), statusId: e.abilityGameID, targetId: e.targetID })
+  }
+  return list.sort((a, b) => a.t - b.t)
+}
+
 /**
  * 玩家施加在敵人身上的效果（例如忍者的毒盛、攻擊力降低類的減益）時段。
  * 同一效果可能同時掛在多個敵人身上（範圍技能），同一效果重疊的時段合併成一段。
