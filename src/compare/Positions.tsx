@@ -451,8 +451,8 @@ export function Positions({
   onJump,
   status,
 }: {
-  /** 顯示在站位圖旁的當下狀態（血量、Buff、Boss 施放）；參數為俯視圖是否顯示兩場的 Boss */
-  status?: (twoBosses: boolean) => ReactNode
+  /** 顯示在站位圖旁的當下狀態（血量、Buff、Boss 施放） */
+  status?: ReactNode
   abilityName: (id: number) => string
   track: TrackPoint[]
   divergences: Divergence[]
@@ -573,11 +573,6 @@ export function Positions({
             >
               以 Boss 為中心
             </button>
-            {mode === 'boss' && !bossFrameReady && (
-              <span className="hint-inline" title="這個時間點至少一邊沒有 Boss 的位置或面向（Boss 無法選取、轉場等）">
-                Boss 不在場，暫以場地顯示
-              </span>
-            )}
           </div>
           {showBossFrame ? (
             <BossArena track={track} cursor={cursor} mineSamples={mineSamples} mineBoss={mineBossSamples} refBoss={bossSamples} />
@@ -593,40 +588,52 @@ export function Positions({
               mineBossSamples={mineBossSamples}
             />
           )}
-          <p className="arena-caption">
-            <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
-            {mode === 'two-bosses' ? (
-              <>
-                <span className="legend boss mine">◯ 我的 Boss</span> <span className="legend boss ref">◯ 參考 Boss</span>
-              </>
-            ) : (
-              // 對齊 Boss（含以 Boss 為中心暫以場地顯示時）畫的是參考的 Boss，外框同「兩個 Boss」的參考 Boss
-              <span
-                className={showBossFrame ? 'legend boss' : 'legend boss ref'}
-                title={now?.boss ? undefined : '這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）'}
-              >
-                {showBossFrame ? '● Boss' : '◯ 參考 Boss'}
-                {now?.boss ? '' : '（不在場）'}
-              </span>
-            )}
-            {mode === 'aligned' && !alignedNow && (
-              <span className="hint-inline" title="這個時間點至少一邊沒有 Boss 的位置（Boss 無法選取、轉場等），你的位置以原始位置顯示">
-                （未對齊）
-              </span>
-            )}
-            {now?.distance != null &&
-              (now.bossFrame ? (
-                <span title={`${BOSS_FRAME_TITLE}\n場地上相距 ${now.arenaDistance?.toFixed(1)} yalm；兩場 Boss 相距 ${now.bossGap?.toFixed(1)} yalm`}>
-                  {'　'}相對 Boss 相距 {now.distance.toFixed(1)} yalm
-                </span>
+          {/* 固定兩行（圖例／當下的距離與提示），播放時內容長短改變也不換行、不跳動 */}
+          <div className="arena-caption">
+            <p className="arena-caption-line">
+              <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
+              {mode === 'two-bosses' ? (
+                <>
+                  <span className="legend boss mine">◯ 我的 Boss</span> <span className="legend boss ref">◯ 參考 Boss</span>
+                </>
               ) : (
-                <span title="兩人在場地上的距離（不論俯視圖的視角）；兩場 Boss 在同一處，站位差異依此判斷">
-                  {'　'}相距 {now.distance.toFixed(1)} yalm
+                // 對齊 Boss（含以 Boss 為中心暫以場地顯示時）畫的是參考的 Boss，外框同「兩個 Boss」的參考 Boss
+                <span className={showBossFrame ? 'legend boss' : 'legend boss ref'}>{showBossFrame ? '● Boss' : '◯ 參考 Boss'}</span>
+              )}
+            </p>
+            <p className="arena-caption-line">
+              {now?.distance != null &&
+                (now.bossFrame ? (
+                  <span title={`${BOSS_FRAME_TITLE}\n場地上相距 ${now.arenaDistance?.toFixed(1)} yalm；兩場 Boss 相距 ${now.bossGap?.toFixed(1)} yalm`}>
+                    相對 Boss 相距 {now.distance.toFixed(1)} yalm
+                  </span>
+                ) : (
+                  <span title="兩人在場地上的距離（不論俯視圖的視角）；兩場 Boss 在同一處，站位差異依此判斷">
+                    相距 {now.distance.toFixed(1)} yalm
+                  </span>
+                ))}
+              {!now?.boss && (
+                <span className="hint-inline" title="這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）">
+                  {' '}
+                  Boss 不在場
                 </span>
-              ))}
-          </p>
+              )}
+              {mode === 'boss' && !bossFrameReady && (
+                <span className="hint-inline" title="這個時間點至少一邊沒有 Boss 的位置或面向（Boss 無法選取、轉場等），暫以場地顯示">
+                  {' '}
+                  （暫以場地顯示）
+                </span>
+              )}
+              {mode === 'aligned' && !alignedNow && (
+                <span className="hint-inline" title="這個時間點至少一邊沒有 Boss 的位置（Boss 無法選取、轉場等），你的位置以原始位置顯示">
+                  {' '}
+                  （未對齊）
+                </span>
+              )}
+            </p>
+          </div>
         </div>
-        {status?.(mode === 'two-bosses')}
+        {status}
       </div>
       <DivergenceCards divergences={divergences} track={track} cursor={cursor} abilityName={abilityName} onJump={onJump} />
     </section>

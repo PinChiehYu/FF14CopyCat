@@ -656,19 +656,18 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         cursor={cursor}
         onSeek={setCursor}
         onJump={jumpTo}
-        status={(twoBosses) => (
+        status={
           <StatusPanel
             mine={mine}
             reference={reference}
             cursor={cursor}
             refToMine={alignment.refToMine}
-            twoBosses={twoBosses}
             control={control}
             namedStatus={namedStatus}
             abilities={abilities}
             abilityName={abilityName}
           />
-        )}
+        }
       />
       <h3>時間軸</h3>
       <Timeline

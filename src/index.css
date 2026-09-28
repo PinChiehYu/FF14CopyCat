@@ -2008,6 +2008,15 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* 每行固定一行高（空的也保留），過長時截斷：播放時內容改變不跳動 */
+.arena-caption-line {
+  min-height: 1.5em;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .legend.mine {
   color: var(--mine);
 }

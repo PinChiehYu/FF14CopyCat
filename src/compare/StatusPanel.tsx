@@ -206,15 +206,14 @@ function BossNow({
 }
 
 /**
- * 游標時間點上，兩邊玩家的血量與自身 Buff，以及 Boss 最近與即將施放的技能。
- * 俯視圖顯示兩個 Boss 時，兩場的 Boss 各一行（各自依自己的戰鬥時間），否則只列參考的 Boss。
+ * 游標時間點上，兩邊玩家的血量與自身 Buff，以及兩場 Boss 最近與即將施放的技能。
+ * Boss 固定兩行（我的、參考，各自依自己的戰鬥時間），不隨俯視圖的視角改變行數，播放與切換視角時版面不跳動。
  */
 export function StatusPanel({
   mine,
   reference,
   cursor,
   refToMine,
-  twoBosses,
   abilities,
   abilityName,
   control,
@@ -225,8 +224,6 @@ export function StatusPanel({
   /** 參考時間 */
   cursor: number
   refToMine: (t: number) => number
-  /** 俯視圖是否顯示兩場的 Boss */
-  twoBosses: boolean
   abilities: Map<number, Ability>
   abilityName: (id: number) => string
   control: Set<number>
@@ -235,24 +232,20 @@ export function StatusPanel({
   const mineT = refToMine(cursor)
   return (
     <div className="status-panel">
-      {twoBosses ? (
-        <div className="boss-now-pair">
-          <BossNow
-            label={<span className="legend boss mine">◯ 我的 Boss</span>}
-            casts={mine.bossCasts}
-            t={mineT}
-            abilityName={abilityName}
-          />
-          <BossNow
-            label={<span className="legend boss ref">◯ 參考 Boss</span>}
-            casts={reference.bossCasts}
-            t={cursor}
-            abilityName={abilityName}
-          />
-        </div>
-      ) : (
-        <BossNow label={<span className="legend boss">● Boss</span>} casts={reference.bossCasts} t={cursor} abilityName={abilityName} />
-      )}
+      <div className="boss-now-pair">
+        <BossNow
+          label={<span className="legend boss mine">◯ 我的 Boss</span>}
+          casts={mine.bossCasts}
+          t={mineT}
+          abilityName={abilityName}
+        />
+        <BossNow
+          label={<span className="legend boss ref">◯ 參考 Boss</span>}
+          casts={reference.bossCasts}
+          t={cursor}
+          abilityName={abilityName}
+        />
+      </div>
       <SideStatus
         label="我"
         side={mine}

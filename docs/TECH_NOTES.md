@@ -494,6 +494,10 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 俯視圖說明與 Boss 機制列固定行數
+- `Positions.tsx` 的 `.arena-caption` 改為 `div`，內含兩個 `.arena-caption-line`（`min-height: 1.5em`、`nowrap`、`text-overflow: ellipsis`）；`StatusPanel` 移除 `twoBosses`，固定畫兩個 `BossNow`；`Positions` 的 `status` 改回 `ReactNode`。
+- 驗證方式：以程式設定播放列拉桿逐 3 秒推進整場、切換三種視角，記錄 `.arena-caption`、`.boss-now-pair` 高度與卡片列的頁面位置。手機寬度（375 px）另有 `.aura-row` 在 Buff 多時折成兩行（26 → 55 px，例 M8S 騎士基準 0:09），不在這次範圍。
+
 ### 2026-09-28 俯視圖的 Boss 面向
 - `Positions.tsx` 的 `BossMarker` 新增 `facing`（`bossPoseAt()` 的面向，沒有時不畫），在圓點外畫三角形（尖端 19 px、底邊在 8 px、半寬 6 px；俯視圖只平移縮放不翻轉，面向向量 (cos, sin) 直接用於畫面座標）。
 - 驗證方向慣例：以坦克位置對照（每秒取樣「Boss → 坦克」方向相對於 Boss 面向的角度）。M7S `dbN4HXY3QPzMRvDw` #4 絕槍戰士（主坦）647 筆中 390 筆（60%）在 ±30° 內，確認 (cos θ, sin θ) 為 Boss 正面；M8S `hqNYDGK9A4pmWVXB` #18 騎士分布較散（換坦、副坦時間）。
