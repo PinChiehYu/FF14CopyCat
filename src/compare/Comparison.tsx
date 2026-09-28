@@ -13,7 +13,7 @@ import { mainMechanicDifferences, mainMechanicGroups } from '../analysis/mainMec
 import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { attachControl, controlStatuses, controlWindows } from '../analysis/control'
-import { alignToBoss, attachMechanics, attachUntargetable, attachVariants, compareTracks, distanceAt, divergences } from '../analysis/positions'
+import { alignToBoss, attachBossDistances, attachMechanics, attachUntargetable, attachVariants, compareTracks, distanceAt, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, fetchDamageSummary, type AbilityName, type DamageSummary } from '../fflogs/client'
 import { abilityMap, isPotionName, isUnnamedAbility } from '../fflogs/report'
@@ -426,10 +426,15 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     // 標示每段差異期間、兩人仍相距超過門檻時結算的 Boss 機制（兩邊的 Boss 施放都列出），
     // 兩邊隨機機制不同的（例如熱舞綠光 A 面／B 面的先後）：站位不同可能是機制造成，
     // 以及任一邊 Boss 無法選中（轉場等，玩家常被強制移動或無法移動）的
-    const withMechanics = attachMechanics(
-      divergences(track, DIVERGENCE_YALM),
-      { mine: mineInRange.bossCasts, ref: refInRange.bossCasts, mineToRef: alignment.mineToRef },
-      (t) => distanceAt(track, t),
+    // 並附上機制結算當下兩人各自離自己 Boss 的距離：相對於各自 Boss 位置相近的不算站位不同
+    const withMechanics = attachBossDistances(
+      attachMechanics(
+        divergences(track, DIVERGENCE_YALM),
+        { mine: mineInRange.bossCasts, ref: refInRange.bossCasts, mineToRef: alignment.mineToRef },
+        (t) => distanceAt(track, t),
+        DIVERGENCE_YALM,
+      ),
+      { mine: mineSamples, ref: refInRange.playerPositions, mineBoss: mineBossSamples, refBoss: reference.bossPositions },
       DIVERGENCE_YALM,
     )
     const untargetable = [

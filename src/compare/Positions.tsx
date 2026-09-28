@@ -3,6 +3,7 @@ import {
   bossPoseAt,
   distanceAt,
   positionAt,
+  positionMechanics,
   MIRROR_LABELS,
   toBossFrame,
   type Divergence,
@@ -22,6 +23,8 @@ const CHART_WIDTH = 1000
 const CHART_HEIGHT = 90
 // 每段站位差異最多列出幾個機制
 const MAX_LISTED_MECHANICS = 3
+const SAME_TO_BOSS_TITLE =
+  '機制結算時兩人相對於各自 Boss 的位置相近（8 yalm 內），站位不同是兩場 Boss 的位置不同造成，不算機制結算時站位不同'
 const UNTARGETABLE_TITLE = '這段期間 Boss 無法選中（轉場等），玩家常被強制移動或無法移動，站位不同不一定是站錯；不列入站位建議'
 
 function nearest(track: TrackPoint[], t: number): TrackPoint | undefined {
@@ -348,7 +351,7 @@ function DistanceChart({
       {divergences.map((d) => (
         <rect
           key={d.start}
-          className={d.variant || d.mirror || d.untargetable ? 'band mirrored' : d.mechanics.length > 0 ? 'band mechanic' : 'band'}
+          className={d.variant || d.mirror || d.untargetable ? 'band mirrored' : positionMechanics(d).length > 0 ? 'band mechanic' : 'band'}
           x={x(d.start)}
           width={Math.max(2, x(d.end) - x(d.start))}
           y={0}
@@ -423,7 +426,7 @@ export function Positions({
   // 其次是 Boss 無法選中（轉場等）：玩家常被強制移動或無法移動
   const byVariant = divergences.filter((d) => d.variant).length
   const untargetable = divergences.filter((d) => !d.variant && d.untargetable).length
-  const atMechanic = divergences.filter((d) => !d.variant && !d.untargetable && d.mechanics.length > 0).length
+  const atMechanic = divergences.filter((d) => !d.variant && !d.untargetable && positionMechanics(d).length > 0).length
   const mirrored = divergences.filter((d) => !d.variant && !d.untargetable && d.mirror).length
 
   return (
@@ -586,9 +589,11 @@ function DivergenceCards({
           else byName.set(name, { ...first, mine: first.mine ?? m.mine, ref: first.ref ?? m.ref })
         }
         const unique = [...byName.values()]
+        // 兩人相對於各自 Boss 位置相近的機制不算站位不同
+        const counted = positionMechanics(d).length
         const classes = [
           'divergence-card',
-          !d.variant && !d.untargetable && d.mechanics.length > 0 && 'at-mechanic',
+          !d.variant && !d.untargetable && counted > 0 && 'at-mechanic',
           d.variant && 'by-variant',
           i === active && 'active',
         ]
@@ -622,7 +627,12 @@ function DivergenceCards({
                         Boss 無法選中
                       </span>
                     )}
-                    {d.mechanics.length > 0 && <span className="tag mechanic">機制</span>}
+                    {counted > 0 && <span className="tag mechanic">機制</span>}
+                    {d.mechanics.length > 0 && counted === 0 && (
+                      <span className="tag" title={SAME_TO_BOSS_TITLE}>
+                        相對 Boss 相同
+                      </span>
+                    )}
                     {d.mirror && !d.untargetable && <span className="tag">可能是{MIRROR_LABELS[d.mirror]}站位</span>}
                     {d.mechanics.length === 0 && !d.mirror && !d.untargetable && <span className="card-sub">移動路線不同</span>}
                   </>
@@ -633,12 +643,22 @@ function DivergenceCards({
                   {unique.slice(0, MAX_LISTED_MECHANICS).map((m) => {
                     const distance = distanceAt(track, m.t)
                     const now = Math.abs(cursor - m.t) <= MECHANIC_ACTIVE_MS
+                    const yalm = (v: number | null | undefined) => (v == null ? '—' : v.toFixed(1))
                     return (
-                      <span key={m.name} className={now ? 'card-mechanic now' : 'card-mechanic'}>
+                      <span
+                        key={m.name}
+                        className={['card-mechanic', now && 'now', m.sameToBoss && 'same-to-boss'].filter(Boolean).join(' ')}
+                        title={m.sameToBoss ? SAME_TO_BOSS_TITLE : undefined}
+                      >
                         <span className="card-mechanic-name">{m.name}</span>
                         <span className="card-sub" title="兩邊各自結算的時間（各自的戰鬥時間）；—：這段期間那一邊沒有結算">
                           我 {m.mine !== undefined ? formatFightTime(m.mine) : '—'} · 參考 {m.ref !== undefined ? formatFightTime(m.ref) : '—'}
-                          {distance != null && ` · ${distance.toFixed(1)} yalm`}
+                        </span>
+                        <span
+                          className="card-sub"
+                          title={`結算當下（yalm）\n兩人相距：${yalm(distance)}\n我離我的 Boss：${yalm(m.mineToBoss)}\n參考離參考的 Boss：${yalm(m.refToBoss)}\n—：沒有位置資料`}
+                        >
+                          {distance != null && `相距 ${distance.toFixed(1)} · `}距王 {yalm(m.mineToBoss)}／{yalm(m.refToBoss)}
                         </span>
                       </span>
                     )

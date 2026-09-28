@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { alignToBoss, attachMechanics, attachUntargetable, attachVariants, bossPoseAt, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
+import { alignToBoss, attachBossDistances, attachMechanics, attachUntargetable, attachVariants, bossPoseAt, positionMechanics, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
 
 const s = (seconds: number, x: number, y: number): PositionSample => ({ t: seconds * 1000, x, y })
 
@@ -95,6 +95,44 @@ describe('compareTracks / divergences', () => {
       { abilityId: 3, t: 15_000, mine: 17_000 },
       { abilityId: 2, t: 18_000, ref: 18_000, mine: undefined },
     ])
+  })
+
+  it('measures distances to each side’s own boss and flags positions that match relative to the boss', () => {
+    const at = (t: number, x: number, y: number) => [s(t / 1000 - 1, x, y), s(t / 1000 + 1, x, y)]
+    const d = {
+      start: 0,
+      end: 20_000,
+      maxDistance: 20,
+      mirror: null,
+      mechanics: [
+        { abilityId: 1, t: 5000 },
+        { abilityId: 2, t: 15_000 },
+      ],
+    }
+    const [out] = attachBossDistances(
+      [d],
+      {
+        // 5 秒：兩場 Boss 相差 20 yalm、兩人都在各自 Boss 北方 5 yalm → 相對位置相同
+        // 15 秒：我在 Boss 北方 5、參考在 Boss 南方 5 → 相對差 10
+        mine: [...at(5000, 120, 95), ...at(15_000, 120, 95)],
+        ref: [...at(5000, 100, 95), ...at(15_000, 100, 105)],
+        mineBoss: [...at(5000, 120, 100), ...at(15_000, 120, 100)],
+        refBoss: [...at(5000, 100, 100), ...at(15_000, 100, 100)],
+      },
+      8,
+    )
+    expect(out.mechanics[0]).toMatchObject({ mineToBoss: 5, refToBoss: 5, sameToBoss: true })
+    expect(out.mechanics[1]).toMatchObject({ mineToBoss: 5, refToBoss: 5, sameToBoss: false })
+    expect(positionMechanics(out).map((m) => m.abilityId)).toEqual([2])
+  })
+
+  it('does not judge relative positions without boss positions', () => {
+    const [out] = attachBossDistances(
+      [{ start: 0, end: 10_000, maxDistance: 20, mirror: null, mechanics: [{ abilityId: 1, t: 5000 }] }],
+      { mine: [s(4, 120, 95), s(6, 120, 95)], ref: [s(4, 100, 95), s(6, 100, 95)], mineBoss: [], refBoss: [] },
+      8,
+    )
+    expect(out.mechanics[0]).toMatchObject({ mineToBoss: null, refToBoss: null, sameToBoss: false })
   })
 
   it('marks divergences overlapping a span when the boss cannot be targeted', () => {

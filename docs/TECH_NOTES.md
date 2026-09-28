@@ -112,6 +112,7 @@
   | M7S 武士 | 13 | 12 | 23 |
   - M8S 平移量小（2～7% 的取樣平移 > 3 yalm）。M7S 第二階段 Boss 隨機站在兩側平台（我 3:08～4:03 在 (127, −8)、4:06 後 (73, 17)；參考相反），兩人都站在 Boss 往場中心那側：絕對距離約 20 yalm、平移後約 40 yalm、旋轉後 2～4 yalm。M6S（`WATKBdHRh7m8PNQt` #11 vs `QZ8tGLMJbzrAaHwP` #13）小怪階段平移平均 4、最大 15.6 yalm，站位差異段落因此改變。旋轉在 M8S 第二階段 Boss 面向隨坦克轉動時增加段數。沒有一種基準都對，判定維持絕對位置。
 - `attachMechanics()`：兩邊的 Boss 施放各自去重（1 秒）、排除施放超過 8 次的技能；我的施放以 `mineToRef()` 換成參考時間。任一邊落在差異區段內、且當下 `distanceAt()` > 8 yalm 的施放存入 `Divergence.mechanics`（`DivergenceMechanic`：`t` 參考時間、`mine`／`ref` 各自的戰鬥時間）。參考的施放與我這邊 `PAIR_MECHANIC_MS`（5 秒）內最近的同一技能配成一筆（我這邊不限區段內、不看距離），剩下只在我這邊區段內結算的另列。卡片依繁中名稱合併同名的不同版本（左右等 ID 不同的，各自只有一邊），兩邊時間各取第一個。
+- `attachBossDistances()`：每個機制在參考時間 `t` 取兩人位置（`PLAYER_LIMITS`）與各自的 Boss 位置（我的 Boss 為 `mineBossSamples`，`BOSS_LIMITS`），記 `mineToBoss`／`refToBoss`；兩邊都有 Boss 位置時，相對向量（玩家 − 自己的 Boss，只平移）相差 ≤ 8 yalm 設 `sameToBoss`。`positionMechanics()` 排除 `sameToBoss`，供 at-mechanic 判斷（卡片、距離圖、摘要、`positionAdvice()`）；全部是 `sameToBoss` 的段不列入建議（也不算「附近沒有機制」）。
 - `attachUntargetable()`：與任一邊 `SideData.untargetable`（我的換成參考時間）重疊的差異設 `Divergence.untargetable`；卡片標「Boss 無法選中」、距離圖灰色、不算 at-mechanic；`positionAdvice()` 排除（variant 優先），合併成一則參考。日誌沒有「無法移動」的狀態，實測見技術變更紀錄 2026-09-28「站位差異列出兩邊的機制；Boss 無法選中」。
 
 ### Boss 機制差異（`src/analysis/mechanics.ts`）
@@ -489,6 +490,10 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-28 機制結算時玩家與 Boss 的距離
+- 變更：`positions.ts` 新增 `attachBossDistances()`、`positionMechanics()`，`DivergenceMechanic` 新增 `mineToBoss`／`refToBoss`／`sameToBoss`；`Comparison.tsx` 在 `attachMechanics()` 之後呼叫；`advice.ts`、`Positions.tsx` 改用 `positionMechanics()` 判斷 at-mechanic。卡片第二行「相距 N · 距王 我／參考」：原本寫「距 Boss 我 X／參考 Y」在 190px 卡片折成兩行（56 行中 9 行），縮短後都是一行。
+- 驗證數據見 DESIGN.md 設計變更紀錄 2026-09-28「機制結算時考慮玩家與 Boss 的距離」；M6S 比較為 `WATKBdHRh7m8PNQt` #11（source 34）vs `QZ8tGLMJbzrAaHwP` #13（菲比啾比啾，source 8）。
 
 ### 2026-09-28 兩個 Boss 的當下機制
 - `StatusPanel` 抽出 `BossNow`（一場的 Boss 最近／接下來的施放，施放與游標為同一場的戰鬥時間），新增 `twoBosses` 參數；`Positions` 的 `status` 改為 `(twoBosses) => ReactNode`，依俯視圖視角（`mode === 'two-bosses'`）決定；兩行時我的 Boss 用 `mine.bossCasts` 與 `refToMine(cursor)`。原本的 `bossCasts` 參數移除（改取 `reference.bossCasts`）。

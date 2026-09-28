@@ -206,6 +206,19 @@ export interface DivergenceMechanic {
   mine?: number
   /** 參考日誌中結算的時間 */
   ref?: number
+  /** 結算當下（參考時間 t）我離我那一場 Boss、參考離參考那一場 Boss 的距離；沒有位置資料時為 null（見 attachBossDistances） */
+  mineToBoss?: number | null
+  refToBoss?: number | null
+  /**
+   * 兩人相對於各自 Boss 的位置（北方朝上、只平移）相距不超過門檻：站位不同是兩場 Boss 的位置不同造成，
+   * 不算機制結算時的站位不同（見 positionMechanics）
+   */
+  sameToBoss?: boolean
+}
+
+/** 算作「機制結算時站位不同」的機制：排除兩人相對於各自 Boss 位置相近的。 */
+export function positionMechanics(d: Divergence): DivergenceMechanic[] {
+  return d.mechanics.filter((m) => !m.sameToBoss)
 }
 
 // 隨機機制差異發生在區段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
@@ -295,6 +308,37 @@ export function attachMechanics(
     })
     return { ...d, mechanics: out.sort((a, b) => a.t - b.t) }
   })
+}
+
+/**
+ * 機制結算當下兩人各自離自己那一場 Boss 的距離，以及相對於各自 Boss 的位置是否相近（sameToBoss）。
+ * 許多機制以 Boss 為基準（鋼鐵月環、扇形等），兩場 Boss 站位不同時，場地上相距很遠也可能都站對了。
+ * 任一邊沒有 Boss 位置（無法選中等）時不判斷，照場地上的距離算。
+ * @param samples 全部為參考時間；mineBoss 為我的日誌的 Boss 位置
+ */
+export function attachBossDistances(
+  divergences: Divergence[],
+  samples: { mine: PositionSample[]; ref: PositionSample[]; mineBoss: PositionSample[]; refBoss: PositionSample[] },
+  thresholdYalm: number,
+): Divergence[] {
+  return divergences.map((d) => ({
+    ...d,
+    mechanics: d.mechanics.map((m) => {
+      const mine = positionAt(samples.mine, m.t)
+      const ref = positionAt(samples.ref, m.t)
+      const mineBoss = positionAt(samples.mineBoss, m.t, BOSS_LIMITS)
+      const refBoss = positionAt(samples.refBoss, m.t, BOSS_LIMITS)
+      const mineToBoss = mine && mineBoss ? distance(mine, mineBoss) : null
+      const refToBoss = ref && refBoss ? distance(ref, refBoss) : null
+      const sameToBoss =
+        mine !== null &&
+        ref !== null &&
+        mineBoss !== null &&
+        refBoss !== null &&
+        Math.hypot(mine.x - mineBoss.x - (ref.x - refBoss.x), mine.y - mineBoss.y - (ref.y - refBoss.y)) <= thresholdYalm
+      return { ...m, mineToBoss, refToBoss, sameToBoss }
+    }),
+  }))
 }
 
 /**

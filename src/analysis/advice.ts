@@ -5,7 +5,7 @@ import type { Death } from '../compare/load'
 import { ruleName } from '../jobs/windows'
 import { mechanicLabel, type MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
-import { MIRROR_LABELS, VARIANT_LEAD_MS, type Divergence, type TrackPoint } from './positions'
+import { MIRROR_LABELS, positionMechanics, VARIANT_LEAD_MS, type Divergence, type TrackPoint } from './positions'
 import { formatFightTime } from './timeline'
 import { isPotionName } from '../fflogs/report'
 import { controlNames } from './control'
@@ -317,16 +317,18 @@ function positionAdvice(input: AdviceInput): Advice[] {
   const unexplained = divergences.filter((d) => !d.mirror && !d.variant && !d.untargetable)
 
   // 站位差異在 Boss 機制結算時才有明顯意義：有機制的差異優先列出，並指出是哪個機制
+  // （兩人相對於各自 Boss 位置相近的機制不算：站位不同是兩場 Boss 的位置不同造成）
   const atMechanic = unexplained
-    .filter((d) => d.mechanics.length > 0)
+    .filter((d) => positionMechanics(d).length > 0)
     .sort((a, b) => Number(overlapsLost(b)) - Number(overlapsLost(a)) || b.maxDistance - a.maxDistance)
     .slice(0, MAX_MECHANIC_POSITIONS)
   const items: Advice[] = atMechanic.map((d) => {
-    const names = [...new Set(d.mechanics.map((m) => abilityName(m.abilityId)))].slice(0, 2).join('、')
+    const mechanics = positionMechanics(d)
+    const names = [...new Set(mechanics.map((m) => abilityName(m.abilityId)))].slice(0, 2).join('、')
     return {
       // 少打的 GCD 已由停手建議列為優先，站位本身最多到「建議」
       severity: 'medium',
-      title: `${formatFightTime(d.mechanics[0].t)} 機制「${names}」結算時站位與參考不同（最遠 ${d.maxDistance.toFixed(1)} yalm）`,
+      title: `${formatFightTime(mechanics[0].t)} 機制「${names}」結算時站位與參考不同（最遠 ${d.maxDistance.toFixed(1)} yalm）`,
       detail:
         `差異從 ${formatFightTime(d.start)} 持續 ${seconds(d.end - d.start)} 秒。${lostNote(d)}` +
         '對照俯視圖看參考在這個機制的站位與移動路線；若是攻略分配不同可忽略。',

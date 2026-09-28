@@ -266,6 +266,29 @@ describe('generateAdvice', () => {
     expect(advice[0].detail).toMatch('1:40.0（你：Ikishoten；參考：Meikyo Shisui）')
   })
 
+  it('ignores mechanics where both players stand the same relative to their own boss', () => {
+    const advice = generateAdvice(
+      input({
+        divergences: [
+          // 第一個機制相對 Boss 相同 → 標題改用第二個
+          {
+            start: 100_000,
+            end: 110_000,
+            maxDistance: 15,
+            mirror: null,
+            mechanics: [
+              { t: 101_000, abilityId: 1, sameToBoss: true },
+              { t: 108_000, abilityId: 5, sameToBoss: false },
+            ],
+          },
+          // 全部相對 Boss 相同：不算機制結算時站位不同，也不是「附近沒有機制」
+          { start: 200_000, end: 210_000, maxDistance: 20, mirror: null, mechanics: [{ t: 205_000, abilityId: 1, sameToBoss: true }] },
+        ],
+      }),
+    )
+    expect(advice.map((a) => a.title)).toEqual(['1:48.0 機制「Meikyo Shisui」結算時站位與參考不同（最遠 15.0 yalm）'])
+  })
+
   it('groups position differences while the boss cannot be targeted into one low item', () => {
     const advice = generateAdvice(
       input({

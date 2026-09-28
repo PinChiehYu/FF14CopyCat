@@ -2130,6 +2130,11 @@ h3 {
   color: var(--error);
 }
 
+/* 相對於各自 Boss 位置相近：不算站位不同，名稱淡化 */
+.card-mechanic.same-to-boss .card-mechanic-name {
+  color: var(--text-muted);
+}
+
 /* ---- 手機（窄螢幕）版面：放在檔案最後，才能覆寫前面同權重的規則 ---- */
 @media (max-width: 560px) {
   /* 頁尾：每組一行，小標籤對齊成一欄 */
