@@ -7,6 +7,8 @@ import { reportUrl } from '../fflogs/url'
 import { jobName } from '../jobs/names'
 import { Dropdown, type DropdownOption } from '../ui/Dropdown'
 import { loadBossCasts, type Selection } from './load'
+import { defaultPrRange, useSideDamage } from './sideDamage'
+import { HelpTip } from './HelpTip'
 
 // 同時比對機制的請求數（Worker 每 IP 每分鐘 60 次）
 const MECHANIC_CONCURRENCY = 3
@@ -21,8 +23,15 @@ type MechanicState = { status: 'loading' } | { status: 'done'; points: { t: numb
  * 可只顯示隨機機制與我相同的。點選後填入參考日誌。
  */
 export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPick: (url: string) => void }) {
-  const [minPr, setMinPr] = useState(90)
-  const [maxPr, setMaxPr] = useState(100)
+  // PR 範圍預設比我的 PR 高一段（defaultPrRange）；使用者改過就沿用，換了我的日誌再回到預設
+  const myPr = useSideDamage(mine)?.pr?.pr ?? null
+  const mineKey = mine ? `${mine.report.code}/${mine.fight.id}/${mine.player.id}` : null
+  const [edited, setEdited] = useState<{ key: string | null; min: number; max: number } | null>(null)
+  const range = edited?.key === mineKey ? edited : defaultPrRange(myPr)
+  const minPr = range.min
+  const maxPr = range.max
+  const setMinPr = (min: number) => setEdited({ key: mineKey, min, max: maxPr })
+  const setMaxPr = (max: number) => setEdited({ key: mineKey, min: minPr, max })
   const [sameMechanics, setSameMechanics] = useState(false)
   const [result, setResult] = useState<
     { status: 'idle' } | { status: 'error'; message: string } | { status: 'ready'; count: number; rows: TcRanking[] }
@@ -53,7 +62,6 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   }, [open])
   const mineBoss = useRef<{ key: string; casts: Promise<TimedCast[]> } | null>(null)
 
-  const mineKey = mine ? `${mine.report.code}/${mine.fight.id}/${mine.player.subType}` : null
   // 換了我的日誌就清掉舊的搜尋結果
   useEffect(() => {
     setResult({ status: 'idle' })
@@ -227,11 +235,18 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       {open && (
         <div className="finder-panel" role="dialog" aria-label="從繁中服排名找參考日誌">
           <div className="finder-controls">
-            <label title={`PR 只在繁中服的${jobName(mine.player.subType)}之間計算`}>
+            <label>
               {jobName(mine.player.subType)} PR
               <PrInput value={minPr} min={0} max={maxPr} disabled={busy} onChange={setMinPr} />
               ～
               <PrInput value={maxPr} min={minPr} max={100} disabled={busy} onChange={setMaxPr} />
+              <HelpTip
+                text={`PR 只在繁中服的${jobName(mine.player.subType)}之間計算。${
+                  myPr === null
+                    ? '預設 90～100（你的這場沒有繁中服 PR：未擊殺或沒有排名資料）。'
+                    : `預設為比你這場的 PR（${myPr}）高一段：${defaultPrRange(myPr).min}～${defaultPrRange(myPr).max}（高 1～20，上限 100），找輸出與打法比你好一些、較好模仿的前輩。`
+                }`}
+              />
             </label>
             <label className="finder-check" title="逐筆比對 Boss 的隨機機制，只列出與我的戰鬥相同的紀錄">
               <input

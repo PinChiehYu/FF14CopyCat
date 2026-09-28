@@ -43,7 +43,7 @@
 - 每邊 3 個請求：玩家全部事件（`dataType=All&source=玩家`）、敵方施放（`dataType=Casts&hostility=Enemies`）與敵方可否選中（`/targetability`，失敗時當成沒有）。載入後另以 `/abilities` 查詢兩邊出現過的技能繁中名稱（查詢失敗沿用英文）。
 - **兩邊分開載入**（`Comparison.tsx` 的 `useSide()`）：每側的 `loadSide()` Promise 以「報告／戰鬥／角色」為鍵放在模組層級的快取（`sideCache`，最多 4 筆、最近使用的留下，失敗的移除；不隨單一畫面卸載而中止）。我的先載入好就以 `reference = null` 顯示 `Loaded`（只有我的分析），參考載入後以 `key` 換成比較模式重新掛載；換參考日誌時我的一側直接取快取。
 - **沒有參考時**（`Loaded` 的 `solo`）：以我自己代替參考（`unifyPotions(m, m)`、恆等對應 `IDENTITY`，參考時間＝我的時間），各項計算照常執行，需要比較的部分改為：停手用 `idleWindows()`、技能次數以空的參考計算、機制差異與站位差異為空、`compareTracks(mine, [], 我的 Boss)`、技能窗口與冷卻技的 ref 為 null、建議用 `generateSoloAdvice()`。顯示時以 `shownRef`（null）判斷，元件（`SummaryTable`、`Windows`、`Metrics` 的 `solo`、`Positions` 的 `solo`、`StatusPanel`、`Timeline`）各自隱藏參考的部分。
-- **繁中服 PR**（`useSideDamage()`）：傷害表查到 rDPS、且這場是擊殺時，以 `/tc-rankings?…&minPr=100&maxPr=100&rdps&player` 查位置（列表只取 PR 100，資料量小）。`player` 取 `Actor.server`，沒有伺服器時不帶。
+- **繁中服 PR**（`compare/sideDamage.ts` 的 `useSideDamage()`，摘要表與 `ReferenceFinder` 共用；搜尋的預設範圍由 `defaultPrRange()` 算出）：傷害表查到 rDPS、且這場是擊殺時，以 `/tc-rankings?…&minPr=100&maxPr=100&rdps&player` 查位置（列表只取 PR 100，資料量小）。`player` 取 `Actor.server`，沒有伺服器時不帶。
 - **玩家施放**（`playerCasts()`）：只取 `sourceID` 為玩家者；有詠唱條的技能以同技能前一個 `begincast`（5 秒內）的時間取代 `cast`；被打斷的只有 `begincast`、不計；任何施放完成時清除尚未完成的 `begincast`（該詠唱已被取消），避免之後瞬發同一技能時配對到過期的開始時間。
 - **普通攻擊**（Attack #7、Shot #8）另存 `autoAttacks`。
 - **不紀錄的技能**：`withoutAbilities()` 在比較開始時移除 ignored 分類的施放。
