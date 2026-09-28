@@ -178,6 +178,22 @@ function EdgeArrow({ target, label, className }: { target: Point; label: string;
   )
 }
 
+/** 俯視圖滑鼠提示用的角色名稱（Boss 只標「我的 Boss／參考 Boss」） */
+export interface ArenaNames {
+  mine: string
+  ref: string
+}
+
+/** 場地座標（yalm，FFLogs 的座標 ÷ 100） */
+function coord(p: Point): string {
+  return `(${p.x.toFixed(1)}, ${p.y.toFixed(1)})`
+}
+
+/** 玩家圓點的滑鼠提示：「我：名稱」＋場地座標＋附註 */
+function playerTitle(label: string, name: string, at: Point | null, note = ''): string {
+  return `${label}：${name}${at ? `\n座標 ${coord(at)}` : ''}${note}`
+}
+
 /**
  * Boss 標記：在圖內畫圓點（有面向資料時加上指向面向的三角形），在圖外畫邊緣箭頭並標示離 from 多遠。
  * @param facing Boss 面向（弧度，方向為 (cos, sin)，與座標同一平面；見 bossPoseAt）；沒有資料時不畫面向
@@ -212,7 +228,8 @@ function BossMarker({
           })()
     return (
       <g>
-        <title>{`${label}${facing === undefined ? '（沒有面向資料）' : ''}`}</title>
+        {/* 滑鼠提示：名稱與座標；重疊時瀏覽器只顯示最上層（參考在上）的提示 */}
+        <title>{`${label}\n座標 ${coord(at)}${facing === undefined ? '\n沒有面向資料' : ''}`}</title>
         <circle className={`boss-dot ${className}`} cx={p.x} cy={p.y} r={9} />
         {nose && <polygon className={`boss-facing ${className}`} points={nose} />}
       </g>
@@ -236,6 +253,7 @@ function Arena({
   refSamples,
   bossSamples,
   mineBossSamples,
+  names,
 }: {
   mode: 'two-bosses' | 'aligned'
   track: TrackPoint[]
@@ -246,6 +264,7 @@ function Arena({
   refSamples: PositionSample[]
   bossSamples: PositionSample[]
   mineBossSamples: PositionSample[]
+  names: ArenaNames
 }) {
   const twoBosses = mode === 'two-bosses'
   // track 的 mine 是原始位置；對齊 Boss 時改用平移後的位置
@@ -285,10 +304,21 @@ function Arena({
       <polyline className="trail mine" points={trail((p) => (twoBosses ? p.mine : positionAt(mineAlignedSamples, p.t)), mine)} />
       <polyline className="trail ref" points={trail((p) => p.ref, ref)} />
       {/* 兩個 Boss 重疊時參考的 Boss 在上方（後畫） */}
-      {mineBoss && <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" facing={mineFacing} />}
+      {mineBoss && (
+        <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" facing={mineFacing} />
+      )}
       {refBoss && <BossMarker at={refBoss} px={px} from={ref} label="參考 Boss" className="ref" facing={refFacing} />}
-      {mine && <circle className="dot mine" cx={px(mine).x} cy={px(mine).y} r={6} />}
-      {ref && <circle className="dot ref" cx={px(ref).x} cy={px(ref).y} r={6} />}
+      {/* 滑鼠提示：名稱與座標（對齊 Boss 時圖上的位置是平移後的，提示顯示原始座標） */}
+      {mine && (
+        <circle className="dot mine" cx={px(mine).x} cy={px(mine).y} r={6}>
+          <title>{playerTitle('我', names.mine, positionAt(mineSamples, cursor), twoBosses ? '' : '\n圖上已平移對齊參考 Boss')}</title>
+        </circle>
+      )}
+      {ref && (
+        <circle className="dot ref" cx={px(ref).x} cy={px(ref).y} r={6}>
+          <title>{playerTitle('參考', names.ref, ref)}</title>
+        </circle>
+      )}
       <text className="north" x={MAP_SIZE - 14} y={16}>
         N
       </text>
@@ -313,6 +343,7 @@ function BossArena({
   refSamples,
   mineBoss,
   refBoss,
+  names,
 }: {
   track: TrackPoint[]
   cursor: number
@@ -322,6 +353,7 @@ function BossArena({
   /** 我的日誌的 Boss 位置（已換算成參考時間） */
   mineBoss: PositionSample[]
   refBoss: PositionSample[]
+  names: ArenaNames
 }) {
   const relAt = (t: number) => ({
     mine: relativeAt(positionAt(mineSamples, t), mineBoss, t),
@@ -381,9 +413,27 @@ function BossArena({
       <polyline className="trail mine" points={trail('mine')} />
       <polyline className="trail ref" points={trail('ref')} />
       {/* Boss：面向朝上的三角形；位置與面向以參考的 Boss 為準（藍框同其他視角的參考 Boss） */}
-      <polygon className="boss-dot ref" points={`${c},${c - 12} ${c - 9},${c + 8} ${c + 9},${c + 8}`} />
-      {current.mine && <circle className="dot mine" cx={px(current.mine).x} cy={px(current.mine).y} r={6} />}
-      {current.ref && <circle className="dot ref" cx={px(current.ref).x} cy={px(current.ref).y} r={6} />}
+      <polygon className="boss-dot ref" points={`${c},${c - 12} ${c - 9},${c + 8} ${c + 9},${c + 8}`}>
+        {(() => {
+          const at = positionAt(refBoss, cursor, BOSS_LIMITS)
+          return <title>{`參考 Boss${at ? `\n座標 ${coord(at)}` : ''}`}</title>
+        })()}
+      </polygon>
+      {/* 滑鼠提示：名稱、場地座標與離自己那一場 Boss 的距離（圖上是相對於 Boss 的位置） */}
+      {current.mine && (
+        <circle className="dot mine" cx={px(current.mine).x} cy={px(current.mine).y} r={6}>
+          <title>
+            {playerTitle('我', names.mine, positionAt(mineSamples, cursor), `\n距我的 Boss ${Math.hypot(current.mine.x, current.mine.y).toFixed(1)} yalm`)}
+          </title>
+        </circle>
+      )}
+      {current.ref && (
+        <circle className="dot ref" cx={px(current.ref).x} cy={px(current.ref).y} r={6}>
+          <title>
+            {playerTitle('參考', names.ref, positionAt(refSamples, cursor), `\n距參考 Boss ${Math.hypot(current.ref.x, current.ref.y).toFixed(1)} yalm`)}
+          </title>
+        </circle>
+      )}
     </svg>
   )
 }
@@ -501,6 +551,7 @@ export function Positions({
   bossSamples,
   mineBossSamples,
   mineAlignedSamples,
+  names,
   threshold,
   duration,
   cursor,
@@ -510,6 +561,8 @@ export function Positions({
 }: {
   /** 顯示在站位圖旁的當下狀態（血量、Buff、Boss 施放） */
   status?: ReactNode
+  /** 俯視圖滑鼠提示用的角色與 Boss 名稱 */
+  names: ArenaNames
   abilityName: (id: number) => string
   track: TrackPoint[]
   divergences: Divergence[]
@@ -667,6 +720,7 @@ export function Positions({
                 refSamples={refSamples}
                 mineBoss={mineBossSamples}
                 refBoss={bossSamples}
+                names={names}
               />
             ) : (
               <Arena
@@ -678,6 +732,7 @@ export function Positions({
                 refSamples={refSamples}
                 bossSamples={bossSamples}
                 mineBossSamples={mineBossSamples}
+                names={names}
               />
             )}
             <div className="arena-overlay top">
