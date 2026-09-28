@@ -14,6 +14,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - 純 bug 修正或重構不需寫變更紀錄，但有值得記住的原因（例如資料特性）時記到 TECH_NOTES.md。
   - 本檔（CLAUDE.md）的架構描述也要同步更新。
 
+## 使用者偏好（跨電腦保留；原本存在本機的記憶檔）
+
+- 使用者是繁中服玩家、熟悉機制，會在工作中提供真實 FFLogs 日誌當測試資料；以使用者對機制的更正為準、轉成規則，並用他提供的日誌驗證，不依一般印象。
+- **介面精簡**：不重複上方已有的資訊、說明放在滑鼠提示或控制項內，多用分頁、卡片、標籤，少加說明文字行。俯視圖維持簡單的圓點（不做 FFReplay 式的模擬畫面）；當下狀態只列角色自身的效果。
+- **機制比較以時間與資料為準**：對齊與機制差異以「兩場從 0 同步開始」與 cactbot 時間軸為依據，不加依經驗湊出的門檻或特例；資料無法確定的（例如是否為前一招的後續、哪個機制造成 Boss 無法選中）照實保留或不標，先找資料上的解法（分組、解析錯誤、一對一配對），沒有再詢問。
+- 只改文件的 commit 不單獨推送，等下次推送程式時一起送出。
+
 ## Commands
 
 Vite + React + TypeScript，測試用 Vitest，lint 用 oxlint。Node.js 24。
@@ -33,6 +40,7 @@ node scripts/gen-job-data.mjs        # 從遊戲資料重新產生 src/jobs/gene
 node scripts/gen-mechanics.mjs       # 從 cactbot 零式時間軸重新產生 src/analysis/mechanicData.generated.ts（各 Boss 的主要機制；換季時更新腳本的 ENCOUNTERS）
 ```
 
+- **換到新電腦時**：安裝 Node.js 24 後 `npm ci`；部署 Worker 前要先 `npx wrangler login`（Cloudflare 帳號；Worker Secrets 已存在 Cloudflare，不需重設）；本機測試可在 `.env.local` 設 `VITE_API_BASE`（見下方「前端比較流程」）。以下 Windows 路徑與 shell 注意事項是舊電腦的紀錄，新電腦依實際環境調整。追蹤 GitHub Actions 可用公開 API 輪詢 `https://api.github.com/repos/PinChiehYu/FF14CopyCat/actions/runs`，找 `head_sha` 相符且 `status` 為 `completed` 的一筆。
 - 在這台 Windows 機器上，Node 裝在 `C:\Program Files\nodejs`；若 shell 找不到 `node`/`npm`，先把它加進 PATH（PowerShell：`$env:Path = "C:\Program Files\nodejs;" + $env:Path`）。使用者自己的終端機也可能找不到 `npx`，需要請他們開新終端機或用完整路徑。
 - 在 Git Bash 設定 `BASE_PATH=/xxx/` 會被 MSYS 改寫成 Windows 路徑，需加 `MSYS_NO_PATHCONV=1`。
 - 開發環境注意事項：
@@ -45,7 +53,7 @@ node scripts/gen-mechanics.mjs       # 從 cactbot 零式時間軸重新產生 s
   - deploy 步驟若因 GitHub Pages 502 失敗（建置正常），推一個空 commit 重新觸發即可；失敗原因用 `/actions/runs/<id>/jobs` 與 `/check-runs/<job id>/annotations` 查。
   - 短時間多次部署 Worker 可能讓 FFLogs 權杖端點回 429（數分鐘後恢復），部署後驗證若遇到先等一下。
   - GitHub CLI（`gh`）沒有安裝；查 workflow 狀態用公開 API：`https://api.github.com/repos/PinChiehYu/FF14CopyCat/actions/runs`。
-  - `wrangler` 已在這台機器以使用者的 Cloudflare 帳號登入；Worker Secrets 由使用者在 Cloudflare 儀表板設定，不要要求使用者把 secret 貼到對話中。
+  - `wrangler` 已在舊電腦以使用者的 Cloudflare 帳號登入（新電腦需重新 `npx wrangler login`）；Worker Secrets 由使用者在 Cloudflare 儀表板設定，不要要求使用者把 secret 貼到對話中。
 - `tsc -b` 同時檢查前端（`tsconfig.app.json`）與 Worker（`worker/tsconfig.json`，WebWorker lib，不含 DOM）；Vitest 會一併執行 `worker/` 下的測試。
 
 ## 架構：GitHub Pages 前端 + Cloudflare Worker 代理
