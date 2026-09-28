@@ -234,6 +234,8 @@ function Arena({
       ))}
       <polyline className="trail ref" points={trail((p) => p.ref)} />
       <polyline className="trail mine" points={trail(mineAt)} />
+      {/* 兩個 Boss 重疊時參考的 Boss 在上方（後畫） */}
+      {mineBoss && <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" facing={mineFacing} />}
       {now?.boss && (
         <BossMarker
           at={now.boss}
@@ -244,7 +246,6 @@ function Arena({
           facing={refFacing}
         />
       )}
-      {mineBoss && <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" facing={mineFacing} />}
       {now?.ref && <circle className="dot ref" cx={px(now.ref).x} cy={px(now.ref).y} r={6} />}
       {mine && <circle className="dot mine" cx={px(mine).x} cy={px(mine).y} r={6} />}
       <text className="north" x={MAP_SIZE - 14} y={16}>
