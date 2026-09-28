@@ -1613,16 +1613,15 @@ h3 {
   stroke-width: 2;
 }
 
+/* Boss 與玩家的圖示都不透明（重疊時顏色才不會混在一起）；淡色以與背景預先混合的實色表示 */
 .arena .boss-dot {
-  fill: var(--text-muted);
-  opacity: 0.7;
+  fill: color-mix(in srgb, var(--text-muted) 70%, var(--surface));
 }
 
-/* 兩個 Boss：以外框顏色區分我的與參考的 Boss */
+/* 以外框顏色區分我的與參考的 Boss */
 .arena .boss-dot.mine,
 .arena .boss-dot.ref {
   stroke-width: 3;
-  opacity: 0.85;
 }
 
 .arena .boss-dot.mine {
@@ -1636,7 +1635,6 @@ h3 {
 /* Boss 面向：圓點外指向面向的三角形 */
 .arena .boss-facing {
   fill: var(--text-muted);
-  opacity: 0.85;
 }
 
 .arena .boss-facing.mine {

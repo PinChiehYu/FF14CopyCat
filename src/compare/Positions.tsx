@@ -340,8 +340,8 @@ function BossArena({
       </text>
       <polyline className="trail ref" points={trail('ref')} />
       <polyline className="trail mine" points={trail('mine')} />
-      {/* Boss：面向朝上的三角形 */}
-      <polygon className="boss-dot" points={`${c},${c - 12} ${c - 9},${c + 8} ${c + 9},${c + 8}`} />
+      {/* Boss：面向朝上的三角形；位置與面向以參考的 Boss 為準（藍框同其他視角的參考 Boss） */}
+      <polygon className="boss-dot ref" points={`${c},${c - 12} ${c - 9},${c + 8} ${c + 9},${c + 8}`} />
       {current.ref && <circle className="dot ref" cx={px(current.ref).x} cy={px(current.ref).y} r={6} />}
       {current.mine && <circle className="dot mine" cx={px(current.mine).x} cy={px(current.mine).y} r={6} />}
     </svg>
@@ -635,14 +635,18 @@ export function Positions({
             )}
             <div className="arena-overlay top">
               <div className="arena-legend">
-                <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
                 {mode === 'two-bosses' ? (
+                  // 兩個 Boss：每位玩家緊接著自己那一場的 Boss
                   <>
-                    <span className="legend boss mine">◯ 我的 Boss</span> <span className="legend boss ref">◯ 參考 Boss</span>
+                    <span className="legend mine">● 我</span> <span className="legend boss mine">◯ 我的 Boss</span>{' '}
+                    <span className="legend ref">● 參考</span> <span className="legend boss ref">◯ 參考 Boss</span>
                   </>
                 ) : (
-                  // 對齊 Boss（含以 Boss 為中心暫以場地顯示時）畫的是參考的 Boss，外框同「兩個 Boss」的參考 Boss
-                  <span className={showBossFrame ? 'legend boss' : 'legend boss ref'}>{showBossFrame ? '▲ Boss' : '◯ 參考 Boss'}</span>
+                  // 對齊 Boss 與以 Boss 為中心都以參考的 Boss 為準（藍框同「兩個 Boss」的參考 Boss）
+                  <>
+                    <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
+                    <span className="legend boss ref">{showBossFrame ? '▲ 參考 Boss' : '◯ 參考 Boss'}</span>
+                  </>
                 )}
               </div>
               <div className="arena-hints">
