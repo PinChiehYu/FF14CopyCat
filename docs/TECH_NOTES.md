@@ -494,6 +494,11 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 死區鏡頭與時間軸連續捲動
+- `Positions.tsx`：`bounds()`／`useSmoothView()` 改為 `contentBox()`（前 2 秒到後 3 秒的玩家與 Boss 取樣，加上當下內插位置；Boss 以陣列分開傳入，避免兩場 Boss 取樣混在同一陣列時 `positionAt` 失效）、`fitView()`（至少 30 yalm、每邊 5 yalm）與 `useDeadZoneView()`：內容外框在上一次範圍內縮 2 yalm 之內、且上一次大小 ≤ 目標 × 1.6 時沿用上一次範圍；否則以 `k = 1 − exp(−Δ/1000 ms)` 靠近目標，當下位置在新範圍內縮 1 yalm 之外時直接用目標。`BossArena` 同樣改用前 2 秒到後 3 秒、只調整大小。移除 `BOSS_RANGE_QUANTILE`、`quantile()`。畫圖順序改為 我的軌跡 → 參考軌跡 → 我的圓點 → 參考圓點。
+- `Timeline.tsx`：`follow` 時每次游標更新都設 `scrollLeft = cx − 0.25 × clientWidth`（原本只在超出左 40 px／右 80 px 時才跳）。
+- 量測方式：以網格線（固定在場地座標每 5 yalm）反推每步的畫面平移與縮放（平移取模格距）、方向反轉次數；時間軸以按下播放（`follow` 開啟）後用拉桿推進、記錄 `.timeline-scroll` 的 `scrollLeft`。
+
 ### 2026-09-28 俯視圖範圍平滑跟隨
 - `Positions.tsx`：`bounds()` 改回傳連續的目標範圍（移除 `VIEW_STEP_YALM`、`BOSS_VIEW_STEP_YALM` 的對齊）；新增 `useSmoothView(target, cursor, keep, resetKey)`：`k = 1 − exp(−Δ游標 / 1000 ms)` 靠近目標，`Δ > 2000 ms`、`resetKey`（視角）改變、或 `keep`（當下的玩家位置）落在範圍內縮 1 yalm 之外時直接用目標。以 state 記住上一次的範圍、游標或視角改變時才 `setState`（render 內讀 ref 會被 oxlint 的 react(refs) 警告）。暫停時不再 render，範圍停在最後一次的位置（可能還沒完全追上目標）。
 - 量測方式：以程式逐 50 ms 設定播放列拉桿，記錄參考 Boss 圓點在畫面上的位移（Boss 多半靜止，位移即畫面範圍的變化）；以 Boss 為中心則記錄第一圈（5 yalm）半徑的變化率。

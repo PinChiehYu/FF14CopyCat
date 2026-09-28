@@ -95,14 +95,12 @@ export function Timeline({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [focus])
 
-  // 播放中讓游標保持在可見範圍（游標接近右緣時往後捲，停在左側四分之一處）
+  // 播放中游標固定在左側四分之一處，時間軸跟著連續捲動（原本碰到右緣才一次跳回，手機上時間軸窄，約 10 秒就跳一大段）
   useEffect(() => {
     const el = scrollRef.current
     if (!follow || cursor === undefined || !el) return
     const cx = (axis.ref(cursor) / 1000) * pxPerSec
-    if (cx < el.scrollLeft + 40 || cx > el.scrollLeft + el.clientWidth - 80) {
-      el.scrollLeft = Math.max(0, cx - el.clientWidth * 0.25)
-    }
+    el.scrollLeft = Math.max(0, cx - el.clientWidth * 0.25)
   }, [follow, cursor, pxPerSec, axis])
 
   const totalMs = Math.max(axis.ref(ref.duration), axis.mine(mine.duration))

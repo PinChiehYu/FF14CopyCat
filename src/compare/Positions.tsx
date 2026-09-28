@@ -52,54 +52,25 @@ function nearest(track: TrackPoint[], t: number): TrackPoint | undefined {
   return track[Math.min(track.length - 1, Math.max(0, Math.round(t / step)))]
 }
 
-// Boss 位置取這個百分位範圍納入圖的範圍（排除轉場跳走等少數極端位置）
-const BOSS_RANGE_QUANTILE = 0.05
 // 邊緣箭頭離圖邊的距離
 const EDGE_INSET = 12
 
-function quantile(sorted: number[], q: number): number {
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * q)))]
-}
-
-// 圖的範圍取游標前後這段時間內的位置：跟著目前的場地（M7S 等會換場的戰鬥，整場範圍會大到看不清楚）
-const VIEW_WINDOW_MS = 10_000
+// 鏡頭要顯示的內容：游標前後這段時間內的位置（只看附近，遠處的位置進出時間窗時鏡頭不會跟著晃）
+const CONTENT_BEFORE_MS = 2000
+const CONTENT_AFTER_MS = 3000
 // 圖至少涵蓋這麼大（yalm）
 const MIN_VIEW_YALM = 30
-// 範圍外框每邊留的空間（yalm）
-const VIEW_MARGIN_YALM = 3
+// 重新取景時內容外框每邊留的空間（yalm）：留得比死區寬，取景後不會馬上又要移動
+const VIEW_PAD_YALM = 5
+// 死區：內容離畫面邊緣至少這麼遠、且畫面沒有比剛好容納內容的範圍大這麼多倍時，鏡頭不動
+const DEAD_ZONE_INSET_YALM = 2
+const ZOOM_OUT_RATIO = 1.6
 
-/**
- * 圖的目標範圍（正方形、置中）：游標前後 10 秒內兩位玩家的位置，加上 Boss 在這段時間大部分所在的位置
- * （排除少數極端位置）；這段時間沒有資料時以時間上最接近的資料為準。
- * 連續值（不對齊格距）；實際顯示的範圍由 useSmoothView 平滑跟隨，避免對齊格距時在兩個格點間來回跳（抖動）。
- */
-function bounds(players: PositionSample[][], boss: PositionSample[], cursor: number): { minX: number; minY: number; size: number } {
-  const near = (s: PositionSample[], t: number) => s.filter((p) => Math.abs(p.t - t) <= VIEW_WINDOW_MS)
-  let pts = players.flatMap((s) => near(s, cursor))
-  let bossPts = near(boss, cursor)
-  if (pts.length === 0 && bossPts.length === 0) {
-    // 附近沒有資料（例如另一方的戰鬥已結束）：改以時間上最接近的資料為準
-    const all = [...players.flat(), ...boss]
-    if (all.length > 0) {
-      const closest = all.reduce((a, b) => (Math.abs(b.t - cursor) < Math.abs(a.t - cursor) ? b : a)).t
-      pts = players.flatMap((s) => near(s, closest))
-      bossPts = near(boss, closest)
-    }
-  }
-  const xs = pts.map((p) => p.x)
-  const ys = pts.map((p) => p.y)
-  if (bossPts.length > 0) {
-    const bx = bossPts.map((p) => p.x).sort((a, b) => a - b)
-    const by = bossPts.map((p) => p.y).sort((a, b) => a - b)
-    xs.push(quantile(bx, BOSS_RANGE_QUANTILE), quantile(bx, 1 - BOSS_RANGE_QUANTILE))
-    ys.push(quantile(by, BOSS_RANGE_QUANTILE), quantile(by, 1 - BOSS_RANGE_QUANTILE))
-  }
-  if (xs.length === 0) return { minX: 80, minY: 80, size: 40 }
-  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
-  const size = Math.max(maxX - minX, maxY - minY, MIN_VIEW_YALM) + VIEW_MARGIN_YALM * 2
-  const cx = (minX + maxX) / 2
-  const cy = (minY + maxY) / 2
-  return { minX: cx - size / 2, minY: cy - size / 2, size }
+interface Box {
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
 }
 
 interface View {
@@ -108,33 +79,75 @@ interface View {
   size: number
 }
 
-// 顯示範圍追上目標範圍的時間常數（游標時間）：約 1 秒追上 63%，倍速播放時跟著變快
+/**
+ * 鏡頭要顯示的內容：游標前 2 秒到後 3 秒內兩位玩家的位置，與 Boss 在這段時間的位置；
+ * 這段時間沒有資料時以時間上最接近的資料為準。
+ */
+function contentBox(players: PositionSample[][], bosses: PositionSample[][], cursor: number): Box | null {
+  const near = (s: PositionSample[], t: number) => s.filter((p) => p.t >= t - CONTENT_BEFORE_MS && p.t <= t + CONTENT_AFTER_MS)
+  const collect = (t: number) => [
+    ...players.flatMap((s) => [...near(s, t), positionAt(s, t)]),
+    ...bosses.flatMap((s) => [...near(s, t), positionAt(s, t, BOSS_LIMITS)]),
+  ]
+  let pts = collect(cursor).filter((p): p is Point => p !== null)
+  if (pts.length === 0) {
+    // 附近沒有資料（例如另一方的戰鬥已結束）：改以時間上最接近的資料為準
+    const all = [...players.flat(), ...bosses.flat()]
+    if (all.length === 0) return null
+    const closest = all.reduce((a, b) => (Math.abs(b.t - cursor) < Math.abs(a.t - cursor) ? b : a)).t
+    pts = collect(closest).filter((p): p is Point => p !== null)
+  }
+  const xs = pts.map((p) => p.x)
+  const ys = pts.map((p) => p.y)
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
+}
+
+/** 剛好容納內容的正方形範圍（至少 MIN_VIEW_YALM，每邊留 VIEW_PAD_YALM），置中於內容。 */
+function fitView(box: Box | null): View {
+  if (!box) return { minX: 80, minY: 80, size: 40 }
+  const size = Math.max(box.maxX - box.minX, box.maxY - box.minY, MIN_VIEW_YALM) + VIEW_PAD_YALM * 2
+  const cx = (box.minX + box.maxX) / 2
+  const cy = (box.minY + box.maxY) / 2
+  return { minX: cx - size / 2, minY: cy - size / 2, size }
+}
+
+// 需要移動時，顯示範圍靠近目標的時間常數（游標時間）：約 1 秒追上 63%，倍速播放時跟著變快
 const VIEW_EASE_MS = 1000
 // 游標一次移動超過這麼久（拖曳、點卡片跳轉）時直接換到目標範圍
 const VIEW_SNAP_MS = 2000
 
+const within = (p: Point, v: View, inset: number) =>
+  p.x >= v.minX + inset && p.x <= v.minX + v.size - inset && p.y >= v.minY + inset && p.y <= v.minY + v.size - inset
+
 /**
- * 平滑跟隨目標範圍：依游標前進的時間以指數方式靠近目標（連續平移、縮放）。
- * 跳轉、換視角（resetKey 改變）或當下的點會跑出顯示範圍時直接換到目標，圓點不會跑到圖外。
+ * 死區鏡頭（遊戲鏡頭常見的做法）：內容還在畫面內（離邊緣至少 DEAD_ZONE_INSET_YALM）、且畫面沒有大到超過需要的
+ * ZOOM_OUT_RATIO 倍時，鏡頭完全不動；否則依游標前進的時間平滑靠近剛好容納內容的範圍（連續平移、縮放）。
+ * 跳轉、換視角（resetKey 改變）或當下的點（keep）會跑出畫面時直接換到目標，圓點不會跑到圖外。
+ * 原本每次都追「前後 10 秒外框」的目標，遠處的位置進出時間窗時目標一直變，鏡頭來回晃。
  * 以 state 記住上一次的範圍（React「儲存前一次 render 的資訊」的做法）：游標或視角改變時才更新，
  * 更新後的 render 游標相同（dt = 0），不會再次更新。
  */
-function useSmoothView(target: View, cursor: number, keep: (Point | null)[], resetKey: string): View {
+function useDeadZoneView(box: Box | null, cursor: number, keep: (Point | null)[], resetKey: string): View {
   const [prev, setPrev] = useState<{ view: View; cursor: number; key: string } | null>(null)
+  const target = fitView(box)
   let view = target
-  if (prev && prev.key === resetKey) {
+  if (prev && prev.key === resetKey && box) {
     const dt = Math.abs(cursor - prev.cursor)
+    const pv = prev.view
+    const contentInside =
+      within({ x: box.minX, y: box.minY }, pv, DEAD_ZONE_INSET_YALM) && within({ x: box.maxX, y: box.maxY }, pv, DEAD_ZONE_INSET_YALM)
     if (dt <= VIEW_SNAP_MS) {
-      const k = 1 - Math.exp(-dt / VIEW_EASE_MS)
-      const eased: View = {
-        minX: prev.view.minX + (target.minX - prev.view.minX) * k,
-        minY: prev.view.minY + (target.minY - prev.view.minY) * k,
-        size: prev.view.size + (target.size - prev.view.size) * k,
+      if (contentInside && pv.size <= target.size * ZOOM_OUT_RATIO) {
+        view = pv
+      } else {
+        const k = 1 - Math.exp(-dt / VIEW_EASE_MS)
+        const eased: View = {
+          minX: pv.minX + (target.minX - pv.minX) * k,
+          minY: pv.minY + (target.minY - pv.minY) * k,
+          size: pv.size + (target.size - pv.size) * k,
+        }
+        if (keep.every((p) => !p || within(p, eased, 1))) view = eased
       }
-      const inside = (p: Point | null) =>
-        !p ||
-        (p.x >= eased.minX + 1 && p.x <= eased.minX + eased.size - 1 && p.y >= eased.minY + 1 && p.y <= eased.minY + eased.size - 1)
-      if (keep.every(inside)) view = eased
     }
   }
   if (!prev || prev.cursor !== cursor || prev.key !== resetKey) setPrev({ view, cursor, key: resetKey })
@@ -240,8 +253,8 @@ function Arena({
   // 當下的位置直接在游標時間內插（track 每 0.5 秒一點，取最近的點播放時會一格一格跳）
   const mine = positionAt(mineSource, cursor)
   const ref = positionAt(refSamples, cursor)
-  const target = bounds([mineSource, refSamples], twoBosses ? [...bossSamples, ...mineBossSamples] : bossSamples, cursor)
-  const { minX, minY, size } = useSmoothView(target, cursor, [mine, ref], mode)
+  const content = contentBox([mineSource, refSamples], twoBosses ? [bossSamples, mineBossSamples] : [bossSamples], cursor)
+  const { minX, minY, size } = useDeadZoneView(content, cursor, [mine, ref], mode)
   const scale = MAP_SIZE / size
   const px = (p: Point) => ({ x: (p.x - minX) * scale, y: (p.y - minY) * scale })
   const refBoss = positionAt(bossSamples, cursor, BOSS_LIMITS)
@@ -268,13 +281,14 @@ function Arena({
       {gridY.map((gy) => (
         <line key={`y${gy}`} className="grid" y1={(gy - minY) * scale} y2={(gy - minY) * scale} x1={0} x2={MAP_SIZE} />
       ))}
-      <polyline className="trail ref" points={trail((p) => p.ref, ref)} />
+      {/* 參考在我之上（後畫）：軌跡與圓點都是 */}
       <polyline className="trail mine" points={trail((p) => (twoBosses ? p.mine : positionAt(mineAlignedSamples, p.t)), mine)} />
+      <polyline className="trail ref" points={trail((p) => p.ref, ref)} />
       {/* 兩個 Boss 重疊時參考的 Boss 在上方（後畫） */}
       {mineBoss && <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" facing={mineFacing} />}
       {refBoss && <BossMarker at={refBoss} px={px} from={ref} label="參考 Boss" className="ref" facing={refFacing} />}
-      {ref && <circle className="dot ref" cx={px(ref).x} cy={px(ref).y} r={6} />}
       {mine && <circle className="dot mine" cx={px(mine).x} cy={px(mine).y} r={6} />}
+      {ref && <circle className="dot ref" cx={px(ref).x} cy={px(ref).y} r={6} />}
       <text className="north" x={MAP_SIZE - 14} y={16}>
         N
       </text>
@@ -316,14 +330,13 @@ function BossArena({
   const rel = (p: TrackPoint) => relAt(p.t)
   // 當下的位置直接在游標時間內插（不取 track 的 0.5 秒取樣，播放時才不會一格一格跳）
   const current = relAt(cursor)
-  // 範圍：游標前後 10 秒內離 Boss 最遠的距離
-  const around = track.filter((p) => Math.abs(p.t - cursor) <= VIEW_WINDOW_MS && p.t % 1000 === 0).map(rel)
-  const far = Math.max(
-    MIN_VIEW_YALM / 2,
-    ...around.flatMap((r) => [r.mine, r.ref]).filter((p): p is Point => p !== null).map((p) => Math.hypot(p.x, p.y) + 3),
-  )
-  // 連續值，平滑跟隨（原本對齊 10 yalm，播放時會在兩個大小間跳動）
-  const { size } = useSmoothView({ minX: -far, minY: -far, size: far * 2 }, cursor, [current.mine, current.ref], 'boss')
+  // 內容：游標前 2 秒到後 3 秒內離 Boss 最遠的距離（以 Boss 為中心的正方形）；死區鏡頭只調整大小
+  const around = [
+    ...track.filter((p) => p.t >= cursor - CONTENT_BEFORE_MS && p.t <= cursor + CONTENT_AFTER_MS).map(rel),
+    current,
+  ]
+  const far = Math.max(0, ...around.flatMap((r) => [r.mine, r.ref]).filter((p): p is Point => p !== null).map((p) => Math.hypot(p.x, p.y)))
+  const { size } = useDeadZoneView({ minX: -far, maxX: far, minY: -far, maxY: far }, cursor, [current.mine, current.ref], 'boss')
   const scale = MAP_SIZE / size
   const c = MAP_SIZE / 2
   const px = (p: Point) => ({ x: c + p.x * scale, y: c + p.y * scale })
@@ -364,12 +377,13 @@ function BossArena({
       <text className="sector-label" x={MAP_SIZE - 10} y={c + 4} textAnchor="end">
         側面
       </text>
-      <polyline className="trail ref" points={trail('ref')} />
+      {/* 參考在我之上（後畫） */}
       <polyline className="trail mine" points={trail('mine')} />
+      <polyline className="trail ref" points={trail('ref')} />
       {/* Boss：面向朝上的三角形；位置與面向以參考的 Boss 為準（藍框同其他視角的參考 Boss） */}
       <polygon className="boss-dot ref" points={`${c},${c - 12} ${c - 9},${c + 8} ${c + 9},${c + 8}`} />
-      {current.ref && <circle className="dot ref" cx={px(current.ref).x} cy={px(current.ref).y} r={6} />}
       {current.mine && <circle className="dot mine" cx={px(current.mine).x} cy={px(current.mine).y} r={6} />}
+      {current.ref && <circle className="dot ref" cx={px(current.ref).x} cy={px(current.ref).y} r={6} />}
     </svg>
   )
 }
