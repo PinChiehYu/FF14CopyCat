@@ -254,6 +254,7 @@ function Arena({
   bossSamples,
   mineBossSamples,
   names,
+  solo,
 }: {
   mode: 'two-bosses' | 'aligned'
   track: TrackPoint[]
@@ -265,6 +266,8 @@ function Arena({
   bossSamples: PositionSample[]
   mineBossSamples: PositionSample[]
   names: ArenaNames
+  /** 還沒有參考日誌：只畫我與我的 Boss（bossSamples 為我的 Boss） */
+  solo?: boolean
 }) {
   const twoBosses = mode === 'two-bosses'
   // track 的 mine 是原始位置；對齊 Boss 時改用平移後的位置
@@ -307,11 +310,20 @@ function Arena({
       {mineBoss && (
         <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" facing={mineFacing} />
       )}
-      {refBoss && <BossMarker at={refBoss} px={px} from={ref} label="參考 Boss" className="ref" facing={refFacing} />}
+      {refBoss && (
+        <BossMarker
+          at={refBoss}
+          px={px}
+          from={solo ? mine : ref}
+          label={solo ? 'Boss' : '參考 Boss'}
+          className={solo ? 'mine' : 'ref'}
+          facing={refFacing}
+        />
+      )}
       {/* 滑鼠提示：名稱與座標（對齊 Boss 時圖上的位置是平移後的，提示顯示原始座標） */}
       {mine && (
         <circle className="dot mine" cx={px(mine).x} cy={px(mine).y} r={6}>
-          <title>{playerTitle('我', names.mine, positionAt(mineSamples, cursor), twoBosses ? '' : '\n圖上已平移對齊參考 Boss')}</title>
+          <title>{playerTitle('我', names.mine, positionAt(mineSamples, cursor), twoBosses || solo ? '' : '\n圖上已平移對齊參考 Boss')}</title>
         </circle>
       )}
       {ref && (
@@ -344,6 +356,7 @@ function BossArena({
   mineBoss,
   refBoss,
   names,
+  solo,
 }: {
   track: TrackPoint[]
   cursor: number
@@ -354,6 +367,8 @@ function BossArena({
   mineBoss: PositionSample[]
   refBoss: PositionSample[]
   names: ArenaNames
+  /** 還沒有參考日誌：只畫我，Boss 為我的 Boss */
+  solo?: boolean
 }) {
   const relAt = (t: number) => ({
     mine: relativeAt(positionAt(mineSamples, t), mineBoss, t),
@@ -413,17 +428,17 @@ function BossArena({
       <polyline className="trail mine" points={trail('mine')} />
       <polyline className="trail ref" points={trail('ref')} />
       {/* Boss：面向朝上的三角形；位置與面向以參考的 Boss 為準（藍框同其他視角的參考 Boss） */}
-      <polygon className="boss-dot ref" points={`${c},${c - 12} ${c - 9},${c + 8} ${c + 9},${c + 8}`}>
+      <polygon className={`boss-dot ${solo ? 'mine' : 'ref'}`} points={`${c},${c - 12} ${c - 9},${c + 8} ${c + 9},${c + 8}`}>
         {(() => {
           const at = positionAt(refBoss, cursor, BOSS_LIMITS)
-          return <title>{`參考 Boss${at ? `\n座標 ${coord(at)}` : ''}`}</title>
+          return <title>{`${solo ? 'Boss' : '參考 Boss'}${at ? `\n座標 ${coord(at)}` : ''}`}</title>
         })()}
       </polygon>
       {/* 滑鼠提示：名稱、場地座標與離自己那一場 Boss 的距離（圖上是相對於 Boss 的位置） */}
       {current.mine && (
         <circle className="dot mine" cx={px(current.mine).x} cy={px(current.mine).y} r={6}>
           <title>
-            {playerTitle('我', names.mine, positionAt(mineSamples, cursor), `\n距我的 Boss ${Math.hypot(current.mine.x, current.mine.y).toFixed(1)} yalm`)}
+            {playerTitle('我', names.mine, positionAt(mineSamples, cursor), `\n距${solo ? '' : '我的 '}Boss ${Math.hypot(current.mine.x, current.mine.y).toFixed(1)} yalm`)}
           </title>
         </circle>
       )}
@@ -558,7 +573,13 @@ export function Positions({
   onSeek,
   onJump,
   status,
+  solo = false,
 }: {
+  /**
+   * 還沒有參考日誌：只顯示我的站位（refSamples 為空、bossSamples 與 mineBossSamples 都是我的 Boss）；
+   * 不顯示距離、站位差異與「兩個 Boss」視角
+   */
+  solo?: boolean
   /** 顯示在站位圖旁的當下狀態（血量、Buff、Boss 施放） */
   status?: ReactNode
   /** 俯視圖滑鼠提示用的角色與 Boss 名稱 */
@@ -604,11 +625,14 @@ export function Positions({
     }
   }
   const now = nearest(track, cursor)
-  const hasData = track.some((p) => p.distance !== null)
-  if (!hasData) return <p className="hint">這兩份日誌沒有足夠的位置資料。</p>
+  const hasData = solo ? mineSamples.length > 0 : track.some((p) => p.distance !== null)
+  if (!hasData) return <p className="hint">{solo ? '這份日誌' : '這兩份日誌'}沒有足夠的位置資料。</p>
+  // 沒有參考時沒有「兩個 Boss」視角與「站位差異」分頁
+  const arenaMode: ArenaMode = solo && mode === 'two-bosses' ? 'aligned' : mode
+  const shownTab: PositionsTab = solo && tab === 'cards' ? 'arena' : tab
   // 以 Boss 為中心需要兩邊當下的 Boss 位置與面向；沒有時（Boss 無法選取、轉場）暫時以場地顯示
   const bossFrameReady = bossPoseAt(bossSamples, cursor) !== null && bossPoseAt(mineBossSamples, cursor) !== null
-  const showBossFrame = mode === 'boss' && bossFrameReady
+  const showBossFrame = arenaMode === 'boss' && bossFrameReady
   // 對齊 Boss：這個時間點兩邊都有 Boss 位置時才有對齊
   const alignedNow =
     positionAt(bossSamples, cursor, BOSS_LIMITS) !== null && positionAt(mineBossSamples, cursor, BOSS_LIMITS) !== null
@@ -621,8 +645,9 @@ export function Positions({
   const bossFramed = divergences.filter((d) => d.bossFrame).length
 
   return (
-    <section className="positions" data-tab={tab}>
-      {/* 一行摘要，說明放在滑鼠提示 */}
+    <section className="positions" data-tab={shownTab}>
+      {/* 一行摘要，說明放在滑鼠提示；沒有參考時沒有距離與站位差異 */}
+      {!solo && (
       <p className="positions-summary">
         <span
           title={`兩人相距超過 ${threshold} yalm、持續 2 秒以上的時段。兩場 Boss 站在不同位置（相距超過 ${BOSS_FRAME_GAP_YALM} yalm）時，距離改以各自 Boss 為基準（同「以 Boss 為中心」視角）；距離圖底部的細條標示這些時段`}
@@ -655,6 +680,8 @@ export function Positions({
           </span>
         )}
       </p>
+      )}
+      {!solo && (
       <DistanceChart
         track={track}
         divergences={divergences}
@@ -663,15 +690,16 @@ export function Positions({
         duration={duration}
         onSeek={onSeek}
       />
+      )}
       {/* 只在手機寬度顯示（CSS），隱藏未選的區塊 */}
       <div className="positions-tabs" role="tablist" aria-label="站位與當下狀態">
-        {POSITIONS_TABS.map(([key, label]) => (
+        {POSITIONS_TABS.filter(([key]) => !solo || key !== 'cards').map(([key, label]) => (
           <button
             key={key}
             type="button"
             role="tab"
-            aria-selected={tab === key}
-            className={tab === key ? 'active' : undefined}
+            aria-selected={shownTab === key}
+            className={shownTab === key ? 'active' : undefined}
             onClick={() => changeTab(key)}
           >
             {label}
@@ -682,6 +710,7 @@ export function Positions({
       <div className="positions-body">
         <div className="arena-panel">
           <div className="arena-modes" role="group" aria-label="俯視圖視角">
+            {!solo && (
             <button
               type="button"
               className={mode === 'two-bosses' ? 'active' : undefined}
@@ -691,20 +720,29 @@ export function Positions({
             >
               兩個 Boss
             </button>
+            )}
             <button
               type="button"
-              className={mode === 'aligned' ? 'active' : undefined}
-              aria-pressed={mode === 'aligned'}
-              title="北方朝上；保留你相對於你那一場 Boss 的位置，平移到參考 Boss 的位置上（不旋轉）。只影響這張圖，距離與站位差異仍以場地上的位置計算"
+              className={arenaMode === 'aligned' ? 'active' : undefined}
+              aria-pressed={arenaMode === 'aligned'}
+              title={
+                solo
+                  ? '北方朝上，照實際位置畫你與 Boss'
+                  : '北方朝上；保留你相對於你那一場 Boss 的位置，平移到參考 Boss 的位置上（不旋轉）。只影響這張圖，距離與站位差異仍以場地上的位置計算'
+              }
               onClick={() => changeMode('aligned')}
             >
-              對齊 Boss
+              {solo ? '場地' : '對齊 Boss'}
             </button>
             <button
               type="button"
               className={mode === 'boss' ? 'active' : undefined}
               aria-pressed={mode === 'boss'}
-              title="Boss 在中央、面向朝上；兩人各自換算成相對於自己那一場 Boss 的位置，可比較站在 Boss 的哪一側"
+              title={
+                solo
+                  ? 'Boss 在中央、面向朝上，看你站在 Boss 的哪一側'
+                  : 'Boss 在中央、面向朝上；兩人各自換算成相對於自己那一場 Boss 的位置，可比較站在 Boss 的哪一側'
+              }
               onClick={() => changeMode('boss')}
             >
               以 Boss 為中心
@@ -721,10 +759,11 @@ export function Positions({
                 mineBoss={mineBossSamples}
                 refBoss={bossSamples}
                 names={names}
+                solo={solo}
               />
             ) : (
               <Arena
-                mode={mode === 'two-bosses' ? 'two-bosses' : 'aligned'}
+                mode={arenaMode === 'two-bosses' ? 'two-bosses' : 'aligned'}
                 track={track}
                 cursor={cursor}
                 mineSamples={mineSamples}
@@ -733,11 +772,17 @@ export function Positions({
                 bossSamples={bossSamples}
                 mineBossSamples={mineBossSamples}
                 names={names}
+                solo={solo}
               />
             )}
             <div className="arena-overlay top">
               <div className="arena-legend">
-                {mode === 'two-bosses' ? (
+                {solo ? (
+                  <>
+                    <span className="legend mine">● 我</span>{' '}
+                    <span className="legend boss mine">{showBossFrame ? '▲ Boss' : '◯ Boss'}</span>
+                  </>
+                ) : arenaMode === 'two-bosses' ? (
                   // 兩個 Boss：每位玩家緊接著自己那一場的 Boss
                   <>
                     <span className="legend mine">● 我</span> <span className="legend boss mine">◯ 我的 Boss</span>{' '}
@@ -756,7 +801,7 @@ export function Positions({
                 {mode === 'boss' && !bossFrameReady && (
                   <span title="這個時間點至少一邊沒有 Boss 的位置或面向（Boss 無法選取、轉場等），暫以場地顯示">暫以場地顯示</span>
                 )}
-                {mode === 'aligned' && !alignedNow && (
+                {arenaMode === 'aligned' && !solo && !alignedNow && (
                   <span title="這個時間點至少一邊沒有 Boss 的位置（Boss 無法選取、轉場等），你的位置以原始位置顯示">未對齊</span>
                 )}
               </div>
@@ -778,18 +823,20 @@ export function Positions({
         </div>
         {status}
       </div>
+      {!solo && (
       <DivergenceCards
         divergences={divergences}
         track={track}
         cursor={cursor}
         abilityName={abilityName}
-        shownKey={tab}
+        shownKey={shownTab}
         onJump={(t) => {
           onJump(t)
           // 手機在「站位差異」分頁點卡片時，換到俯視圖看這段的站位（桌面沒有分頁，不影響）
           changeTab('arena')
         }}
       />
+      )}
     </section>
   )
 }

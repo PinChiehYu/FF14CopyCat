@@ -74,6 +74,45 @@ export function lostGcdWindows(
   return windows
 }
 
+/**
+ * 還沒有參考日誌時的停手時段：GCD 間隔超過門檻（同 lostGcdWindows）的區間，扣掉不能輸出的時間（Boss 無法選中、死亡）
+ * 後仍超過門檻才列出；refGcds 為依自己的 GCD 間隔估計少打的 GCD 數（扣除後的長度能多打幾個 GCD）。
+ * 以資料上確定的時間扣除，不另設「停太久」之類的門檻。時間都是我的戰鬥時間（refStart／refEnd 同 mineStart／mineEnd）。
+ * @param excluded 不能輸出的時段（我的戰鬥時間）
+ */
+export function idleWindows(mineGcds: number[], gcdMs: number, excluded: { start: number; end: number }[]): LostWindow[] {
+  const threshold = Math.max(gcdMs * 1.5, gcdMs + 1000)
+  const windows: LostWindow[] = []
+  for (let i = 1; i < mineGcds.length; i++) {
+    const start = mineGcds[i - 1]
+    const end = mineGcds[i]
+    if (end - start <= threshold) continue
+    const blocked = mergedOverlap(excluded, start, end)
+    const usable = end - start - blocked
+    if (usable <= threshold) continue
+    windows.push({ mineStart: start, mineEnd: end, refStart: start, refEnd: end, refGcds: Math.floor((usable - gcdMs) / gcdMs) })
+  }
+  return windows.filter((w) => w.refGcds > 0)
+}
+
+/** 多個時段與 [start, end) 重疊的總長（時段彼此重疊的部分只算一次）。 */
+function mergedOverlap(spans: { start: number; end: number }[], start: number, end: number): number {
+  const clipped = spans
+    .map((s) => ({ start: Math.max(s.start, start), end: Math.min(s.end, end) }))
+    .filter((s) => s.end > s.start)
+    .sort((a, b) => a.start - b.start)
+  let total = 0
+  let reach = start
+  for (const s of clipped) {
+    const from = Math.max(s.start, reach)
+    if (s.end > from) {
+      total += s.end - from
+      reach = s.end
+    }
+  }
+  return total
+}
+
 export interface AbilityUsage {
   abilityId: number
   mine: number

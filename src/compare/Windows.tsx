@@ -44,7 +44,10 @@ function Chips({
   )
 }
 
-/** 技能窗口：兩邊各自依職業規則評分，每個窗口一個可點擊的時間標籤（綠：合格、紅：有問題、灰：不評分）。 */
+/**
+ * 技能窗口：兩邊各自依職業規則評分，每個窗口一個可點擊的時間標籤（綠：合格、紅：有問題、灰：不評分）。
+ * 還沒有參考日誌時（ref 為 null）只列我的一欄。
+ */
 export function Windows({
   windows,
   abilities,
@@ -52,19 +55,20 @@ export function Windows({
   mineToRef,
   onJump,
 }: {
-  windows: { mine: WindowSummary; ref: WindowSummary }[]
+  windows: { mine: WindowSummary; ref: WindowSummary | null }[]
   abilities: Map<number, Ability>
   abilityName: (id: number) => string
   mineToRef: (t: number) => number
   onJump: (t: number) => void
 }) {
+  const hasRef = windows.some((w) => w.ref !== null)
   return (
     <table className="summary-table windows-table">
       <thead>
         <tr>
           <th />
           <th className="mine">我</th>
-          <th className="ref">參考</th>
+          {hasRef && <th className="ref">參考</th>}
         </tr>
       </thead>
       <tbody>
@@ -74,7 +78,7 @@ export function Windows({
           return (
             <tr key={mine.rule.key}>
               <th
-                title={[mine.rule.action && ruleName(mine.rule, abilityName), icon?.englishName, ...new Set([mine.rule.patchNote, ref.rule.patchNote])]
+                title={[mine.rule.action && ruleName(mine.rule, abilityName), icon?.englishName, ...new Set([mine.rule.patchNote, ref?.rule.patchNote])]
                   .filter(Boolean)
                   .join('\n')}
               >
@@ -99,9 +103,11 @@ export function Windows({
               <td>
                 <Chips summary={mine} toRef={mineToRef} onJump={onJump} />
               </td>
-              <td>
-                <Chips summary={ref} toRef={(t) => t} onJump={onJump} />
-              </td>
+              {ref && (
+                <td>
+                  <Chips summary={ref} toRef={(t) => t} onJump={onJump} />
+                </td>
+              )}
             </tr>
           )
         })}

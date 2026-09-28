@@ -7,15 +7,15 @@ import { cooldownUsage, downtimeWindows } from '../analysis/cooldowns'
 import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
-import { buildAlignment, pushDifferences, pushTitle } from '../analysis/alignment'
-import { generateAdvice } from '../analysis/advice'
+import { buildAlignment, pushDifferences, pushTitle, type Alignment } from '../analysis/alignment'
+import { generateAdvice, generateSoloAdvice } from '../analysis/advice'
 import { mainMechanicDifferences, mainMechanicGroups } from '../analysis/mainMechanics'
 import { mechanicDifferences } from '../analysis/mechanics'
-import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
+import { abilityUsage, gcdStats, idleWindows, lostGcdWindows } from '../analysis/metrics'
 import { attachControl, controlStatuses, controlWindows } from '../analysis/control'
 import { alignToBoss, attachBossDistances, attachMechanics, attachUntargetable, attachVariants, compareTracks, distanceAt, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
-import { fetchAbilityNames, fetchDamageSummary, type AbilityName, type DamageSummary } from '../fflogs/client'
+import { fetchAbilityNames, fetchDamageSummary, fetchTcRankings, type AbilityName, type DamageSummary } from '../fflogs/client'
 import { abilityMap, isPotionName, isUnnamedAbility } from '../fflogs/report'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
@@ -46,38 +46,61 @@ function selectionKey(s: Selection): string {
   return `${s.report.code}/${s.fight.id}/${s.player.id}`
 }
 
-function useSides(mine: Selection, reference: Selection) {
-  const [result, setResult] = useState<{ key: string; sides?: [SideData, SideData]; error?: string } | null>(null)
-  const key = `${selectionKey(mine)}|${selectionKey(reference)}`
+// 已載入（或載入中）的一側，以選擇的 ID 為鍵：換參考日誌時我的資料不必重抓。每側約 1.4 MB，只留最近幾筆
+const SIDE_CACHE_SIZE = 4
+const sideCache = new Map<string, Promise<SideData>>()
+
+function cachedSide(selection: Selection): Promise<SideData> {
+  const key = selectionKey(selection)
+  const hit = sideCache.get(key)
+  if (hit) {
+    // 移到最新
+    sideCache.delete(key)
+    sideCache.set(key, hit)
+    return hit
+  }
+  // 多個畫面共用同一個請求，不隨單一畫面卸載而中止
+  const loading = loadSide(selection)
+  loading.catch(() => sideCache.delete(key))
+  sideCache.set(key, loading)
+  while (sideCache.size > SIDE_CACHE_SIZE) sideCache.delete(sideCache.keys().next().value!)
+  return loading
+}
+
+/** 載入一側的事件（兩側分開載入：我的先好就先顯示）；沒有選擇時為 null。 */
+function useSide(selection: Selection | null) {
+  const [result, setResult] = useState<{ key: string; side?: SideData; error?: string } | null>(null)
+  const key = selection ? selectionKey(selection) : null
   // 只在選擇的戰鬥或角色改變時重新載入；Boss 繁中名稱晚到會換掉 Selection 物件，但資料不變
-  const latest = useRef({ mine, reference })
+  const latest = useRef(selection)
   useLayoutEffect(() => {
-    latest.current = { mine, reference }
+    latest.current = selection
   })
 
   useEffect(() => {
-    const controller = new AbortController()
-    const { mine, reference } = latest.current
-    Promise.all([loadSide(mine, controller.signal), loadSide(reference, controller.signal)])
-      .then((sides) => setResult({ key, sides }))
-      .catch((err: unknown) => {
-        if (!controller.signal.aborted) setResult({ key, error: err instanceof Error ? err.message : String(err) })
-      })
-    return () => controller.abort()
+    if (key === null || !latest.current) return
+    let active = true
+    cachedSide(latest.current)
+      .then((side) => active && setResult({ key, side }))
+      .catch((err: unknown) => active && setResult({ key, error: err instanceof Error ? err.message : String(err) }))
+    return () => {
+      active = false
+    }
   }, [key])
 
-  return result?.key === key ? result : null
+  return key !== null && result?.key === key ? result : null
 }
 
 // 普通攻擊（Action 7，繁中「攻擊」）
 const AUTO_ATTACK = 7
 
 /** 查詢兩邊出現過的技能的繁中名稱；查詢失敗時沿用 FFLogs 的英文名稱。 */
-function useAbilityNames(mine: SideData, reference: SideData): Map<number, AbilityName> {
+function useAbilityNames(mine: SideData, reference: SideData | null): Map<number, AbilityName> {
   const [names, setNames] = useState<Map<number, AbilityName>>(new Map())
   useEffect(() => {
+    const job = mine.selection.player.subType
     const ids = [
-      ...[mine, reference].flatMap((s) => [
+      ...(reference ? [mine, reference] : [mine]).flatMap((s) => [
         ...[...s.playerCasts, ...s.autoAttacks, ...s.bossCasts].map((c) => c.abilityId),
         // 效果（開打前、技能窗口）
         ...s.prepull,
@@ -90,9 +113,9 @@ function useAbilityNames(mine: SideData, reference: SideData): Map<number, Abili
         ...s.deaths.flatMap((d) => (d.abilityId === null ? [] : [d.abilityId])),
       ]),
       // 技能窗口規則中的技能：兩邊都沒用過的（例如「缺少」的技能）不在報告的技能清單中
-      ...windowRules(reference.selection.player.subType).flatMap(ruleIds),
+      ...windowRules(job).flatMap(ruleIds),
       // 冷卻技（兩邊都沒用過時也要顯示名稱）
-      ...(COOLDOWN_RULES[reference.selection.player.subType] ?? []).flatMap((g) => g.ids),
+      ...(COOLDOWN_RULES[job] ?? []).flatMap((g) => g.ids),
       // 普通攻擊（沒有名稱的 Boss 普通攻擊沿用它的名稱）
       AUTO_ATTACK,
     ]
@@ -107,22 +130,51 @@ function useAbilityNames(mine: SideData, reference: SideData): Map<number, Abili
   return names
 }
 
-/** 兩邊整場的 DPS／rDPS（FFLogs 傷害表）；查詢中為 undefined，查不到為 null。不阻擋比較結果。 */
-function useDamageSummaries(mine: Selection, reference: Selection) {
-  const [result, setResult] = useState<{ key: string; mine: DamageSummary | null; ref: DamageSummary | null } | null>(null)
-  const key = `${selectionKey(mine)}|${selectionKey(reference)}`
+/** 一側整場的 DPS／rDPS 與在繁中服排名中的位置 */
+interface SideDamage {
+  summary: DamageSummary | null
+  /** 繁中服 PR（見 fetchTcRankings 的 position）；未擊殺、查不到或沒有排名資料時為 null */
+  pr: { pr: number; better: number; count: number } | null
+}
+
+/**
+ * 一側整場的 DPS／rDPS（FFLogs 傷害表），擊殺時再查這個 rDPS 在繁中服排名的 PR（與其他玩家各自最好的一場比較；
+ * 自己已在排名中時扣掉自己，與排名表的 PR 一致）。查詢中為 undefined，不阻擋比較結果。
+ */
+function useSideDamage(selection: Selection | null): SideDamage | undefined {
+  const [result, setResult] = useState<{ key: string; damage: SideDamage } | null>(null)
+  const key = selection ? selectionKey(selection) : null
   useEffect(() => {
+    if (!selection) return
     const controller = new AbortController()
-    const load = (s: Selection) =>
-      fetchDamageSummary(s.report.code, s.fight.id, s.player.id, controller.signal).catch(() => null)
-    Promise.all([load(mine), load(reference)]).then(([m, r]) => {
-      if (!controller.signal.aborted) setResult({ key, mine: m, ref: r })
+    const { report, fight, player } = selection
+    const load = async (): Promise<SideDamage> => {
+      const summary = await fetchDamageSummary(report.code, fight.id, player.id, controller.signal).catch(() => null)
+      if (!summary || !fight.kill) return { summary, pr: null }
+      const ranking = await fetchTcRankings(
+        {
+          encounter: fight.encounterID,
+          difficulty: fight.difficulty ?? 0,
+          job: player.subType,
+          // 只要位置：列表只取 PR 100（通常一兩筆）
+          minPr: 100,
+          maxPr: 100,
+          rdps: Math.round(summary.rdps),
+          player: player.server ? `${player.name}@${player.server}` : undefined,
+        },
+        controller.signal,
+      ).catch(() => null)
+      const pr = ranking?.position && ranking.count > 0 ? { ...ranking.position, count: ranking.count } : null
+      return { summary, pr }
+    }
+    load().then((damage) => {
+      if (!controller.signal.aborted) setResult({ key: key!, damage })
     })
     return () => controller.abort()
     // selection 物件會隨名稱翻譯更新，只依 ID 組成的 key 重新查詢
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
-  return result && result.key === key ? result : undefined
+  return result && result.key === key ? result.damage : undefined
 }
 
 function sidePatch(s: Selection): GamePatch {
@@ -141,9 +193,10 @@ function SummaryTable({
   onJump,
 }: {
   mine: SideData
-  reference: SideData
-  /** 整場的 DPS／rDPS；查詢中為 undefined */
-  damage: { mine: DamageSummary | null; ref: DamageSummary | null } | undefined
+  /** 還沒有參考日誌時為 null：只有我的一欄，不列比較範圍 */
+  reference: SideData | null
+  /** 整場的 DPS／rDPS 與繁中服 PR；查詢中為 undefined */
+  damage: { mine: SideDamage | undefined; ref: SideDamage | undefined }
   /** 兩邊日誌的遊戲版本 */
   patches: { mine: GamePatch; ref: GamePatch }
   /** 各自時間下的比較範圍結束點 */
@@ -155,8 +208,9 @@ function SummaryTable({
 }) {
   const sides = [
     { key: 'mine', label: '我', side: mine, end: mineEnd },
-    { key: 'ref', label: '參考', side: reference, end: refEnd },
+    ...(reference ? [{ key: 'ref', label: '參考', side: reference, end: refEnd }] : []),
   ]
+  const damageOf = (s: SideData) => (s === mine ? damage.mine : damage.ref)
   // 玩家、戰鬥、結果與長度已在上方的選單顯示，這裡只列比較才有的資訊
   const rows: { label: string; cell: (s: SideData, end: number) => ReactNode }[] = [
     {
@@ -187,10 +241,11 @@ function SummaryTable({
       // FFLogs 的 rDPS：自己的傷害扣掉隊友 Buff 加成的部分、加上自己 Buff 給隊友的貢獻（整場）
       label: 'rDPS',
       cell: (s) => {
-        if (damage === undefined) return <span className="hint-inline">…</span>
-        const d = s === mine ? damage.mine : damage.ref
+        const side = damageOf(s)
+        if (side === undefined) return <span className="hint-inline">…</span>
+        const d = side.summary
         if (!d) return <span className="hint-inline">—</span>
-        const other = s === mine ? damage.ref : damage.mine
+        const other = s === mine ? damage.ref?.summary : undefined
         const round = (v: number) => Math.round(v).toLocaleString()
         return (
           <span
@@ -198,11 +253,33 @@ function SummaryTable({
             title={`整場（FFLogs 計算）\nrDPS ${round(d.rdps)}＝DPS ${round(d.dps)} − 隊友 Buff 加成 ${round(d.taken)} ＋ 自己 Buff 貢獻 ${round(d.given)}\naDPS ${round(d.adps)}`}
           >
             <strong>{round(d.rdps)}</strong>
-            {other && s === mine && d.rdps < other.rdps && (
+            {other && d.rdps < other.rdps && (
               <span className="rdps-diff" title="比參考少">
                 −{round(other.rdps - d.rdps)}
               </span>
             )}
+          </span>
+        )
+      },
+    },
+    {
+      // 這場的 rDPS 在繁中服排名（Worker 掃描的公開日誌）中的百分位；未擊殺或沒有資料時「—」
+      label: '繁中服 PR',
+      cell: (s) => {
+        const side = damageOf(s)
+        if (side === undefined) return <span className="hint-inline">…</span>
+        if (!side.pr) {
+          return (
+            <span className="hint-inline" title={s.selection.fight.kill ? '沒有這個職業的繁中服排名資料' : '未擊殺，不計算 PR'}>
+              —
+            </span>
+          )
+        }
+        return (
+          <span
+            title={`這場的 rDPS 與繁中服 ${side.pr.count} 位玩家各自最好的一場比較（自己已在排名中時不和自己比）\n資料庫中 rDPS 比這場高的擊殺：${side.pr.better} 場`}
+          >
+            <strong>{side.pr.pr}</strong>
           </span>
         )
       },
@@ -223,11 +300,11 @@ function SummaryTable({
         )
       },
     },
-    {
+    ...(reference === null ? [] : [{
       label: '比較範圍',
       // 一定從 0:00 開始，只顯示結束點；沒被裁切的一方（戰鬥長度已在選單上）只標「全場」。
       // 被裁掉的秒數以短標示「−N.Ns」，說明放在滑鼠提示（手機上原本的長句會換行）
-      cell: (s, end) =>
+      cell: (s: SideData, end: number) =>
         s.duration - end >= 1000 ? (
           <span title={`之後 ${((s.duration - end) / 1000).toFixed(1)} 秒不列入統計（另一方的戰鬥已結束，沒有比較對象）`}>
             到 {formatFightTime(end)} <span className="hint-inline">−{((s.duration - end) / 1000).toFixed(1)}s</span>
@@ -235,13 +312,15 @@ function SummaryTable({
         ) : (
           '全場'
         ),
-    },
+    }]),
     {
-      // FFLogs 沒有開打前的施放事件，以開打當下身上的自身效果推知；只列對方沒有的效果，兩邊都有的放在滑鼠提示
+      // FFLogs 沒有開打前的施放事件，以開打當下身上的自身效果推知；只列對方沒有的效果，兩邊都有的放在滑鼠提示。
+      // 沒有參考時全部列出
       label: '開打前',
       cell: (s) => {
-        const other = s === mine ? reference : mine
         if (s.prepull.length === 0) return <span className="hint-inline">—</span>
+        if (!reference) return s.prepull.map(abilityName).join('、')
+        const other = s === mine ? reference : mine
         const shared = s.prepull.filter((id) => other.prepull.includes(id))
         const only = s.prepull.filter((id) => !other.prepull.includes(id))
         const sharedTitle = shared.length > 0 ? `兩邊都有：${shared.map(abilityName).join('、')}` : undefined
@@ -293,30 +372,50 @@ function SummaryTable({
   )
 }
 
-function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; reference: SideData }) {
-  const job = getJob(refLoaded.selection.player.subType)
+// 還沒有參考日誌時的時間對應：參考時間＝我的時間
+const IDENTITY: Alignment = { anchors: [], mineToRef: (t) => t, refToMine: (t) => t }
+
+/**
+ * 比較結果。refLoaded 為 null（還沒選參考日誌或載入中）時只顯示我的日誌能做的分析：
+ * 以我自己代替參考計算（參考時間＝我的時間），需要比較的部分（機制差異、站位差異、GCD 差距等）不顯示。
+ * @param notice 顯示在摘要下方的狀態（參考日誌載入中、無法比較的原因等）
+ */
+function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: SideData; reference: SideData | null; notice?: ReactNode }) {
+  const solo = refLoaded === null
+  const job = getJob(mineLoaded.selection.player.subType)
   // 兩邊日誌的遊戲版本（依戰鬥時間對照繁中服的版本日期）
-  const patches = useMemo(() => ({ mine: sidePatch(mineLoaded.selection), ref: sidePatch(refLoaded.selection) }), [mineLoaded, refLoaded])
-  const damage = useDamageSummaries(mineLoaded.selection, refLoaded.selection)
+  const patches = useMemo(
+    () => ({ mine: sidePatch(mineLoaded.selection), ref: sidePatch((refLoaded ?? mineLoaded).selection) }),
+    [mineLoaded, refLoaded],
+  )
+  const damage = { mine: useSideDamage(mineLoaded.selection), ref: useSideDamage(refLoaded?.selection ?? null) }
   // 不需紀錄的技能（挑釁、退避、坦姿開關）一開始就移除
   const category = useMemo(() => (id: number) => abilityCategory(id, job), [job])
   // 只在一邊日誌中有施放紀錄的敵人（例如只被一邊記錄的雜兵）不比較，也不用來對齊
-  const [mineShared, refShared] = useMemo(() => withSharedCasters(mineLoaded, refLoaded), [mineLoaded, refLoaded])
+  const [mineShared, refShared] = useMemo(
+    () => (refLoaded ? withSharedCasters(mineLoaded, refLoaded) : [mineLoaded, mineLoaded]),
+    [mineLoaded, refLoaded],
+  )
   // 沒有名稱的 Boss 技能（Boss 的演出動作等）只用來對齊時間軸，其餘都不顯示
   // cactbot 同一條目的不同版本（放入 A／B 面等）從第一次對齊就當成同一個機制
   const alignment = useMemo(
     () =>
-      buildAlignment(mineShared.bossCasts, refShared.bossCasts, {
-        knownGroups: mainMechanicGroups(mineShared.selection.fight.encounterID) ?? undefined,
-      }),
-    [mineShared, refShared],
+      solo
+        ? IDENTITY
+        : buildAlignment(mineShared.bossCasts, refShared.bossCasts, {
+            knownGroups: mainMechanicGroups(mineShared.selection.fight.encounterID) ?? undefined,
+          }),
+    [mineShared, refShared, solo],
   )
   // 兩邊的強化藥統一成同一個 ID（依使用後得到的強化藥效果判斷，見 unifyPotions）
+  // 沒有參考時 reference 是我自己（各項計算的參考時間＝我的時間）；顯示時用 shownRef 判斷有沒有參考
   const { mine, ref: reference, potionId } = useMemo(() => {
     const prepare = (side: SideData) => withoutUnnamedBossCasts(withoutAbilities(side, (id) => category(id) === 'ignored'))
-    return unifyPotions(prepare(mineShared), prepare(refShared))
-  }, [mineShared, refShared, category])
-  const zhNames = useAbilityNames(mine, reference)
+    const m = prepare(mineShared)
+    return unifyPotions(m, solo ? m : prepare(refShared))
+  }, [mineShared, refShared, category, solo])
+  const shownRef = solo ? null : reference
+  const zhNames = useAbilityNames(mine, shownRef)
   // 顯示用：有繁中名稱時取代 FFLogs 的英文名稱，英文保留在 englishName
   const abilities = useMemo(() => {
     const merged = new Map([...abilityMap(mine.selection.report), ...abilityMap(reference.selection.report)])
@@ -373,27 +472,35 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     const mineGcds = gcds(mineInRange)
     const refGcds = gcds(refInRange)
     const stats = { mine: gcdStats(mineGcds), ref: gcdStats(refGcds) }
+    const gcdMs = stats.mine.gcdMs
+    // 沒有參考：列出自己的停手（扣掉 Boss 無法選中與死亡的時間）
+    const excluded = [
+      ...mineInRange.untargetable,
+      ...mineInRange.deaths.map((d) => ({ start: d.t, end: d.revivedAt ?? mineInRange.duration })),
+    ]
     const windows =
-      stats.mine.gcdMs === null ? [] : lostGcdWindows(mineGcds, refGcds, alignment.mineToRef, stats.mine.gcdMs)
+      gcdMs === null ? [] : solo ? idleWindows(mineGcds, gcdMs, excluded) : lostGcdWindows(mineGcds, refGcds, alignment.mineToRef, gcdMs)
     // 控場造成的停手另外標示，不算操作問題
     const lost = attachControl(windows, controlWindows(mineInRange.bossDebuffs, control)).map((w) =>
       w.control ? { ...w, control: w.control.filter(namedStatus) } : w,
     )
-    return { gcd: stats, lost }
-  }, [mineInRange, refInRange, alignment, job, control, namedStatus])
+    return { gcd: solo ? { mine: stats.mine, ref: null } : stats, lost }
+  }, [mineInRange, refInRange, alignment, job, control, namedStatus, solo])
   // 技能使用次數含普通攻擊（時間軸不畫）；次數多寡可反映是否離 Boss 太遠或停手
   const usage = useMemo(
     () =>
       abilityUsage(
         [...mineInRange.playerCasts, ...mineInRange.autoAttacks],
-        [...refInRange.playerCasts, ...refInRange.autoAttacks],
+        solo ? [] : [...refInRange.playerCasts, ...refInRange.autoAttacks],
         alignment.mineToRef,
       ),
-    [mineInRange, refInRange, alignment],
+    [mineInRange, refInRange, alignment, solo],
   )
   const mechanics = useMemo(
     () =>
-      mechanicDifferences(
+      solo
+        ? []
+        : mechanicDifferences(
         mine.bossCasts,
         reference.bossCasts,
         alignment.mineToRef,
@@ -401,12 +508,14 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         reference.duration,
         { pushes },
       ),
-    [mine, reference, alignment, pushes],
+    [mine, reference, alignment, pushes, solo],
   )
   // 機制差異表只列主要機制（cactbot 時間軸列出的技能）；站位與建議仍用全部低頻技能
   const mainMechanics = useMemo(
     () =>
-      mainMechanicDifferences(
+      solo
+        ? []
+        : mainMechanicDifferences(
         mine.selection.fight.encounterID,
         mine.bossCasts,
         reference.bossCasts,
@@ -415,12 +524,17 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         reference.duration,
         { pushes },
       ),
-    [mine, reference, alignment, pushes],
+    [mine, reference, alignment, pushes, solo],
   )
   const positions = useMemo(() => {
     const mineSamples = mineInRange.playerPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
     // 我的 Boss 位置換算成參考時間（以 Boss 為中心、兩個 Boss 的俯視圖與對齊用）
     const mineBossSamples = mineInRange.bossPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
+    if (solo) {
+      // 沒有參考：軌跡只有我，沒有站位差異
+      const track = compareTracks(mineSamples, [], mineBossSamples, compareEnd)
+      return { mineSamples, mineAlignedSamples: mineSamples, mineBossSamples, track, divergences: [] }
+    }
     // 俯視圖「對齊 Boss」用：我的位置平移到參考 Boss 的位置
     const mineAlignedSamples = alignToBoss(mineSamples, mineBossSamples, reference.bossPositions)
     // 距離與站位差異以場地上的位置計算；兩場 Boss 站在不同位置時改以各自 Boss 為基準（依 Boss 面向旋轉，見 compareTracks）
@@ -447,7 +561,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     ]
     const found = attachUntargetable(attachVariants(withMechanics, mechanics), untargetable)
     return { mineSamples, mineAlignedSamples, mineBossSamples, track, divergences: found }
-  }, [mineInRange, refInRange, reference, alignment, compareEnd, mechanics])
+  }, [mineInRange, refInRange, reference, alignment, compareEnd, mechanics, solo])
   // 報告技能清單中沒有的（兩邊都沒用過）也用查到的繁中名稱
   const abilityName = useCallback(
     (id: number) => {
@@ -471,14 +585,20 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       const reason = (p: GamePatch) => `${p.key} 版本沒有這條規則`
       return {
         mine: m ? evaluate(m, mineInRange, gcd?.mine.gcdMs ?? null, mine.duration) : inapplicableSummary(r!, reason(patches.mine)),
-        ref: r ? evaluate(r, refInRange, gcd?.ref.gcdMs ?? null, reference.duration) : inapplicableSummary(m!, reason(patches.ref)),
+        // 沒有參考時兩邊版本相同，m 一定有
+        ref: solo
+          ? null
+          : r
+            ? evaluate(r, refInRange, gcd?.ref?.gcdMs ?? null, reference.duration)
+            : inapplicableSummary(m!, reason(patches.ref)),
       }
     })
-  }, [job, mineInRange, refInRange, abilityName, gcd, patches, mine.duration, reference.duration])
+  }, [job, mineInRange, refInRange, abilityName, gcd, patches, mine.duration, reference.duration, solo])
   // 兩邊版本的規則不同的技能窗口（版本不同時列在摘要下方）
   const patchDiffs = useMemo(
     () =>
       windows
+        .flatMap(({ mine: m, ref: r }) => (r ? [{ mine: m, ref: r }] : []))
         .filter(({ mine: m, ref: r }) => m.rule !== r.rule || m.inapplicable || r.inapplicable)
         .map(({ mine: m, ref: r }) => {
           const note = (s: typeof m) => s.inapplicable ?? s.rule.patchNote ?? '一般規則'
@@ -498,36 +618,53 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     }
     return pairRulesByPatch(COOLDOWN_RULES[job.subType] ?? [], patches.mine.rules, patches.ref.rules).map(({ mine: m, ref: r }) => ({
       mine: m ? evaluate(m, mineInRange) : null,
-      ref: r ? evaluate(r, refInRange) : null,
+      ref: r && !solo ? evaluate(r, refInRange) : null,
     }))
-  }, [job, patches, mineInRange, refInRange, abilities])
-  const advice = useMemo(    () =>
-      generateAdvice({
-        mechanics,
-        durationMs: compareEnd,
-        gcd,
-        lost,
-        usage,
-        divergences: positions.divergences,
-        track: positions.track,
-        abilityName,
-        englishName: (id) => {
-          const a = abilities.get(id)
-          return a?.englishName ?? a?.name ?? `#${id}`
-        },
-        isGcd: job?.isGcd,
-        category,
-        mineToRef: alignment.mineToRef,
-        firstUse: (id) => mineInRange.playerCasts.find((c) => c.abilityId === id)?.t,
-        windows,
-        prepull: { mine: mine.prepull, ref: reference.prepull },
-        deaths: { mine: mineInRange.deaths, ref: refInRange.deaths },
-        mineDurationMs: mineInRange.duration,
-        pushes,
-        cooldowns,
-      }),
-    [compareEnd, gcd, lost, usage, positions, abilities, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns],
+  }, [job, patches, mineInRange, refInRange, abilities, solo])
+  const englishName = useCallback(
+    (id: number) => {
+      const a = abilities.get(id)
+      return a?.englishName ?? a?.name ?? `#${id}`
+    },
+    [abilities],
   )
+  const advice = useMemo(() => {
+    if (solo) {
+      return generateSoloAdvice({
+        abilityName,
+        deaths: mineInRange.deaths,
+        durationMs: mineInRange.duration,
+        stops: lost,
+        windows: windows.map((w) => w.mine),
+        cooldowns,
+        // 傷害降低（Damage Down）：機制失誤的懲罰，依英文名稱判斷
+        penalties: mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down'),
+        // 強化藥：得到強化藥效果的次數（含開打前）
+        potionUses: mineInRange.buffs.filter((b) => b.statusId === MEDICATED).length,
+      })
+    }
+    return generateAdvice({
+      mechanics,
+      durationMs: compareEnd,
+      gcd: gcd?.ref ? { mine: gcd.mine, ref: gcd.ref } : null,
+      lost,
+      usage,
+      divergences: positions.divergences,
+      track: positions.track,
+      abilityName,
+      englishName,
+      isGcd: job?.isGcd,
+      category,
+      mineToRef: alignment.mineToRef,
+      firstUse: (id) => mineInRange.playerCasts.find((c) => c.abilityId === id)?.t,
+      windows: windows.flatMap(({ mine: m, ref: r }) => (r ? [{ mine: m, ref: r }] : [])),
+      prepull: { mine: mine.prepull, ref: reference.prepull },
+      deaths: { mine: mineInRange.deaths, ref: refInRange.deaths },
+      mineDurationMs: mineInRange.duration,
+      pushes,
+      cooldowns,
+    })
+  }, [solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)
@@ -547,7 +684,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     () =>
       windows.flatMap(({ mine: m, ref: r }) => [
         ...m.windows.map((w) => ({ ...timelineWindow(w, ruleName(m.rule, abilityName)), side: 'mine' as const })),
-        ...r.windows.map((w) => ({ ...timelineWindow(w, ruleName(r.rule, abilityName)), side: 'ref' as const })),
+        ...(r?.windows ?? []).map((w) => ({ ...timelineWindow(w, ruleName(r!.rule, abilityName)), side: 'ref' as const })),
       ]),
     [windows, abilityName],
   )
@@ -570,14 +707,19 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
             />
           </>
         )}
-        <h3>Boss 機制差異</h3>
-        <Mechanics
-          differences={mainMechanics}
-          main={mainMechanicGroups(mine.selection.fight.encounterID) !== null}
-          abilityName={abilityName}
-          onJump={jumpTo}
-        />
+        {!solo && (
+          <>
+            <h3>Boss 機制差異</h3>
+            <Mechanics
+              differences={mainMechanics}
+              main={mainMechanicGroups(mine.selection.fight.encounterID) !== null}
+              abilityName={abilityName}
+              onJump={jumpTo}
+            />
+          </>
+        )}
         <Metrics
+          solo={solo}
           gcd={gcd}
           usage={usage}
           abilities={abilities}
@@ -591,14 +733,14 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         />
       </>
     ),
-    [advice, jumpTo, windows, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
+    [solo, advice, jumpTo, windows, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
   )
 
   return (
     <>
       <SummaryTable
         mine={mine}
-        reference={reference}
+        reference={shownRef}
         damage={damage}
         patches={patches}
         mineEnd={mineInRange.duration}
@@ -618,6 +760,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
           ))}
         </p>
       )}
+      {notice}
+      {!solo && (
       <p className="hint">
         時間軸以 Boss 技能對齊：錨點 {alignment.anchors.length} 個
         {drifts.length > 0 &&
@@ -640,16 +784,18 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         )}
         。兩場都在進行的時段才列入統計。
       </p>
-      {alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
+      )}
+      {!solo && alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
       {staticSections}
       <h3>站位與當下狀態</h3>
       <Positions
+        solo={solo}
         abilityName={abilityName}
         track={positions.track}
         divergences={positions.divergences}
         mineSamples={positions.mineSamples}
-        refSamples={refInRange.playerPositions}
+        refSamples={solo ? [] : refInRange.playerPositions}
         bossSamples={refInRange.bossPositions}
         mineBossSamples={positions.mineBossSamples}
         mineAlignedSamples={positions.mineAlignedSamples}
@@ -662,7 +808,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         status={
           <StatusPanel
             mine={mine}
-            reference={reference}
+            reference={shownRef}
             cursor={cursor}
             refToMine={alignment.refToMine}
             control={control}
@@ -676,7 +822,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       <h3>時間軸</h3>
       <Timeline
         mine={mine}
-        reference={reference}
+        reference={shownRef}
         alignment={alignment}
         abilities={abilities}
         job={job}
@@ -687,7 +833,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         cursor={cursor}
         follow={playing}
         onSeek={setCursor}
-        compareEnd={compareEnd}
+        compareEnd={solo ? undefined : compareEnd}
       />
       {/* 固定在畫面底部的播放列：捲到哪裡都能操作 */}
       <Playback
@@ -703,24 +849,30 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   )
 }
 
-function ComparisonLoader({ mine, reference }: { mine: Selection; reference: Selection }) {
-  const result = useSides(mine, reference)
+/**
+ * 比較結果（同一頁漸進顯示）：我的日誌載入後先顯示只用我的日誌能做的分析，參考日誌載入後補上比較。
+ * 參考日誌與我的不能比較（不同 Boss／職業）時仍顯示我的分析，並說明原因。
+ */
+export function Comparison({ mine, reference }: { mine: Selection; reference: Selection | null }) {
+  const problem = reference ? incompatibility(mine, reference) : null
+  const mineResult = useSide(mine)
+  const refResult = useSide(problem ? null : reference)
   // 事件只依選擇的 ID 載入一次；顯示用的名稱（Boss 繁中名稱可能晚到）取目前的選擇
-  const sides = useMemo(
-    () =>
-      result?.sides && ([
-        { ...result.sides[0], selection: mine },
-        { ...result.sides[1], selection: reference },
-      ] as const),
-    [result, mine, reference],
+  const mineSide = useMemo(() => mineResult?.side && { ...mineResult.side, selection: mine }, [mineResult, mine])
+  const refSide = useMemo(
+    () => (reference && refResult?.side ? { ...refResult.side, selection: reference } : null),
+    [refResult, reference],
   )
-  if (!result) return <p>載入戰鬥事件中…</p>
-  if (result.error || !sides) return <p className="error">{result.error}</p>
-  return <Loaded mine={sides[0]} reference={sides[1]} />
-}
-
-export function Comparison({ mine, reference }: { mine: Selection; reference: Selection }) {
-  const problem = incompatibility(mine, reference)
-  if (problem) return <p className="error">{problem}</p>
-  return <ComparisonLoader mine={mine} reference={reference} />
+  if (!mineResult) return <p>載入戰鬥事件中…</p>
+  if (mineResult.error || !mineSide) return <p className="error">{mineResult.error}</p>
+  const notice = problem ? (
+    <p className="error">{problem}</p>
+  ) : !reference ? (
+    <p className="hint">選擇參考日誌後可比較時間軸、站位、機制與技能時機。</p>
+  ) : !refResult ? (
+    <p className="hint">載入參考日誌中…</p>
+  ) : refResult.error ? (
+    <p className="error">參考日誌載入失敗：{refResult.error}</p>
+  ) : null
+  return <Loaded key={refSide ? 'compare' : 'solo'} mine={mineSide} reference={refSide} notice={notice} />
 }

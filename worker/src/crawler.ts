@@ -380,9 +380,18 @@ export function percentile(rank: number, count: number): number {
   return count <= 1 ? 100 : Math.floor(((count - rank) / (count - 1)) * 100)
 }
 
+/** 任一 rDPS（例如使用者自己的一場，不一定在資料庫中）在繁中服排名中的位置。 */
+export interface RankPosition {
+  /** 與其他玩家各自最好的一場比較的百分位（同每場擊殺的 PR） */
+  pr: number
+  /** rDPS 比它高的擊殺場數（重複上傳只算一次） */
+  better: number
+}
+
 /**
  * 某 Boss、某職業的繁中服排名（依 rDPS）：每一場擊殺各自計算 PR（和其他玩家各自最好的一場比較），名次為所有場次依 rDPS 的順位；
  * 回傳 PR 在 [minPr, maxPr] 之間的擊殺（依 rDPS 由高到低，重複上傳的只留一筆）前 limit 筆與總人數。
+ * 傳入 position 時另外回傳該 rDPS 的 PR 與比它高的擊殺數；player（名稱@伺服器）在資料庫中時不和自己的最好一場比較。
  */
 export async function tcRankings(
   db: DbLike,
@@ -392,7 +401,8 @@ export async function tcRankings(
   minPr: number,
   maxPr: number,
   limit = 100,
-): Promise<{ count: number; rankings: RankedParse[] }> {
+  position?: { rdps: number; player?: string },
+): Promise<{ count: number; rankings: RankedParse[]; position?: RankPosition }> {
   const { results } = await db
     .prepare(
       `SELECT report, fight, actor, name, server, rdps, fight_start, fight_end, report_start
@@ -458,5 +468,19 @@ export async function tcRankings(
     })
     if (rankings.length >= limit) break
   }
-  return { count, rankings }
+  if (!position) return { count, rankings }
+  // 指定的 rDPS：和其他玩家各自最好的一場比較（不在資料庫中的玩家也算進總人數）
+  const self = position.player !== undefined && bests.has(position.player) ? position.player : undefined
+  const othersAbove = above(position.rdps) - (self !== undefined && bests.get(self)! > position.rdps ? 1 : 0)
+  const total = count - (self !== undefined ? 1 : 0) + 1
+  const counted = new Set<string>()
+  let better = 0
+  for (const r of results) {
+    if (r.rdps <= position.rdps) break
+    const duplicate = `${player(r)}|${r.report_start + r.fight_start}`
+    if (counted.has(duplicate)) continue
+    counted.add(duplicate)
+    better++
+  }
+  return { count, rankings, position: { pr: percentile(1 + othersAbove, total), better } }
 }

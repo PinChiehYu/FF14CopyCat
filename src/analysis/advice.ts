@@ -474,7 +474,7 @@ const MAX_LATE_LISTED = 3
  * 冷卻技沒有好了就用（xivanalysis 的 CooldownDowntime）：我比理論最多可用次數少、而且使用率比參考低時提出，
  * 列出晚了 5 秒以上的時間點。
  */
-function cooldownAdvice(input: AdviceInput): Advice[] {
+function cooldownAdvice(input: Pick<AdviceInput, 'cooldowns' | 'abilityName' | 'mineToRef'>): Advice[] {
   const items: Advice[] = []
   for (const { mine, ref } of input.cooldowns ?? []) {
     if (!mine || mine.max === 0) continue
@@ -504,6 +504,121 @@ function cooldownAdvice(input: AdviceInput): Advice[] {
 
 const ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2 }
 
+function sortAdvice(items: Advice[]): Advice[] {
+  return items.map((a, i) => ({ a, i })).sort((x, y) => ORDER[x.a.severity] - ORDER[y.a.severity] || x.i - y.i).map((x) => x.a)
+}
+
+/** 還沒有參考日誌時的建議輸入：只有我的資料，時間都是我的戰鬥時間。 */
+export interface SoloAdviceInput {
+  abilityName: (id: number) => string
+  deaths: Death[]
+  durationMs: number
+  /** 停手時段（見 metrics.ts 的 idleWindows；refGcds 為估計少打的 GCD 數，control 為控場造成的） */
+  stops: LostWindow[]
+  /** 技能窗口（我依規則的評分） */
+  windows: WindowSummary[]
+  /** 冷卻技（ref 為 null） */
+  cooldowns: CooldownPair[]
+  /** 讓輸出下降的懲罰效果（傷害降低；衰弱、瀕死是死亡的結果，由死亡建議處理） */
+  penalties: { statusId: number; start: number; end: number }[]
+  /** 整場的強化藥使用次數；沒有規則可判斷（例如找不到強化藥）時為 null */
+  potionUses: number | null
+}
+
+/**
+ * 還沒有參考日誌時的建議：只用規則判斷（死亡、停手、冷卻技、技能窗口、懲罰效果、強化藥），
+ * 需要與參考比較的（站位、機制、GCD 速度、技能時機）等選了參考日誌才提出。
+ */
+export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
+  const { abilityName } = input
+  const items: Advice[] = []
+
+  if (input.deaths.length > 0) {
+    const list = input.deaths.map((d) => `${formatFightTime(d.t)}${d.abilityId !== null ? `（${abilityName(d.abilityId)}）` : ''}`).join('、')
+    const unable = input.deaths.reduce((sum, d) => sum + ((d.revivedAt ?? input.durationMs) - d.t), 0)
+    items.push({
+      severity: 'high',
+      title: `你死亡了 ${input.deaths.length} 次：避免死亡是最優先的改進`,
+      detail:
+        `死亡時間與致命技能：${list}。死亡到恢復行動共 ${seconds(unable)} 秒無法輸出，還會消耗隊友的復活與資源、增加全隊的壓力。` +
+        '對照時間軸確認這些機制的處理方式；選了參考日誌後可以看前輩怎麼避開或用了哪些減傷。',
+      at: input.deaths[0].t,
+    })
+  }
+
+  // 停手：控場造成的合併成一則參考，其餘依估計少打的 GCD 數
+  const controlled = input.stops.filter((w) => w.control)
+  const stops = input.stops.filter((w) => !w.control)
+  if (stops.length > 0) {
+    const total = stops.reduce((sum, w) => sum + w.refGcds, 0)
+    items.push({
+      severity: total >= 3 ? 'high' : 'medium',
+      title: `有 ${stops.length} 段停手，約少打 ${total} 個 GCD`,
+      detail:
+        '依你的 GCD 間隔估計（Boss 無法選中與死亡的時間已扣除）。檢查是否能提早移動、在移動中穿插 GCD，或縮短走位距離；' +
+        '選了參考日誌後可以看前輩在同一段是否仍在輸出。',
+    })
+    for (const w of [...stops].sort((a, b) => b.refGcds - a.refGcds).slice(0, MAX_ITEMS)) {
+      items.push({
+        severity: w.refGcds >= 3 ? 'high' : 'medium',
+        title: `${formatFightTime(w.mineStart)} 停手 ${seconds(w.mineEnd - w.mineStart)} 秒`,
+        detail: `這段約少打 ${w.refGcds} 個 GCD。`,
+        at: w.mineStart,
+      })
+    }
+  }
+  if (controlled.length > 0) {
+    items.push({
+      severity: 'low',
+      title: `${controlled.length} 段停手是 Boss 控場造成`,
+      detail: `${controlled.map((w) => `${formatFightTime(w.mineStart)}（${controlNames(w.control!, abilityName)}）`).join('、')}：你身上有 Boss 施加、期間無法施放的效果，不是操作問題。`,
+      at: controlled[0].mineStart,
+    })
+  }
+
+  items.push(...cooldownAdvice({ cooldowns: input.cooldowns, abilityName, mineToRef: (t) => t }))
+
+  // 技能窗口：依規則評分，有不合格就提出（沒有參考可比較合格率）
+  for (const summary of input.windows) {
+    if (summary.inapplicable || summary.judged === 0 || summary.passed === summary.judged) continue
+    const failed = summary.windows.filter((w) => w.judged && w.issues.length > 0)
+    const counts = new Map<string, number>()
+    for (const w of failed) for (const issue of w.issues) counts.set(issue, (counts.get(issue) ?? 0) + 1)
+    const common = [...counts]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_WINDOW_ISSUES)
+      .map(([issue, n]) => `${issue}（${n} 次）`)
+      .join('；')
+    const name = ruleName(summary.rule, abilityName)
+    items.push({
+      severity: 'medium',
+      title: `${name}：${summary.judged} 次中 ${summary.passed} 次合格`,
+      detail: `常見問題：${common}。對照時間軸上${name}期間使用的技能。`,
+      at: failed[0].start,
+    })
+  }
+
+  if (input.penalties.length > 0) {
+    const total = input.penalties.reduce((sum, p) => sum + (p.end - p.start), 0)
+    items.push({
+      severity: 'medium',
+      title: `被施加傷害降低 ${input.penalties.length} 次，共 ${seconds(total)} 秒`,
+      detail: `${input.penalties.map((p) => formatFightTime(p.start)).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
+      at: input.penalties[0].start,
+    })
+  }
+
+  if (input.potionUses === 0) {
+    items.push({
+      severity: 'medium',
+      title: '整場沒有使用強化藥',
+      detail: '強化藥通常在開場與之後的爆發期使用（冷卻 4 分 30 秒），能明顯提高輸出。',
+    })
+  }
+
+  return sortAdvice(items)
+}
+
 /** 依各階段的分析結果產生規則式建議，依重要性排序。 */
 export function generateAdvice(input: AdviceInput): Advice[] {
   const items = [
@@ -518,5 +633,5 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...positionAdvice(input),
   ]
   // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 冷卻技 → 技能窗口 → 開打前 → 技能 → 站位）
-  return items.map((a, i) => ({ a, i })).sort((x, y) => ORDER[x.a.severity] - ORDER[y.a.severity] || x.i - y.i).map((x) => x.a)
+  return sortAdvice(items)
 }

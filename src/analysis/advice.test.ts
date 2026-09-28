@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
-import { generateAdvice, type AdviceInput } from './advice'
+import { generateAdvice, generateSoloAdvice, type AdviceInput, type SoloAdviceInput } from './advice'
+import type { WindowRule } from '../jobs/windows'
 import type { AbilityUsage } from './metrics'
 import type { TrackPoint } from './positions'
 
@@ -318,5 +319,61 @@ describe('generateAdvice', () => {
       }),
     )
     expect(a.detail).toMatch("你：Hero's Blow #42081；參考：Hero's Blow #42079")
+  })
+})
+
+describe('generateSoloAdvice', () => {
+  const solo = (overrides: Partial<SoloAdviceInput> = {}): SoloAdviceInput => ({
+    abilityName: (id) => names[id] ?? `#${id}`,
+    deaths: [],
+    durationMs: 600_000,
+    stops: [],
+    windows: [],
+    cooldowns: [],
+    penalties: [],
+    potionUses: 1,
+    ...overrides,
+  })
+  const meikyo = { key: 'meikyo', statusId: 5, expectedGcds: 3 } as unknown as WindowRule
+
+  it('returns nothing when there is nothing to improve', () => {
+    expect(generateSoloAdvice(solo())).toEqual([])
+  })
+
+  it('judges by rules only, without comparing to a reference', () => {
+    const advice = generateSoloAdvice(
+      solo({
+        deaths: [{ t: 100_000, abilityId: 6, revivedAt: 120_000 }],
+        stops: [
+          { mineStart: 200_000, mineEnd: 210_000, refStart: 200_000, refEnd: 210_000, refGcds: 3 },
+          { mineStart: 300_000, mineEnd: 304_000, refStart: 300_000, refEnd: 304_000, refGcds: 1, control: [5] },
+        ],
+        windows: [
+          {
+            rule: meikyo,
+            judged: 2,
+            passed: 1,
+            windows: [
+              { start: 50_000, end: 60_000, gcds: 3, issues: [], judged: true },
+              { start: 400_000, end: 410_000, gcds: 2, issues: ['只打了 2 個 GCD（應 3 個）'], judged: true },
+            ],
+          },
+        ],
+        penalties: [{ statusId: 1_002_911, start: 150_000, end: 180_000 }],
+        potionUses: 0,
+      }),
+    )
+    expect(advice.map((a) => [a.severity, a.title])).toEqual([
+      ['high', '你死亡了 1 次：避免死亡是最優先的改進'],
+      ['high', '有 1 段停手，約少打 3 個 GCD'],
+      ['high', '3:20.0 停手 10.0 秒'],
+      ['medium', 'Meikyo Shisui：2 次中 1 次合格'],
+      ['medium', '被施加傷害降低 1 次，共 30.0 秒'],
+      ['medium', '整場沒有使用強化藥'],
+      ['low', '1 段停手是 Boss 控場造成'],
+    ])
+    // 不和參考比較
+    expect(advice.every((a) => !a.title.includes('參考'))).toBe(true)
+    expect(advice[0].detail).toMatch('20.0 秒無法輸出')
   })
 })

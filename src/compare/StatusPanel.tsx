@@ -259,6 +259,7 @@ function BossNow({
 /**
  * 游標時間點上，兩邊玩家的血量與自身 Buff，以及兩場 Boss 最近與即將施放的技能。
  * Boss 固定兩行（我的、參考，各自依自己的戰鬥時間），不隨俯視圖的視角改變行數，播放與切換視角時版面不跳動。
+ * 還沒有參考日誌時（reference 為 null）只列我的 Boss 與我。
  */
 export function StatusPanel({
   mine,
@@ -272,7 +273,7 @@ export function StatusPanel({
   isGcd,
 }: {
   mine: SideData
-  reference: SideData
+  reference: SideData | null
   /** 參考時間 */
   cursor: number
   refToMine: (t: number) => number
@@ -288,17 +289,19 @@ export function StatusPanel({
     <div className="status-panel">
       <div className="boss-now-pair">
         <BossNow
-          label={<span className="legend boss mine">◯ 我的 Boss</span>}
+          label={<span className="legend boss mine">◯ {reference ? '我的 Boss' : 'Boss'}</span>}
           casts={mine.bossCasts}
           t={mineT}
           abilityName={abilityName}
         />
-        <BossNow
-          label={<span className="legend boss ref">◯ 參考 Boss</span>}
-          casts={reference.bossCasts}
-          t={cursor}
-          abilityName={abilityName}
-        />
+        {reference && (
+          <BossNow
+            label={<span className="legend boss ref">◯ 參考 Boss</span>}
+            casts={reference.bossCasts}
+            t={cursor}
+            abilityName={abilityName}
+          />
+        )}
       </div>
       <SideStatus
         label="我"
@@ -311,16 +314,18 @@ export function StatusPanel({
         namedStatus={namedStatus}
         isGcd={isGcd}
       />
-      <SideStatus
-        label="參考"
-        side={reference}
-        t={cursor}
-        abilities={abilities}
-        abilityName={abilityName}
-        control={control}
-        namedStatus={namedStatus}
-        isGcd={isGcd}
-      />
+      {reference && (
+        <SideStatus
+          label="參考"
+          side={reference}
+          t={cursor}
+          abilities={abilities}
+          abilityName={abilityName}
+          control={control}
+          namedStatus={namedStatus}
+          isGcd={isGcd}
+        />
+      )}
     </div>
   )
 }

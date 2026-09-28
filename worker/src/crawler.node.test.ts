@@ -227,6 +227,31 @@ describe('tcRankings', () => {
     ])
   })
 
+  it('places any rDPS among the rankings, excluding the player’s own best', async () => {
+    const db = memoryDb()
+    const insert = (report: string, name: string, rdps: number, reportStart = report.charCodeAt(0) * 3600_000, fightStart = 0) =>
+      db
+        .prepare(
+          'INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(report, 'Samurai', name, '泰坦', rdps, fightStart, fightStart + 600_000, reportStart)
+        .run()
+    await insert('A', '甲', 30_000)
+    await insert('B', '甲', 31_000)
+    await insert('C', '乙', 29_000, 1_000_000, 50_000)
+    await insert('H', '乙', 29_000, 1_020_000, 30_000) // C 的重複上傳
+    await insert('D', '丙', 28_000)
+    await insert('L', '丙', 27_000)
+    await insert('E', '丁', 20_000)
+    const at = (rdps: number, player?: string) => tcRankings(db, 100, 101, 'Samurai', 0, 100, 1, { rdps, player }).then((r) => r.position)
+    // 不在資料庫的玩家：和 4 位的最好一場比較、總共 5 人；比它高的擊殺 B、A
+    expect(await at(29_500)).toEqual({ pr: 75, better: 2 })
+    // 乙自己的最好一場：同 C 的 PR
+    expect(await at(29_000, '乙@泰坦')).toEqual({ pr: 66, better: 2 })
+    // 丙較差的一場：不和自己的最好一場（28,000）比較；比它高的有 B、A、C、D、L（H 是重複上傳）
+    expect(await at(26_000, '丙@泰坦')).toEqual({ pr: 33, better: 5 })
+  })
+
   it('computes percentiles', () => {
     expect(percentile(1, 1)).toBe(100)
     expect(percentile(1, 100)).toBe(100)

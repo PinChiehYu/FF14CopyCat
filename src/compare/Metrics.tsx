@@ -24,14 +24,15 @@ function GcdSection({
   abilityName,
 }: {
   mine: GcdStats
-  reference: GcdStats
+  /** 還沒有參考日誌時為 null：只列我的數字，停手時段改依自己的 GCD 間隔估計（見 idleWindows） */
+  reference: GcdStats | null
   lost: LostWindow[]
   onFocus: (refTime: number) => void
   abilityName?: (id: number) => string
 }) {
   const controlled = lost.filter((w) => w.control)
   const lostTotal = lost.reduce((sum, w) => sum + w.refGcds, 0)
-  const slower = mine.gcdMs !== null && reference.gcdMs !== null ? mine.gcdMs - reference.gcdMs : 0
+  const slower = reference && mine.gcdMs !== null && reference.gcdMs !== null ? mine.gcdMs - reference.gcdMs : 0
 
   return (
     <>
@@ -41,46 +42,49 @@ function GcdSection({
           <tr>
             <th />
             <th className="mine">我</th>
-            <th className="ref">參考</th>
-            <th>差距</th>
+            {reference && <th className="ref">參考</th>}
+            {reference && <th>差距</th>}
           </tr>
         </thead>
         <tbody>
           <tr>
             <th>GCD 數</th>
             <td>{mine.count}</td>
-            <td>{reference.count}</td>
-            <td>{signed(mine.count - reference.count, 0)}</td>
+            {reference && <td>{reference.count}</td>}
+            {reference && <td>{signed(mine.count - reference.count, 0)}</td>}
           </tr>
           <tr>
             <th>GCD 間隔</th>
             <td>{mine.gcdMs !== null ? `${seconds(mine.gcdMs, 3)} 秒` : '—'}</td>
-            <td>{reference.gcdMs !== null ? `${seconds(reference.gcdMs, 3)} 秒` : '—'}</td>
-            <td>{slower ? `${signed(slower, 0)} 毫秒` : '—'}</td>
+            {reference && <td>{reference.gcdMs !== null ? `${seconds(reference.gcdMs, 3)} 秒` : '—'}</td>}
+            {reference && <td>{slower ? `${signed(slower, 0)} 毫秒` : '—'}</td>}
           </tr>
           <tr>
             <th>空檔總計</th>
             <td>{seconds(mine.idleMs)} 秒</td>
-            <td>{seconds(reference.idleMs)} 秒</td>
-            <td>{signed((mine.idleMs - reference.idleMs) / 1000)} 秒</td>
+            {reference && <td>{seconds(reference.idleMs)} 秒</td>}
+            {reference && <td>{signed((mine.idleMs - reference.idleMs) / 1000)} 秒</td>}
           </tr>
         </tbody>
       </table>
       <p className="hint">
-        GCD 間隔取開始施放時間的中位數；空檔含 Boss 無法攻擊的時間，與參考的差距才有意義。
+        GCD 間隔取開始施放時間的中位數；空檔含 Boss 無法攻擊的時間
+        {reference ? '，與參考的差距才有意義。' : '。'}
         {slower > 10 && ` 你的 GCD 比參考慢 ${slower.toFixed(0)} 毫秒，可能是技能速度或加速效果的差異。`}
       </p>
 
-      <h3>少打 GCD 的時段</h3>
+      <h3>{reference ? '少打 GCD 的時段' : '停手時段'}</h3>
       {lost.length === 0 ? (
-        <p className="hint">沒有「你停手但參考仍在施放」的時段。</p>
+        <p className="hint">{reference ? '沒有「你停手但參考仍在施放」的時段。' : '沒有停手的時段。'}</p>
       ) : (
         <>
           <p>
-            共 {lost.length} 段，參考在這些時段多打了 {lostTotal} 個 GCD。雙方都停手的時段（Boss 無法攻擊等）不列入。
+            {reference
+              ? `共 ${lost.length} 段，參考在這些時段多打了 ${lostTotal} 個 GCD。雙方都停手的時段（Boss 無法攻擊等）不列入。`
+              : `共 ${lost.length} 段，約少打 ${lostTotal} 個 GCD（依你的 GCD 間隔估計；Boss 無法選中與死亡的時間已扣除）。`}
             {controlled.length > 0 && `其中 ${controlled.length} 段你被 Boss 控場，停手是機制造成。`}
           </p>
-          {/* 每段一列、欄位對齊（時間｜停手秒數｜參考同段的 GCD 數），手機上也不換行 */}
+          {/* 每段一列、欄位對齊（時間｜停手秒數｜參考同段的 GCD 數或估計少打的 GCD 數），手機上也不換行 */}
           <ul className="lost-list">
             {lost.map((w) => (
               <li key={w.mineStart} className={w.control ? 'controlled' : w.refGcds >= 3 ? 'many' : undefined}>
@@ -88,13 +92,19 @@ function GcdSection({
                   {formatFightTime(w.mineStart)}–{formatFightTime(w.mineEnd)}
                 </button>
                 <span>停手 {seconds(w.mineEnd - w.mineStart)} 秒</span>
-                <span title="參考在同一段（對齊後）打的 GCD 數">
-                  參考打 <strong>{w.refGcds}</strong> 個 GCD
-                </span>
+                {reference ? (
+                  <span title="參考在同一段（對齊後）打的 GCD 數">
+                    參考打 <strong>{w.refGcds}</strong> 個 GCD
+                  </span>
+                ) : (
+                  <span title="依你的 GCD 間隔估計這段少打的 GCD 數（扣除 Boss 無法選中與死亡的時間）">
+                    約少 <strong>{w.refGcds}</strong> 個 GCD
+                  </span>
+                )}
                 {w.control && (
                   <span
                     className="tag control"
-                    title={`你身上有 Boss 施加的控場效果：${controlNames(w.control, abilityName ?? ((id) => `#${id}`))}\n期間無法施放，停手是機制造成（參考在同一段仍在施放）`}
+                    title={`你身上有 Boss 施加的控場效果：${controlNames(w.control, abilityName ?? ((id) => `#${id}`))}\n期間無法施放，停手是機制造成${reference ? '（參考在同一段仍在施放）' : ''}`}
                   >
                     控場
                   </span>
@@ -119,9 +129,12 @@ export function Metrics({
   cooldowns = [],
   mineToRef,
   abilityName,
+  solo = false,
 }: {
-  /** 沒有職業模組時為 null */
-  gcd: { mine: GcdStats; ref: GcdStats } | null
+  /** 沒有職業模組時為 null；還沒有參考日誌時 ref 為 null */
+  gcd: { mine: GcdStats; ref: GcdStats | null } | null
+  /** 還沒有參考日誌：只列我的數字 */
+  solo?: boolean
   usage: AbilityUsage[]
   /** 冷卻技是否好了就用（兩邊依各自版本的規則；該版本沒有這個技能組時為 null） */
   cooldowns?: CooldownPair[]
@@ -145,7 +158,7 @@ export function Metrics({
           : `${u.avgDelayMs > 0 ? '晚' : '早'} ${seconds(Math.abs(u.avgDelayMs))} 秒`
     const diff = u.mine - u.ref
     return (
-      <li key={u.abilityId} className={`usage-card${diff < 0 ? ' fewer' : diff > 0 ? ' more' : ''}`}>
+      <li key={u.abilityId} className={`usage-card${solo ? '' : diff < 0 ? ' fewer' : diff > 0 ? ' more' : ''}`}>
         <div className="usage-name" title={ability?.englishName}>
           {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
           <span>{ability?.name ?? `#${u.abilityId}`}</span>
@@ -155,18 +168,22 @@ export function Metrics({
             <dt className="mine">我</dt>
             <dd>{u.mine}</dd>
           </div>
-          <div>
-            <dt className="ref">參考</dt>
-            <dd>{u.ref}</dd>
-          </div>
-          <div>
-            <dt>差距</dt>
-            <dd className="usage-diff">{diff === 0 ? '—' : signed(diff, 0)}</dd>
-          </div>
-          <div>
-            <dt>平均時機</dt>
-            <dd>{timing}</dd>
-          </div>
+          {!solo && (
+            <>
+              <div>
+                <dt className="ref">參考</dt>
+                <dd>{u.ref}</dd>
+              </div>
+              <div>
+                <dt>差距</dt>
+                <dd className="usage-diff">{diff === 0 ? '—' : signed(diff, 0)}</dd>
+              </div>
+              <div>
+                <dt>平均時機</dt>
+                <dd>{timing}</dd>
+              </div>
+            </>
+          )}
         </dl>
       </li>
     )
@@ -185,7 +202,7 @@ export function Metrics({
       .filter(Boolean)
       .join('\n')
     return (
-      <li key={group.key} className={`usage-card${lost(mine) > lost(ref) ? ' fewer' : ''}`} title={title}>
+      <li key={group.key} className={`usage-card${(solo ? lost(mine) > 0 : lost(mine) > lost(ref)) ? ' fewer' : ''}`} title={title}>
         <div className="usage-name">
           {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
           <span>{ability?.name ?? abilityName?.(group.ids[0]) ?? `#${group.ids[0]}`}</span>
@@ -195,10 +212,12 @@ export function Metrics({
             <dt className="mine">我</dt>
             <dd>{mine ? `${mine.uses}／${mine.max}` : '—'}</dd>
           </div>
-          <div>
-            <dt className="ref">參考</dt>
-            <dd>{ref ? `${ref.uses}／${ref.max}` : '—'}</dd>
-          </div>
+          {!solo && (
+            <div>
+              <dt className="ref">參考</dt>
+              <dd>{ref ? `${ref.uses}／${ref.max}` : '—'}</dd>
+            </div>
+          )}
           <div>
             <dt>晚用</dt>
             <dd>{mine ? (lateList.length === 0 ? '—' : `${lateList.length} 次`) : '—'}</dd>
@@ -245,9 +264,10 @@ export function Metrics({
       <h3>技能使用次數</h3>
       <Tabs tabs={tabs} label="技能分類" />
       <p className="hint">
-        平均時機：把你（依 Boss 機制對齊後）與參考的每次使用依序配對（相距 30 秒以內才算同一次），計算你平均早或晚多少；
-        使用 30 次以上的技能（連擊等）不計算。普通攻擊不顯示在時間軸，次數明顯較少通常代表離 Boss 太遠或停手較久。
-        冷卻技：「用了／最多可用」依冷卻時間與每次冷卻好就用計算（移植自 xivanalysis，Boss 無法選取的時間不算）；晚用為冷卻好後晚了  秒以上才用。
+        {!solo &&
+          '平均時機：把你（依 Boss 機制對齊後）與參考的每次使用依序配對（相距 30 秒以內才算同一次），計算你平均早或晚多少；使用 30 次以上的技能（連擊等）不計算。普通攻擊不顯示在時間軸，次數明顯較少通常代表離 Boss 太遠或停手較久。'}
+        冷卻技：「用了／最多可用」依冷卻時間與每次冷卻好就用計算（移植自 xivanalysis，Boss 無法選取的時間不算）；晚用為冷卻好後晚了{' '}
+        {LATE_LISTED_MS / 1000} 秒以上才用。
       </p>
     </section>
   )

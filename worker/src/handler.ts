@@ -158,7 +158,13 @@ function npcNameParams(params: URLSearchParams): string[] {
 
 const JOB_NAME = /^[A-Za-z]{2,20}$/
 
-/** `GET /tc-rankings?encounter&difficulty&job&minPr&maxPr`：繁中服排名（自建資料庫）中 PR 在範圍內的紀錄。 */
+// 名稱@伺服器（只用來不和自己比較；長度與字元限制避免異常輸入）
+const PLAYER_KEY = /^[^@\s]{1,40}@[^@\s]{1,40}$/
+
+/**
+ * `GET /tc-rankings?encounter&difficulty&job&minPr&maxPr[&rdps&player]`：繁中服排名（自建資料庫）中 PR 在範圍內的紀錄；
+ * 帶 rdps 時另外回傳該 rDPS 的 PR 與比它高的擊殺數（player 為「名稱@伺服器」，在資料庫中時不和自己比較）。
+ */
 async function tcRankingsRoute(params: URLSearchParams, env: Env): Promise<unknown> {
   if (!env.DB) throw new HttpError(503, 'Rankings database unavailable')
   const job = params.get('job') ?? ''
@@ -166,7 +172,19 @@ async function tcRankingsRoute(params: URLSearchParams, env: Env): Promise<unkno
   const minPr = optionalInt(params, 'minPr') ?? 0
   const maxPr = optionalInt(params, 'maxPr') ?? 100
   if (minPr > 100 || maxPr > 100 || minPr > maxPr) throw new HttpError(400, 'Invalid PR range')
-  return tcRankings(env.DB, requiredInt(params, 'encounter'), requiredInt(params, 'difficulty'), job, minPr, maxPr)
+  const rdps = optionalInt(params, 'rdps')
+  const player = params.get('player') ?? undefined
+  if (player !== undefined && !PLAYER_KEY.test(player)) throw new HttpError(400, 'Invalid player')
+  return tcRankings(
+    env.DB,
+    requiredInt(params, 'encounter'),
+    requiredInt(params, 'difficulty'),
+    job,
+    minPr,
+    maxPr,
+    undefined,
+    rdps === undefined ? undefined : { rdps, player },
+  )
 }
 
 async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds: number }> {

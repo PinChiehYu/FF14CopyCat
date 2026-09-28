@@ -275,11 +275,16 @@ describe('handleRequest', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ count: 1, rankings: [{ name: '甲', pr: 100, rank: 1, rdps: 30000 }] })
     expect(bound[0]).toEqual([100, 101, 'Samurai'])
+    // 帶 rdps 時回傳該 rDPS 的位置（甲 30,000 比它高）
+    const placed = await handleRequest(get('/tc-rankings?encounter=100&difficulty=101&job=Samurai&rdps=25000&player=%E4%B9%99%40%E6%B3%B0%E5%9D%A6'), withDb, ctx, null)
+    expect(await placed.json()).toMatchObject({ position: { pr: 0, better: 1 } })
     for (const path of [
       '/tc-rankings?encounter=100&difficulty=101&job=S%20a',
       '/tc-rankings?encounter=100&difficulty=101&job=Samurai&minPr=90&maxPr=80',
       '/tc-rankings?difficulty=101&job=Samurai',
       '/tc-rankings?encounter=100&difficulty=101&job=Samurai&minPr=101',
+      '/tc-rankings?encounter=100&difficulty=101&job=Samurai&rdps=1.5',
+      '/tc-rankings?encounter=100&difficulty=101&job=Samurai&rdps=100&player=no-server',
     ]) {
       expect((await handleRequest(get(path), withDb, ctx, null)).status, path).toBe(400)
     }

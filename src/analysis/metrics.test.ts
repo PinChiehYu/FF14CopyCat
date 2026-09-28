@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { abilityUsage, gcdStats, lostGcdWindows, matchUses } from './metrics'
+import { abilityUsage, gcdStats, idleWindows, lostGcdWindows, matchUses } from './metrics'
 
 const every = (start: number, end: number, step: number) =>
   Array.from({ length: Math.floor((end - start) / step) + 1 }, (_, i) => start + i * step)
@@ -46,6 +46,24 @@ describe('lostGcdWindows', () => {
     const [w] = lostGcdWindows(mine, ref, (t) => t + 5000, 2000)
     // 兩端各留半個 GCD → (10, 18) 秒間參考的 12、14、16 秒
     expect([w.refStart, w.refEnd, w.refGcds]).toEqual([9000, 19_000, 3])
+  })
+})
+
+describe('idleWindows', () => {
+  it('lists my stops and estimates the GCDs lost from my own GCD', () => {
+    const mine = [...every(0, 10_000, 2000), ...every(20_000, 40_000, 2000)] // 10～20 秒停手
+    // 10 秒的間隔扣掉一個正常 GCD，能多打 4 個
+    expect(idleWindows(mine, 2000, [])).toEqual([{ mineStart: 10_000, mineEnd: 20_000, refStart: 10_000, refEnd: 20_000, refGcds: 4 }])
+  })
+
+  it('does not count time the boss could not be targeted or I was dead', () => {
+    const mine = [...every(0, 10_000, 2000), ...every(30_000, 40_000, 2000)] // 10～30 秒停手
+    // 12～24 秒 Boss 無法選中、22～26 秒死亡（重疊的部分只扣一次）：可輸出 6 秒 → 少 2 個
+    expect(idleWindows(mine, 2000, [{ start: 12_000, end: 24_000 }, { start: 22_000, end: 26_000 }])).toEqual([
+      { mineStart: 10_000, mineEnd: 30_000, refStart: 10_000, refEnd: 30_000, refGcds: 2 },
+    ])
+    // 整段都無法輸出：不列出
+    expect(idleWindows(mine, 2000, [{ start: 9000, end: 31_000 }])).toEqual([])
   })
 })
 

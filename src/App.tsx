@@ -291,11 +291,12 @@ export default function App() {
         />
       </div>
 
-      {mine && reference && (
+      {/* 選好我的日誌就先顯示我的分析，選了參考日誌再補上比較 */}
+      {mine && (
         <section className="comparison">
           <div className="comparison-head">
-            <h2>比較結果</h2>
-            <ShareLink mine={mine} reference={reference} />
+            <h2>{reference ? '比較結果' : '我的分析'}</h2>
+            {reference && <ShareLink mine={mine} reference={reference} />}
           </div>
           <Comparison mine={mine} reference={reference} />
         </section>

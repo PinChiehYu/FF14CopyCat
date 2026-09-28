@@ -45,7 +45,7 @@ function dedupeBoss(casts: TimedCast[]): TimedCast[] {
 
 export function Timeline({
   mine,
-  reference: ref,
+  reference,
   alignment,
   abilities,
   job,
@@ -59,7 +59,8 @@ export function Timeline({
   compareEnd,
 }: {
   mine: SideData
-  reference: SideData
+  /** 還沒有參考日誌時為 null：Boss 列用我的 Boss 施放、只畫我的技能列（alignment 應為恆等對應） */
+  reference: SideData | null
   alignment: Alignment
   abilities: Map<number, Ability>
   job: JobModule | undefined
@@ -81,6 +82,8 @@ export function Timeline({
   compareEnd?: number
 }) {
   const [pxPerSec, setPxPerSec] = useState(20)
+  // 時間尺與 Boss 列的依據：參考日誌；還沒有參考時用我的
+  const ref = reference ?? mine
   const x = (ms: number) => (ms / 1000) * pxPerSec
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -108,10 +111,10 @@ export function Timeline({
 
   const allLanes = useMemo(
     () => [
-      ...lanes(ref, '參考', 'ref', job, axis.ref, (t) => t),
+      ...(reference ? lanes(reference, '參考', 'ref', job, axis.ref, (t) => t) : []),
       ...lanes(mine, '我', 'mine', job, axis.mine, alignment.mineToRef),
     ],
-    [ref, mine, job, alignment, axis],
+    [reference, mine, job, alignment, axis],
   )
 
   return (
@@ -128,14 +131,17 @@ export function Timeline({
           </select>
         </label>
         <span className="hint">
-          時間軸以參考日誌為準；我的施放已依 Boss 機制對齊。一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。灰底為 Boss 無法選中。滑鼠停在圖示上可看技能與原始時間。
+          {reference
+            ? '時間軸以參考日誌為準；我的施放已依 Boss 機制對齊。一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。'
+            : ''}
+          灰底為 Boss 無法選中。滑鼠停在圖示上可看技能與原始時間。
         </span>
       </div>
 
       <div className="timeline-body">
         <div className="timeline-labels">
           <div className="lane-label ruler-label">時間</div>
-          <div className="lane-label">Boss（參考）</div>
+          <div className="lane-label">{reference ? 'Boss（參考）' : 'Boss'}</div>
           {allLanes.map((lane) => (
             <div key={lane.label} className={`lane-label ${lane.side}`}>
               {lane.label}

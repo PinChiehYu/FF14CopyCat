@@ -46,12 +46,25 @@ export interface TcRanking {
   reportStart: number
 }
 
-/** 查詢繁中服排名中某 Boss、某職業 PR 在範圍內的紀錄（由高到低）。 */
+/** 某個 rDPS 在繁中服排名中的位置：PR（與其他玩家各自最好的一場比較）與 rDPS 比它高的擊殺數。 */
+export interface TcPosition {
+  pr: number
+  better: number
+}
+
+/**
+ * 查詢繁中服排名中某 Boss、某職業 PR 在範圍內的紀錄（由高到低）。
+ * 帶 rdps（與 player「名稱@伺服器」）時另外回傳該 rDPS 的位置（position）。
+ */
 export function fetchTcRankings(
-  query: { encounter: number; difficulty: number; job: string; minPr: number; maxPr: number },
+  query: { encounter: number; difficulty: number; job: string; minPr: number; maxPr: number; rdps?: number; player?: string },
   signal?: AbortSignal,
-): Promise<{ count: number; rankings: TcRanking[] }> {
-  const params = new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)]))
+): Promise<{ count: number; rankings: TcRanking[]; position?: TcPosition }> {
+  const params = new URLSearchParams(
+    Object.entries(query)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, String(v)]),
+  )
   return get(`/tc-rankings?${params}`, signal)
 }
 

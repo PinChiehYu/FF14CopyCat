@@ -31,7 +31,7 @@
 | `GET /npc-names?name=A&name=B` | Boss（NPC）繁中名稱（見「Boss 繁中名稱」） | 1 天 |
 | `GET /reports/:code/auto-attacks-taken?fight=` | 每位玩家承受的敵方普通攻擊總傷害 `{ 角色 ID: 傷害 }`，判斷 MT／ST（見「MT／ST 判斷」） | 10 分鐘 |
 | `GET /reports/:code/targetability?fight&start&end` | 敵方可否選中的變化 `[{ timestamp, sourceID, targetable }]`（`TARGETABILITY_QUERY`：`hostilityType: Enemies`、`filterExpression: "type = 'targetabilityupdate'"`；`dataType=Casts` 的事件不含這類事件，`All` 又太大） | 10 分鐘 |
-| `GET /tc-rankings?encounter&difficulty&job&minPr&maxPr` | 繁中服排名（D1）中 PR 在範圍內的紀錄 `{ count, rankings }`，最多 100 筆（見「繁中服排名」） | 5 分鐘 |
+| `GET /tc-rankings?encounter&difficulty&job&minPr&maxPr[&rdps][&player]` | 繁中服排名（D1）中 PR 在範圍內的紀錄 `{ count, rankings }`，最多 100 筆（見「繁中服排名」）。有 `rdps`（整數）時另回 `position: { pr, better }`：任一 rDPS 在排名中的 PR（和其他玩家各自最好的一場比較；`player`＝`名稱@伺服器` 已在排名中時扣掉自己，總人數不重複計算）與資料庫中 rDPS 更高的擊殺數（重複上傳只算一次） | 5 分鐘 |
 
 - 保護：`ALLOWED_ORIGINS`（`wrangler.toml`）檢查 Origin 並回 CORS 標頭；Cloudflare Rate Limiting 綁定 `RATE_LIMITER`（每 IP 60 次／分）；成功回應以不含 Origin 的網址為鍵放入 `caches.default`。
 - client credentials 權杖在同一 isolate 內快取重用。所有訪客共用一組 FFLogs API 配額。
@@ -41,6 +41,9 @@
 
 ### 載入（`src/compare/load.ts`、`src/compare/Comparison.tsx`）
 - 每邊 3 個請求：玩家全部事件（`dataType=All&source=玩家`）、敵方施放（`dataType=Casts&hostility=Enemies`）與敵方可否選中（`/targetability`，失敗時當成沒有）。載入後另以 `/abilities` 查詢兩邊出現過的技能繁中名稱（查詢失敗沿用英文）。
+- **兩邊分開載入**（`Comparison.tsx` 的 `useSide()`）：每側的 `loadSide()` Promise 以「報告／戰鬥／角色」為鍵放在模組層級的快取（`sideCache`，最多 4 筆、最近使用的留下，失敗的移除；不隨單一畫面卸載而中止）。我的先載入好就以 `reference = null` 顯示 `Loaded`（只有我的分析），參考載入後以 `key` 換成比較模式重新掛載；換參考日誌時我的一側直接取快取。
+- **沒有參考時**（`Loaded` 的 `solo`）：以我自己代替參考（`unifyPotions(m, m)`、恆等對應 `IDENTITY`，參考時間＝我的時間），各項計算照常執行，需要比較的部分改為：停手用 `idleWindows()`、技能次數以空的參考計算、機制差異與站位差異為空、`compareTracks(mine, [], 我的 Boss)`、技能窗口與冷卻技的 ref 為 null、建議用 `generateSoloAdvice()`。顯示時以 `shownRef`（null）判斷，元件（`SummaryTable`、`Windows`、`Metrics` 的 `solo`、`Positions` 的 `solo`、`StatusPanel`、`Timeline`）各自隱藏參考的部分。
+- **繁中服 PR**（`useSideDamage()`）：傷害表查到 rDPS、且這場是擊殺時，以 `/tc-rankings?…&minPr=100&maxPr=100&rdps&player` 查位置（列表只取 PR 100，資料量小）。`player` 取 `Actor.server`，沒有伺服器時不帶。
 - **玩家施放**（`playerCasts()`）：只取 `sourceID` 為玩家者；有詠唱條的技能以同技能前一個 `begincast`（5 秒內）的時間取代 `cast`；被打斷的只有 `begincast`、不計；任何施放完成時清除尚未完成的 `begincast`（該詠唱已被取消），避免之後瞬發同一技能時配對到過期的開始時間。
 - **普通攻擊**（Attack #7、Shot #8）另存 `autoAttacks`。
 - **不紀錄的技能**：`withoutAbilities()` 在比較開始時移除 ignored 分類的施放。
@@ -97,6 +100,7 @@
 ### 通用指標（`src/analysis/metrics.ts`）
 - `gcdStats()`：GCD 間隔＝1.5～2.6 秒相鄰間隔的中位數，上限 2.5 秒；空檔＝每個間隔超出 GCD＋100 毫秒的部分加總。
 - `lostGcdWindows()`：我的相鄰 GCD 間隔 > max(1.5×GCD, GCD＋1 秒) 時，換算到參考時間，計算參考在區間內（兩端各留半個 GCD）的 GCD 數。
+- `idleWindows()`（沒有參考時）：同樣的門檻，間隔扣掉不能輸出的時段（Boss 無法選中、死亡到復活；彼此重疊只扣一次，`mergedOverlap()`）後仍超過門檻才列出；估計少打 `floor((可輸出長度 − GCD) / GCD)` 個，0 個的不列。`refStart`／`refEnd` 同我的時間。
 - `abilityUsage()`／`matchPairs()`：同一技能兩邊的使用以動態規劃配對（不可交錯、相距 ≤ 30 秒；先求配對數最多、再求時間差總和最小），回傳平均時間差與參考未配對的使用 `unmatchedRef`（減傷／移動建議用）。使用 30 次以上的技能不配對。
 
 ### 站位（`src/analysis/positions.ts`）
@@ -142,6 +146,7 @@
 - 輸入各分析結果、`abilityName`（顯示名稱，可能是繁中）、`englishName`（依名稱判斷的規則使用，例如藥水 `/Gemdraught|Tincture|Draught|Potion/`）、`category`（技能分類）。
 - 減傷／移動建議使用 `AbilityUsage.unmatchedRef` 列出參考有用而我沒有對應使用的時間（最多 5 個）。
 - 與機制差異整合：`mechanicNear()` 找時段開始前 10 秒內到結束之間的 `variant`。
+- `generateSoloAdvice()`（沒有參考時）：死亡、`idleWindows()` 的停手、`cooldownAdvice()`（恆等對應，ref 為 null 時只看我是否少用）、技能窗口不合格、懲罰效果（`Comparison.tsx` 傳入我身上英文名稱為 `Damage Down` 的 Boss debuff）、強化藥（`MEDICATED` 效果次數為 0，含開打前）；依 `sortAdvice()` 排序。
 
 ## 職業資料（`src/jobs/`）
 
@@ -494,6 +499,11 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-28 只有我的日誌時的分析、兩邊分開載入、繁中服 PR
+- Worker `tcRankings()` 新增 `position` 參數（`RankPosition`：`pr`、`better`），`/tc-rankings` 接受 `rdps`（整數）與 `player`（`名稱@伺服器`，各段 1～40 字、不含空白與 @）。
+- 前端：`useSides()`（`Promise.all` 兩邊一起載入）改為 `useSide()` ×2 加模組層級快取；`Comparison` 接受 `reference: null`，`App.tsx` 選好我的日誌就顯示。`metrics.ts` 新增 `idleWindows()`，`advice.ts` 新增 `generateSoloAdvice()`（`cooldownAdvice()` 改為只取需要的欄位，兩種建議共用），`Timeline`／`StatusPanel`／`Windows`／`Metrics`／`Positions` 接受沒有參考。
+- 實測（本機，已部署的 Worker）：M8S 騎士基準只有我時 6 段停手約少 9 個 GCD，PR 2（參考 Lavid PR 98）；加上參考後與原本的比較結果相同（錨點 204、推進差距 6:31.2 我慢 8.9 秒）。M7S 武士只有我時兩次轉場（Boss 無法選中）沒有列為停手；9:49.0～10:08.3 的 19.3 秒間隔扣掉 9:55 死亡到復活後只估少 1 個 GCD。
 
 ### 2026-09-28 位置取樣去除過時座標
 - `load.ts` 的 `actorPositions()`：略過 `absorbed` 事件；同一時間多筆時自己施放（`sourceID` 為該角色）的優先；新增 `withoutSpikes()`：某筆與前後兩筆的速度都 > 12 yalm/秒（衝刺約 7.8）且前後兩筆相距不到來回距離的一半時移除（單向的衝刺、擊退保留）。Boss 位置同樣經過這個函式。
