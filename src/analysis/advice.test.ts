@@ -107,6 +107,9 @@ describe('generateAdvice', () => {
       ref: null,
       boss: null,
       distance: 12,
+      arenaDistance: 12,
+      bossGap: null,
+      bossFrame: false,
       mirroredDistance: null,
       mirror: null,
     }))

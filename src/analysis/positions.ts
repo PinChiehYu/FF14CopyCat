@@ -135,39 +135,80 @@ export function estimateCenter(samples: PositionSample[]): Point {
 export interface TrackPoint {
   /** 參考時間 */
   t: number
+  /** 兩人在場地上的位置 */
   mine: Point | null
   ref: Point | null
+  /** 參考的 Boss 在場地上的位置 */
   boss: Point | null
-  /** 兩人距離（yalm） */
+  /** 判定用的兩人距離（yalm）：bossFrame 時為相對於各自 Boss 的距離，否則為場地上的距離 */
   distance: number | null
-  /** 把參考位置以 Boss 或場地中心做對稱後，與我的最短距離 */
+  /** 兩人在場地上的距離 */
+  arenaDistance: number | null
+  /** 兩場 Boss 的距離（兩邊都有 Boss 位置時） */
+  bossGap: number | null
+  /** 兩場 Boss 站在不同位置（相距超過 BOSS_FRAME_GAP_YALM）：改以各自 Boss 為基準（依 Boss 面向旋轉）判定 */
+  bossFrame: boolean
+  /** 把參考位置做對稱後與我的最短距離（場地：以 Boss 或場地中心；bossFrame：以 Boss 的左右／前後） */
   mirroredDistance: number | null
   /** 最短距離對應的對稱方式 */
   mirror: MirrorKind | null
 }
 
+/** 兩場 Boss 相距超過此值時，站位改以各自 Boss 為基準判定（與站位差異的門檻相同） */
+export const BOSS_FRAME_GAP_YALM = 8
+
+export interface TrackOptions {
+  /** 我的日誌的 Boss 位置（參考時間，含面向）；沒有時一律以場地上的距離判定 */
+  mineBoss?: PositionSample[]
+  /** 場地中心；不同攻略常以場地中心對稱（連 Boss 位置也對稱時，以 Boss 為中心判斷不出來） */
+  arenaCenter?: Point
+  stepMs?: number
+}
+
 /**
- * 以參考時間為基準，每 stepMs 取樣兩人位置。
+ * 以參考時間為基準，每 stepMs 取樣兩人位置與判定用的距離。
+ * 兩場 Boss 站在同一處（或任一邊沒有 Boss 位置）時用場地上的距離；兩場 Boss 站在不同位置（例如 M7S 第二階段 Boss 隨機站在
+ * 左右平台）時，場地上的距離沒有意義（兩人都站在 Boss 正面時場地上相距很遠，反之場地上靠近時相對 Boss 可能完全不同），
+ * 改用兩人相對於各自 Boss 的位置（Boss 在原點、面向朝上，同俯視圖「以 Boss 為中心」）的距離。
  * @param mineSamples 我的位置，時間已換算成參考時間（需依時間排序）
- * @param arenaCenter 場地中心；不同攻略常以場地中心對稱（連 Boss 位置也對稱時，以 Boss 為中心判斷不出來）
+ * @param bossSamples 參考的 Boss 位置
  */
 export function compareTracks(
   mineSamples: PositionSample[],
   refSamples: PositionSample[],
   bossSamples: PositionSample[],
   durationMs: number,
-  arenaCenter: Point = estimateCenter(bossSamples),
-  stepMs = 500,
+  { mineBoss = [], arenaCenter = estimateCenter(bossSamples), stepMs = 500 }: TrackOptions = {},
 ): TrackPoint[] {
   const track: TrackPoint[] = []
   for (let t = 0; t <= durationMs; t += stepMs) {
     const mine = positionAt(mineSamples, t)
     const ref = positionAt(refSamples, t)
     const boss = positionAt(bossSamples, t, BOSS_LIMITS)
-    const d = mine && ref ? distance(mine, ref) : null
+    const mineBossAt = positionAt(mineBoss, t, BOSS_LIMITS)
+    const arenaDistance = mine && ref ? distance(mine, ref) : null
+    const bossGap = boss && mineBossAt ? distance(boss, mineBossAt) : null
+    const minePose = bossGap !== null && bossGap > BOSS_FRAME_GAP_YALM ? bossPoseAt(mineBoss, t) : null
+    const refPose = minePose ? bossPoseAt(bossSamples, t) : null
+    const rel = minePose && refPose && mine && ref ? { mine: toBossFrame(mine, minePose), ref: toBossFrame(ref, refPose) } : null
+    const bossFrame = rel !== null
+
+    let d = arenaDistance
     let mirroredDistance: number | null = null
     let mirror: MirrorKind | null = null
-    if (mine && ref) {
+    if (rel) {
+      // 以各自的 Boss 為基準：對稱為 Boss 的左右、前後與點對稱
+      const mineRel = rel.mine
+      const refRel = rel.ref
+      d = distance(mineRel, refRel)
+      for (const m of mirrors(refRel, { x: 0, y: 0 })) {
+        const md = distance(mineRel, m.p)
+        if (mirroredDistance === null || md < mirroredDistance) {
+          mirroredDistance = md
+          mirror = m.kind
+        }
+      }
+    } else if (mine && ref) {
       for (const center of boss ? [boss, arenaCenter] : [arenaCenter]) {
         for (const m of mirrors(ref, center)) {
           const md = distance(mine, m.p)
@@ -178,7 +219,7 @@ export function compareTracks(
         }
       }
     }
-    track.push({ t, mine, ref, boss, distance: d, mirroredDistance, mirror })
+    track.push({ t, mine, ref, boss, distance: d, arenaDistance, bossGap, bossFrame, mirroredDistance, mirror })
   }
   return track
 }
@@ -186,7 +227,11 @@ export function compareTracks(
 export interface Divergence {
   start: number
   end: number
+  /** 判定用距離的最大值（以 Boss 為基準的段為相對距離） */
   maxDistance: number
+  /** 區段內過半的取樣以各自 Boss 為基準判定（兩場 Boss 站在不同位置）；bossGap 為這些取樣中兩場 Boss 的最大距離 */
+  bossFrame?: boolean
+  bossGap?: number
   /** 區段內多數時間，我的位置接近參考的對稱位置（可能是不同攻略）；否則為 null */
   mirror: MirrorKind | null
   /** 區段期間結算的 Boss 機制（兩邊都列出，見 attachMechanics）；站位差異在機制結算時才有明顯意義 */
@@ -210,7 +255,7 @@ export interface DivergenceMechanic {
   mineToBoss?: number | null
   refToBoss?: number | null
   /**
-   * 兩人相對於各自 Boss 的位置（北方朝上、只平移）相距不超過門檻：站位不同是兩場 Boss 的位置不同造成，
+   * 兩人相對於各自 Boss 的位置（依 Boss 面向旋轉）相距不超過門檻：站位不同是兩場 Boss 的位置或面向不同造成，
    * 不算機制結算時的站位不同（見 positionMechanics）
    */
   sameToBoss?: boolean
@@ -219,6 +264,23 @@ export interface DivergenceMechanic {
 /** 算作「機制結算時站位不同」的機制：排除兩人相對於各自 Boss 位置相近的。 */
 export function positionMechanics(d: Divergence): DivergenceMechanic[] {
   return d.mechanics.filter((m) => !m.sameToBoss)
+}
+
+/**
+ * 站位差異的分類（卡片、距離圖、摘要與建議共用，依序取第一個符合的）：
+ * variant 兩邊 Boss 隨機機制不同 → untargetable Boss 無法選中 → mirror 可能是對稱站位（不同攻略）
+ * → mechanic 機制結算時站位不同 → same-to-boss 有機制結算但相對 Boss 位置相近 → route 附近沒有機制（移動路線不同）。
+ * 前三種不算站錯。
+ */
+export type DivergenceKind = 'variant' | 'untargetable' | 'mirror' | 'mechanic' | 'same-to-boss' | 'route'
+
+export function divergenceKind(d: Divergence): DivergenceKind {
+  if (d.variant) return 'variant'
+  if (d.untargetable) return 'untargetable'
+  if (d.mirror) return 'mirror'
+  if (positionMechanics(d).length > 0) return 'mechanic'
+  if (d.mechanics.length > 0) return 'same-to-boss'
+  return 'route'
 }
 
 // 隨機機制差異發生在區段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
@@ -312,8 +374,8 @@ export function attachMechanics(
 
 /**
  * 機制結算當下兩人各自離自己那一場 Boss 的距離，以及相對於各自 Boss 的位置是否相近（sameToBoss）。
- * 許多機制以 Boss 為基準（鋼鐵月環、扇形等），兩場 Boss 站位不同時，場地上相距很遠也可能都站對了。
- * 任一邊沒有 Boss 位置（無法選中等）時不判斷，照場地上的距離算。
+ * 許多機制以 Boss 為基準（鋼鐵月環、扇形等），兩場 Boss 位置或面向不同時，場地上相距很遠也可能都站對了。
+ * 任一邊沒有 Boss 位置或面向（無法選中等）時不判斷，照判定用的距離算。
  * @param samples 全部為參考時間；mineBoss 為我的日誌的 Boss 位置
  */
 export function attachBossDistances(
@@ -330,12 +392,15 @@ export function attachBossDistances(
       const refBoss = positionAt(samples.refBoss, m.t, BOSS_LIMITS)
       const mineToBoss = mine && mineBoss ? distance(mine, mineBoss) : null
       const refToBoss = ref && refBoss ? distance(ref, refBoss) : null
+      // 相對位置依各自 Boss 的面向旋轉（同 compareTracks 的 bossFrame）：兩場 Boss 面向不同時只平移會失真
+      const minePose = bossPoseAt(samples.mineBoss, m.t)
+      const refPose = bossPoseAt(samples.refBoss, m.t)
       const sameToBoss =
         mine !== null &&
         ref !== null &&
-        mineBoss !== null &&
-        refBoss !== null &&
-        Math.hypot(mine.x - mineBoss.x - (ref.x - refBoss.x), mine.y - mineBoss.y - (ref.y - refBoss.y)) <= thresholdYalm
+        minePose !== null &&
+        refPose !== null &&
+        distance(toBossFrame(mine, minePose), toBossFrame(ref, refPose)) <= thresholdYalm
       return { ...m, mineToBoss, refToBoss, sameToBoss }
     }),
   }))
@@ -393,12 +458,14 @@ export function divergences(
         if (explainedByMirror(p, thresholdYalm)) kinds.set(p.mirror!, (kinds.get(p.mirror!) ?? 0) + 1)
       }
       const [common, count] = [...kinds].sort((a, b) => b[1] - a[1])[0] ?? [null, 0]
+      const framed = r.points.filter((p) => p.bossFrame)
       return {
         start: r.start,
         end: r.end,
         maxDistance: Math.max(...r.points.map((p) => p.distance ?? 0)),
         mirror: count > r.points.length / 2 ? common : null,
         mechanics: [],
+        ...(framed.length > r.points.length / 2 ? { bossFrame: true, bossGap: Math.max(...framed.map((p) => p.bossGap ?? 0)) } : {}),
       }
     })
 }

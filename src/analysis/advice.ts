@@ -5,7 +5,15 @@ import type { Death } from '../compare/load'
 import { ruleName } from '../jobs/windows'
 import { mechanicLabel, type MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
-import { MIRROR_LABELS, positionMechanics, VARIANT_LEAD_MS, type Divergence, type TrackPoint } from './positions'
+import {
+  divergenceKind,
+  MIRROR_LABELS,
+  positionMechanics,
+  VARIANT_LEAD_MS,
+  type Divergence,
+  type DivergenceKind,
+  type TrackPoint,
+} from './positions'
 import { formatFightTime } from './timeline'
 import { isPotionName } from '../fflogs/report'
 import { controlNames } from './control'
@@ -310,16 +318,18 @@ function positionAdvice(input: AdviceInput): Advice[] {
   const { divergences, lost, abilityName } = input
   const overlapsLost = (d: Divergence) => lost.some((w) => w.refStart < d.end && w.refEnd > d.start)
   const lostNote = (d: Divergence) => (overlapsLost(d) ? '這段同時少打了 GCD，站位可能讓你無法持續攻擊。' : '')
+  const frameNote = (d: Divergence) =>
+    d.bossFrame ? `兩場 Boss 站在不同位置（相距 ${(d.bossGap ?? 0).toFixed(0)} yalm），距離以各自的 Boss 為基準。` : ''
+  // 分類與卡片、摘要共用（divergenceKind）
+  const ofKind = (kind: DivergenceKind) => divergences.filter((d) => divergenceKind(d) === kind)
   // 兩邊隨機機制不同（見 attachVariants）的站位差異是機制造成的，不逐段列出，最後合併成一則參考
-  const byVariant = divergences.filter((d) => d.variant)
+  const byVariant = ofKind('variant')
   // Boss 無法選中（轉場等）時玩家常被強制移動或無法移動，站位差異不算站錯，同樣合併成一則參考
-  const untargetable = divergences.filter((d) => d.untargetable && !d.variant)
-  const unexplained = divergences.filter((d) => !d.mirror && !d.variant && !d.untargetable)
+  const untargetable = ofKind('untargetable')
 
   // 站位差異在 Boss 機制結算時才有明顯意義：有機制的差異優先列出，並指出是哪個機制
-  // （兩人相對於各自 Boss 位置相近的機制不算：站位不同是兩場 Boss 的位置不同造成）
-  const atMechanic = unexplained
-    .filter((d) => positionMechanics(d).length > 0)
+  // （兩人相對於各自 Boss 位置相近的機制不算，見 positionMechanics；只有這種機制的段不列出）
+  const atMechanic = ofKind('mechanic')
     .sort((a, b) => Number(overlapsLost(b)) - Number(overlapsLost(a)) || b.maxDistance - a.maxDistance)
     .slice(0, MAX_MECHANIC_POSITIONS)
   const items: Advice[] = atMechanic.map((d) => {
@@ -330,22 +340,22 @@ function positionAdvice(input: AdviceInput): Advice[] {
       severity: 'medium',
       title: `${formatFightTime(mechanics[0].t)} 機制「${names}」結算時站位與參考不同（最遠 ${d.maxDistance.toFixed(1)} yalm）`,
       detail:
-        `差異從 ${formatFightTime(d.start)} 持續 ${seconds(d.end - d.start)} 秒。${lostNote(d)}` +
+        `差異從 ${formatFightTime(d.start)} 持續 ${seconds(d.end - d.start)} 秒。${frameNote(d)}${lostNote(d)}` +
         '對照俯視圖看參考在這個機制的站位與移動路線；若是攻略分配不同可忽略。',
       at: d.start,
     }
   })
 
   // 附近沒有機制的站位差異通常只是移動路線不同，只列出較長的幾段、列為參考
-  const elsewhere = unexplained
-    .filter((d) => d.mechanics.length === 0 && d.end - d.start >= LONG_DIVERGENCE_MS)
+  const elsewhere = ofKind('route')
+    .filter((d) => d.end - d.start >= LONG_DIVERGENCE_MS)
     .sort((a, b) => b.end - b.start - (a.end - a.start))
     .slice(0, MAX_ITEMS)
   for (const d of elsewhere) {
     items.push({
       severity: 'low',
       title: `${formatFightTime(d.start)} 起 ${seconds(d.end - d.start)} 秒站位與參考不同（附近沒有 Boss 機制）`,
-      detail: `最遠 ${d.maxDistance.toFixed(1)} yalm。${lostNote(d)}附近沒有 Boss 機制，差異可能只是移動路線不同。`,
+      detail: `最遠 ${d.maxDistance.toFixed(1)} yalm。${frameNote(d)}${lostNote(d)}附近沒有 Boss 機制，差異可能只是移動路線不同。`,
       at: d.start,
     })
   }
@@ -373,7 +383,7 @@ function positionAdvice(input: AdviceInput): Advice[] {
     })
   }
 
-  const mirrored = divergences.filter((d) => d.mirror && !d.variant && !d.untargetable)
+  const mirrored = ofKind('mirror')
   if (mirrored.length > 0) {
     const kinds = [...new Set(mirrored.map((d) => MIRROR_LABELS[d.mirror!]))].join('、')
     items.push({

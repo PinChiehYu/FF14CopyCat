@@ -101,9 +101,10 @@
 
 ### 站位（`src/analysis/positions.ts`）
 - `positionAt()`：線性內插；玩家相鄰取樣超過 4 秒不內插、最多沿用 1 秒（`PLAYER_LIMITS`）；Boss 放寬為 30 秒／10 秒（`BOSS_LIMITS`）。
-- `compareTracks()`：每 0.5 秒取樣兩人位置；對稱判斷以當下 Boss 位置與場地中心（`estimateCenter()`＝參考 Boss 位置中位數）為中心，做左右、前後、點對稱，取與我最近者。
-- `divergences()`：距離 > 8 yalm、持續 ≥ 2 秒、間隔 2 秒內合併；對稱後 ≤ 6 yalm 且 < 原距離一半的點視為可由對稱解釋，同一種對稱超過區段一半時標示。
-- `alignToBoss()`：我的位置加上（參考 Boss − 我的 Boss）的位移（兩場 Boss 位置都以 `BOSS_LIMITS` 內插，任一邊沒有時沿用原始位置），只供俯視圖的「對齊 Boss」視角；`compareTracks()` 仍用原始位置。以比較基準驗證判定是否該改用對齊後位置（2026-09-28）：
+- `compareTracks(mine, ref, refBoss, duration, { mineBoss, arenaCenter, stepMs })`：每 0.5 秒取樣。`TrackPoint` 有兩人的場地位置、`arenaDistance`（場地上的距離）、`bossGap`（兩場 Boss 的距離，`BOSS_LIMITS`）、`bossFrame` 與判定用的 `distance`。`bossGap > BOSS_FRAME_GAP_YALM`（8）且兩邊 `bossPoseAt()` 都有（面向只沿用 5 秒內的取樣）時 `bossFrame`：兩人以 `toBossFrame()` 換成各自 Boss 的座標（Boss 在原點、面向朝上），`distance` 為兩點距離，對稱以原點為中心（Boss 的左右／前後／點對稱）；否則 `distance = arenaDistance`，對稱以當下參考 Boss 位置與場地中心（`estimateCenter()`＝參考 Boss 位置中位數）為中心。取與我最近的對稱。
+- `divergences()`：`distance` > 8 yalm、持續 ≥ 2 秒、間隔 2 秒內合併；對稱後 ≤ 6 yalm 且 < 原距離一半的點視為可由對稱解釋，同一種對稱超過區段一半時標示。區段內過半取樣 `bossFrame` 時設 `Divergence.bossFrame` 與 `bossGap`（這些取樣的最大值）。
+- `divergenceKind()`：每段唯一的分類（`variant` → `untargetable` → `mirror` → `mechanic` → `same-to-boss` → `route`），`Positions.tsx`（卡片標籤與頂邊、距離圖 `BAND_CLASS`、摘要）與 `advice.ts` 的 `positionAdvice()` 共用。
+- `alignToBoss()`：我的位置加上（參考 Boss − 我的 Boss）的位移（兩場 Boss 位置都以 `BOSS_LIMITS` 內插，任一邊沒有時沿用原始位置），只供俯視圖的「對齊 Boss」視角，不用於判定。以比較基準驗證判定是否該改用對齊後位置（2026-09-28；當時結論為維持絕對位置，之後改為只在兩場 Boss 站在不同位置時以 Boss 為基準，見技術變更紀錄 2026-09-28「以 Boss 為基準判定站位」）：
   | 比較 | 絕對位置 | 平移對齊 | 連面向旋轉（`toBossFrame`） |
   |---|---|---|---|
   | M8S 武士 | 16 段 | 16 | 22 |
@@ -112,7 +113,7 @@
   | M7S 武士 | 13 | 12 | 23 |
   - M8S 平移量小（2～7% 的取樣平移 > 3 yalm）。M7S 第二階段 Boss 隨機站在兩側平台（我 3:08～4:03 在 (127, −8)、4:06 後 (73, 17)；參考相反），兩人都站在 Boss 往場中心那側：絕對距離約 20 yalm、平移後約 40 yalm、旋轉後 2～4 yalm。M6S（`WATKBdHRh7m8PNQt` #11 vs `QZ8tGLMJbzrAaHwP` #13）小怪階段平移平均 4、最大 15.6 yalm，站位差異段落因此改變。旋轉在 M8S 第二階段 Boss 面向隨坦克轉動時增加段數。沒有一種基準都對，判定維持絕對位置。
 - `attachMechanics()`：兩邊的 Boss 施放各自去重（1 秒）、排除施放超過 8 次的技能；我的施放以 `mineToRef()` 換成參考時間。任一邊落在差異區段內、且當下 `distanceAt()` > 8 yalm 的施放存入 `Divergence.mechanics`（`DivergenceMechanic`：`t` 參考時間、`mine`／`ref` 各自的戰鬥時間）。參考的施放與我這邊 `PAIR_MECHANIC_MS`（5 秒）內最近的同一技能配成一筆（我這邊不限區段內、不看距離），剩下只在我這邊區段內結算的另列。卡片依繁中名稱合併同名的不同版本（左右等 ID 不同的，各自只有一邊），兩邊時間各取第一個。
-- `attachBossDistances()`：每個機制在參考時間 `t` 取兩人位置（`PLAYER_LIMITS`）與各自的 Boss 位置（我的 Boss 為 `mineBossSamples`，`BOSS_LIMITS`），記 `mineToBoss`／`refToBoss`；兩邊都有 Boss 位置時，相對向量（玩家 − 自己的 Boss，只平移）相差 ≤ 8 yalm 設 `sameToBoss`。`positionMechanics()` 排除 `sameToBoss`，供 at-mechanic 判斷（卡片、距離圖、摘要、`positionAdvice()`）；全部是 `sameToBoss` 的段不列入建議（也不算「附近沒有機制」）。
+- `attachBossDistances()`：每個機制在參考時間 `t` 取兩人位置（`PLAYER_LIMITS`）與各自的 Boss 位置（我的 Boss 為 `mineBossSamples`，`BOSS_LIMITS`），記 `mineToBoss`／`refToBoss`；兩邊都有 `bossPoseAt()` 時，兩人 `toBossFrame()` 後相距 ≤ 8 yalm 設 `sameToBoss`（原本只平移，改為依面向旋轉）。`positionMechanics()` 排除 `sameToBoss`，供 at-mechanic 判斷（卡片、距離圖、摘要、`positionAdvice()`）；全部是 `sameToBoss` 的段不列入建議（也不算「附近沒有機制」）。
 - `attachUntargetable()`：與任一邊 `SideData.untargetable`（我的換成參考時間）重疊的差異設 `Divergence.untargetable`；卡片標「Boss 無法選中」、距離圖灰色、不算 at-mechanic；`positionAdvice()` 排除（variant 優先），合併成一則參考。日誌沒有「無法移動」的狀態，實測見技術變更紀錄 2026-09-28「站位差異列出兩邊的機制；Boss 無法選中」。
 
 ### Boss 機制差異（`src/analysis/mechanics.ts`）
@@ -490,6 +491,12 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-28 以 Boss 為基準判定站位；站位差異分類統一
+- 變更：`compareTracks()` 第五個參數改為選項物件（`mineBoss`、`arenaCenter`、`stepMs`），`TrackPoint` 新增 `arenaDistance`／`bossGap`／`bossFrame`，`distance` 改為判定用距離；`divergences()` 設 `bossFrame`／`bossGap`；`attachBossDistances()` 的 `sameToBoss` 改依面向旋轉；新增 `divergenceKind()`、`BOSS_FRAME_GAP_YALM`。`Comparison.tsx` 傳入 `mineBoss: mineBossSamples`。`Positions.tsx`：距離圖底部 `boss-frame-strip`（`bossFrame` 取樣間隔 1 秒內合併）、卡片／摘要／色塊改用 `divergenceKind()`、摘要與卡片的「以 Boss 為基準」標籤、俯視圖下方改為「相對 Boss 相距」；`advice.ts` 的 `positionAdvice()` 改用 `divergenceKind()`，以 Boss 為基準的段在說明加上兩場 Boss 的距離。
+- 調查（scratchpad 腳本，5 組比較基準，每 0.5 秒）：兩邊都有 Boss 位置與面向的取樣中，兩場 Boss 相距 > 8 yalm 的比例 M7S（`dbN4HXY3QPzMRvDw` #4 vs `YbakGgfzPQjJ4MK7` #5）47%、M6S（`WATKBdHRh7m8PNQt` #11 vs `QZ8tGLMJbzrAaHwP` #13）20%、M8S 騎士 6%、M8S 武士 3%、M5S（`BF76r8yKh4wGaYkm` #1 vs `b3ph7JxjD4BkVL6Q` #20）3%。這些取樣中「場地 > 8、旋轉後 ≤ 8」M7S 322、M6S 132、M8S 54／18、M5S 11 筆；「場地 ≤ 8、旋轉後 > 8」M7S 27、M6S 29、M8S 12／6、M5S 1 筆（持續 ≥ 2 秒：M7S 5:55、8:00.5、10:06；M6S 4:10、4:35；M8S 騎士 2:46.5）；「場地 ≤ 8、只平移 > 8」M7S 46 筆（只平移在 M7S 放大距離）。
+- 改動前後（站位差異段數／總秒數／機制段數）：M7S 13／279／1 → 21／125／5；M6S 18／155／3 → 16／106／5；M8S 騎士 24／224／9 → 27／203／10；M8S 武士 16／385／1 → 16／383／1；M5S 8／76／3 → 8／71／3。M7S 第二階段原本一整段 2:59.5–5:54.5（場地上 53.6 yalm、標機制不同）拆成數段，其中 3:47.5、5:09.0 為以 Boss 為基準的機制段。兩場 Boss 相距剛超過 8 yalm 的段（M7S 1:43.0、Boss 相距 9）也切換，改動前同樣是機制段。
+- 對稱不一致：改動前對稱且有機制的段，卡片同時有「機制」標籤與紅色頂邊、摘要同時計入機制與可能對稱（M6S 18 段：機制 11＋機制不同 3＋可能對稱 8＝22），建議則只算對稱；改用 `divergenceKind()` 後三者一致（M6S 16 段：機制 5＋機制不同 2＋可能對稱 7＋移動路線 1＋相對 Boss 相同 1）。
 
 ### 2026-09-28 機制結算時玩家與 Boss 的距離
 - 變更：`positions.ts` 新增 `attachBossDistances()`、`positionMechanics()`，`DivergenceMechanic` 新增 `mineToBoss`／`refToBoss`／`sameToBoss`；`Comparison.tsx` 在 `attachMechanics()` 之後呼叫；`advice.ts`、`Positions.tsx` 改用 `positionMechanics()` 判斷 at-mechanic。卡片第二行「相距 N · 距王 我／參考」：原本寫「距 Boss 我 X／參考 Y」在 190px 卡片折成兩行（56 行中 9 行），縮短後都是一行。

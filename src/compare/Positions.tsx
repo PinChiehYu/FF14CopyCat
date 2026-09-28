@@ -1,12 +1,14 @@
 import {
+  BOSS_FRAME_GAP_YALM,
   BOSS_LIMITS,
   bossPoseAt,
   distanceAt,
+  divergenceKind,
   positionAt,
-  positionMechanics,
   MIRROR_LABELS,
   toBossFrame,
   type Divergence,
+  type DivergenceKind,
   type DivergenceMechanic,
   type Point,
   type PositionSample,
@@ -21,10 +23,23 @@ const TRAIL_MS = 5000
 const MAP_SIZE = 360
 const CHART_WIDTH = 1000
 const CHART_HEIGHT = 90
+// 距離圖底部標示「以各自 Boss 為基準」時段的細條高度，與相鄰取樣合併的間隔
+const FRAME_STRIP_HEIGHT = 4
+const FRAME_MERGE_MS = 1000
+// 距離圖的區段色塊：不算站錯的（機制不同、無法選中、對稱）灰色，機制結算時站位不同紅色
+const BAND_CLASS: Record<DivergenceKind, string> = {
+  variant: 'band mirrored',
+  untargetable: 'band mirrored',
+  mirror: 'band mirrored',
+  mechanic: 'band mechanic',
+  'same-to-boss': 'band',
+  route: 'band',
+}
 // 每段站位差異最多列出幾個機制
 const MAX_LISTED_MECHANICS = 3
 const SAME_TO_BOSS_TITLE =
-  '機制結算時兩人相對於各自 Boss 的位置相近（8 yalm 內），站位不同是兩場 Boss 的位置不同造成，不算機制結算時站位不同'
+  '機制結算時兩人相對於各自 Boss 的位置（依 Boss 面向）相近（8 yalm 內），站位不同是兩場 Boss 的位置或面向不同造成，不算機制結算時站位不同'
+const BOSS_FRAME_TITLE = `兩場 Boss 站在不同位置（相距超過 ${BOSS_FRAME_GAP_YALM} yalm），場地上的距離沒有意義：距離改以各自 Boss 為基準（Boss 在中心、面向朝上，同「以 Boss 為中心」視角）`
 const UNTARGETABLE_TITLE = '這段期間 Boss 無法選中（轉場等），玩家常被強制移動或無法移動，站位不同不一定是站錯；不列入站位建議'
 
 function nearest(track: TrackPoint[], t: number): TrackPoint | undefined {
@@ -337,6 +352,14 @@ function DistanceChart({
       return `${cmd}${x(p.t).toFixed(1)},${y(p.distance).toFixed(1)}`
     })
     .join('')
+  // 以各自 Boss 為基準判定的時段（兩場 Boss 站在不同位置）：底部細條標示
+  const framed: { start: number; end: number }[] = []
+  for (const p of track) {
+    if (!p.bossFrame) continue
+    const last = framed.at(-1)
+    if (last && p.t - last.end <= FRAME_MERGE_MS) last.end = p.t
+    else framed.push({ start: p.t, end: p.t })
+  }
 
   return (
     <svg
@@ -348,10 +371,20 @@ function DistanceChart({
         onSeek(((e.clientX - rect.left) / rect.width) * duration)
       }}
     >
+      {framed.map((f) => (
+        <rect
+          key={`frame-${f.start}`}
+          className="boss-frame-strip"
+          x={x(f.start)}
+          width={Math.max(1, x(f.end) - x(f.start))}
+          y={CHART_HEIGHT - FRAME_STRIP_HEIGHT}
+          height={FRAME_STRIP_HEIGHT}
+        />
+      ))}
       {divergences.map((d) => (
         <rect
           key={d.start}
-          className={d.variant || d.mirror || d.untargetable ? 'band mirrored' : positionMechanics(d).length > 0 ? 'band mechanic' : 'band'}
+          className={BAND_CLASS[divergenceKind(d)]}
           x={x(d.start)}
           width={Math.max(2, x(d.end) - x(d.start))}
           y={0}
@@ -422,18 +455,21 @@ export function Positions({
   // 對齊 Boss：這個時間點兩邊都有 Boss 位置時才有對齊
   const alignedNow =
     positionAt(bossSamples, cursor, BOSS_LIMITS) !== null && positionAt(mineBossSamples, cursor, BOSS_LIMITS) !== null
-  // 機制不同優先於其他標示：站位不同多半是機制造成
-  // 其次是 Boss 無法選中（轉場等）：玩家常被強制移動或無法移動
-  const byVariant = divergences.filter((d) => d.variant).length
-  const untargetable = divergences.filter((d) => !d.variant && d.untargetable).length
-  const atMechanic = divergences.filter((d) => !d.variant && !d.untargetable && positionMechanics(d).length > 0).length
-  const mirrored = divergences.filter((d) => !d.variant && !d.untargetable && d.mirror).length
+  // 每段只算一種分類（divergenceKind：機制不同 → 無法選中 → 對稱 → 機制），與卡片、建議一致
+  const count = (kind: DivergenceKind) => divergences.filter((d) => divergenceKind(d) === kind).length
+  const byVariant = count('variant')
+  const untargetable = count('untargetable')
+  const atMechanic = count('mechanic')
+  const mirrored = count('mirror')
+  const bossFramed = divergences.filter((d) => d.bossFrame).length
 
   return (
     <section className="positions">
       {/* 一行摘要，說明放在滑鼠提示 */}
       <p className="positions-summary">
-        <span title={`兩人相距超過 ${threshold} yalm、持續 2 秒以上的時段`}>
+        <span
+          title={`兩人相距超過 ${threshold} yalm、持續 2 秒以上的時段。兩場 Boss 站在不同位置（相距超過 ${BOSS_FRAME_GAP_YALM} yalm）時，距離改以各自 Boss 為基準（同「以 Boss 為中心」視角）；距離圖底部的細條標示這些時段`}
+        >
           站位差異 <strong>{divergences.length}</strong> 段
         </span>
         {atMechanic > 0 && (
@@ -454,6 +490,11 @@ export function Positions({
         {mirrored > 0 && (
           <span className="tag" title="你的位置接近參考位置的對稱點，可能是攻略或分配不同">
             可能對稱 {mirrored}
+          </span>
+        )}
+        {bossFramed > 0 && (
+          <span className="tag" title={BOSS_FRAME_TITLE}>
+            以 Boss 為基準 {bossFramed}
           </span>
         )}
       </p>
@@ -531,9 +572,16 @@ export function Positions({
                 （未對齊）
               </span>
             )}
-            {now?.distance != null && (
-              <span title="兩人在場地上的距離（不論俯視圖的視角）；站位差異依此判斷">　相距 {now.distance.toFixed(1)} yalm</span>
-            )}
+            {now?.distance != null &&
+              (now.bossFrame ? (
+                <span title={`${BOSS_FRAME_TITLE}\n場地上相距 ${now.arenaDistance?.toFixed(1)} yalm；兩場 Boss 相距 ${now.bossGap?.toFixed(1)} yalm`}>
+                  {'　'}相對 Boss 相距 {now.distance.toFixed(1)} yalm
+                </span>
+              ) : (
+                <span title="兩人在場地上的距離（不論俯視圖的視角）；兩場 Boss 在同一處，站位差異依此判斷">
+                  {'　'}相距 {now.distance.toFixed(1)} yalm
+                </span>
+              ))}
           </p>
         </div>
         {status?.(mode === 'two-bosses')}
@@ -589,12 +637,12 @@ function DivergenceCards({
           else byName.set(name, { ...first, mine: first.mine ?? m.mine, ref: first.ref ?? m.ref })
         }
         const unique = [...byName.values()]
-        // 兩人相對於各自 Boss 位置相近的機制不算站位不同
-        const counted = positionMechanics(d).length
+        // 每段只有一種分類（與摘要、建議一致）；「以 Boss 為基準」是另外的說明標籤
+        const kind = divergenceKind(d)
         const classes = [
           'divergence-card',
-          !d.variant && !d.untargetable && counted > 0 && 'at-mechanic',
-          d.variant && 'by-variant',
+          kind === 'mechanic' && 'at-mechanic',
+          kind === 'variant' && 'by-variant',
           i === active && 'active',
         ]
         const variantTitle = d.variant
@@ -616,26 +664,32 @@ function DivergenceCards({
                 <span className="card-sub">最遠</span>
               </span>
               <span className="card-tags">
-                {d.variant ? (
+                {kind === 'variant' && (
                   <span className="tag variant" title={variantTitle}>
                     機制不同
                   </span>
-                ) : (
-                  <>
-                    {d.untargetable && (
-                      <span className="tag" title={UNTARGETABLE_TITLE}>
-                        Boss 無法選中
-                      </span>
-                    )}
-                    {counted > 0 && <span className="tag mechanic">機制</span>}
-                    {d.mechanics.length > 0 && counted === 0 && (
-                      <span className="tag" title={SAME_TO_BOSS_TITLE}>
-                        相對 Boss 相同
-                      </span>
-                    )}
-                    {d.mirror && !d.untargetable && <span className="tag">可能是{MIRROR_LABELS[d.mirror]}站位</span>}
-                    {d.mechanics.length === 0 && !d.mirror && !d.untargetable && <span className="card-sub">移動路線不同</span>}
-                  </>
+                )}
+                {kind === 'untargetable' && (
+                  <span className="tag" title={UNTARGETABLE_TITLE}>
+                    Boss 無法選中
+                  </span>
+                )}
+                {kind === 'mirror' && (
+                  <span className="tag" title="你的位置接近參考位置的對稱點，可能是攻略或分配不同；不列入站位建議">
+                    可能是{MIRROR_LABELS[d.mirror!]}站位
+                  </span>
+                )}
+                {kind === 'mechanic' && <span className="tag mechanic">機制</span>}
+                {kind === 'same-to-boss' && (
+                  <span className="tag" title={SAME_TO_BOSS_TITLE}>
+                    相對 Boss 相同
+                  </span>
+                )}
+                {kind === 'route' && <span className="card-sub">移動路線不同</span>}
+                {d.bossFrame && (
+                  <span className="tag" title={`${BOSS_FRAME_TITLE}\n這段兩場 Boss 最遠相距 ${(d.bossGap ?? 0).toFixed(0)} yalm`}>
+                    以 Boss 為基準
+                  </span>
                 )}
               </span>
               {unique.length > 0 && (
@@ -656,7 +710,7 @@ function DivergenceCards({
                         </span>
                         <span
                           className="card-sub"
-                          title={`結算當下（yalm）\n兩人相距：${yalm(distance)}\n我離我的 Boss：${yalm(m.mineToBoss)}\n參考離參考的 Boss：${yalm(m.refToBoss)}\n—：沒有位置資料`}
+                          title={`結算當下（yalm）\n兩人相距：${yalm(distance)}${d.bossFrame ? '（以各自 Boss 為基準）' : ''}\n我離我的 Boss：${yalm(m.mineToBoss)}\n參考離參考的 Boss：${yalm(m.refToBoss)}\n—：沒有位置資料`}
                         >
                           {distance != null && `相距 ${distance.toFixed(1)} · `}距王 {yalm(m.mineToBoss)}／{yalm(m.refToBoss)}
                         </span>

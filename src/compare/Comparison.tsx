@@ -421,8 +421,10 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     const mineBossSamples = mineInRange.bossPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
     // 俯視圖「對齊 Boss」用：我的位置平移到參考 Boss 的位置
     const mineAlignedSamples = alignToBoss(mineSamples, mineBossSamples, reference.bossPositions)
-    // 距離與站位差異以場地上的絕對位置計算：對齊 Boss 在 Boss 隨機換邊（M7S）、依小怪站位（M6S）時會失真
-    const track = compareTracks(mineSamples, refInRange.playerPositions, reference.bossPositions, compareEnd)
+    // 距離與站位差異以場地上的位置計算；兩場 Boss 站在不同位置時改以各自 Boss 為基準（依 Boss 面向旋轉，見 compareTracks）
+    const track = compareTracks(mineSamples, refInRange.playerPositions, reference.bossPositions, compareEnd, {
+      mineBoss: mineBossSamples,
+    })
     // 標示每段差異期間、兩人仍相距超過門檻時結算的 Boss 機制（兩邊的 Boss 施放都列出），
     // 兩邊隨機機制不同的（例如熱舞綠光 A 面／B 面的先後）：站位不同可能是機制造成，
     // 以及任一邊 Boss 無法選中（轉場等，玩家常被強制移動或無法移動）的

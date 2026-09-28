@@ -1432,6 +1432,11 @@ h3 {
   fill: color-mix(in srgb, var(--text-muted) 18%, transparent);
 }
 
+/* 以各自 Boss 為基準判定的時段（兩場 Boss 站在不同位置） */
+.distance-chart .boss-frame-strip {
+  fill: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
 .distance-chart .threshold {
   stroke: var(--error);
   stroke-dasharray: 6 4;

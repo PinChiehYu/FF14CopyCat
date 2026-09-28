@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { alignToBoss, attachBossDistances, attachMechanics, attachUntargetable, attachVariants, bossPoseAt, positionMechanics, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
+import { alignToBoss, attachBossDistances, divergenceKind, attachMechanics, attachUntargetable, attachVariants, bossPoseAt, positionMechanics, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
 
 const s = (seconds: number, x: number, y: number): PositionSample => ({ t: seconds * 1000, x, y })
 
@@ -52,9 +52,68 @@ describe('compareTracks / divergences', () => {
     const refBoss = [s(0, 92, 100), s(30, 92, 100)]
     const refP = Array.from({ length: 31 }, (_, i) => s(i, 88, 100))
     const mine = Array.from({ length: 31 }, (_, i) => s(i, 112, 101))
-    const [d] = divergences(compareTracks(mine, refP, refBoss, 30_000, { x: 100, y: 100 }))
+    const [d] = divergences(compareTracks(mine, refP, refBoss, 30_000, { arenaCenter: { x: 100, y: 100 } }))
     expect(d.maxDistance).toBeGreaterThan(20)
     expect(d.mirror).toBe('left-right')
+    expect(d.bossFrame).toBeUndefined()
+  })
+
+  // 面向朝北（畫面 −y）：θ = −π/2
+  const north = -Math.PI / 2
+  // 面向只沿用前後 5 秒內的取樣，每秒一筆
+  const posed = (x: number, y: number, facing: number) => Array.from({ length: 31 }, (_, sec) => ({ ...s(sec, x, y), facing }))
+
+  it('judges by each side’s own boss when the two bosses stand apart', () => {
+    // 兩場 Boss 分站左右平台、都面向場中心；兩人都站在自己 Boss 正面 5 yalm → 場地上相距 30，但相對 Boss 相同
+    const refBoss = posed(80, 100, 0) // 面向東
+    const mineBoss = posed(120, 100, Math.PI) // 面向西
+    const ref = Array.from({ length: 31 }, (_, i) => s(i, 85, 100))
+    const mine = Array.from({ length: 31 }, (_, i) => s(i, 115, 100))
+    const track = compareTracks(mine, ref, refBoss, 30_000, { mineBoss })
+    const p = track.find((q) => q.t === 10_000)!
+    expect(p.bossFrame).toBe(true)
+    expect(p.bossGap).toBe(40)
+    expect(p.arenaDistance).toBe(30)
+    expect(p.distance).toBeCloseTo(0)
+    expect(divergences(track)).toEqual([])
+  })
+
+  it('finds differences relative to the bosses even when the players stand together', () => {
+    // 兩人站在一起（場地中央），但我在我的 Boss 正面、參考在參考的 Boss 背後
+    const refBoss = posed(80, 100, Math.PI) // 背對場中心
+    const mineBoss = posed(120, 100, Math.PI) // 面向場中心
+    const ref = Array.from({ length: 31 }, (_, i) => s(i, 100, 100))
+    const mine = Array.from({ length: 31 }, (_, i) => s(i, 100, 101))
+    const [d] = divergences(compareTracks(mine, ref, refBoss, 30_000, { mineBoss }))
+    expect(d.bossFrame).toBe(true)
+    expect(d.bossGap).toBe(40)
+    expect(d.maxDistance).toBeGreaterThan(30)
+  })
+
+  it('keeps arena distances when the two bosses stand together or a facing is missing', () => {
+    const refBoss = posed(100, 100, north)
+    const ref = Array.from({ length: 31 }, (_, i) => s(i, 95, 100))
+    const mine = Array.from({ length: 31 }, (_, i) => s(i, 95, 112))
+    // 兩場 Boss 相距 5 yalm（門檻內）
+    const near = compareTracks(mine, ref, refBoss, 30_000, { mineBoss: posed(100, 105, north) })
+    expect(near.every((p) => !p.bossFrame)).toBe(true)
+    expect(near.find((p) => p.t === 10_000)?.distance).toBe(12)
+    // 相距 40 yalm 但我的 Boss 沒有面向資料
+    const noFacing = compareTracks(mine, ref, refBoss, 30_000, { mineBoss: [s(0, 140, 100), s(30, 140, 100)] })
+    expect(noFacing.every((p) => !p.bossFrame)).toBe(true)
+  })
+
+  it('classifies each divergence into exactly one kind', () => {
+    const base = { start: 0, end: 5000, maxDistance: 10, mirror: null, mechanics: [] }
+    const mech = [{ abilityId: 1, t: 1000 }]
+    const variant = { t: 0, mine: [1], ref: [2], kind: 'variant' as const }
+    expect(divergenceKind({ ...base, variant, untargetable: true, mirror: 'point' })).toBe('variant')
+    expect(divergenceKind({ ...base, untargetable: true, mirror: 'point', mechanics: mech })).toBe('untargetable')
+    // 對稱且有機制結算：算對稱（不列為站錯），不再同時算「機制」
+    expect(divergenceKind({ ...base, mirror: 'point', mechanics: mech })).toBe('mirror')
+    expect(divergenceKind({ ...base, mechanics: mech })).toBe('mechanic')
+    expect(divergenceKind({ ...base, mechanics: [{ ...mech[0], sameToBoss: true }] })).toBe('same-to-boss')
+    expect(divergenceKind(base)).toBe('route')
   })
 
   it('attaches boss mechanics resolving while the players are apart', () => {
@@ -99,6 +158,8 @@ describe('compareTracks / divergences', () => {
 
   it('measures distances to each side’s own boss and flags positions that match relative to the boss', () => {
     const at = (t: number, x: number, y: number) => [s(t / 1000 - 1, x, y), s(t / 1000 + 1, x, y)]
+    // Boss 都面向北（畫面 −y）
+    const bossAt = (t: number, x: number, y: number) => at(t, x, y).map((p) => ({ ...p, facing: -Math.PI / 2 }))
     const d = {
       start: 0,
       end: 20_000,
@@ -116,14 +177,30 @@ describe('compareTracks / divergences', () => {
         // 15 秒：我在 Boss 北方 5、參考在 Boss 南方 5 → 相對差 10
         mine: [...at(5000, 120, 95), ...at(15_000, 120, 95)],
         ref: [...at(5000, 100, 95), ...at(15_000, 100, 105)],
-        mineBoss: [...at(5000, 120, 100), ...at(15_000, 120, 100)],
-        refBoss: [...at(5000, 100, 100), ...at(15_000, 100, 100)],
+        mineBoss: [...bossAt(5000, 120, 100), ...bossAt(15_000, 120, 100)],
+        refBoss: [...bossAt(5000, 100, 100), ...bossAt(15_000, 100, 100)],
       },
       8,
     )
     expect(out.mechanics[0]).toMatchObject({ mineToBoss: 5, refToBoss: 5, sameToBoss: true })
     expect(out.mechanics[1]).toMatchObject({ mineToBoss: 5, refToBoss: 5, sameToBoss: false })
     expect(positionMechanics(out).map((m) => m.abilityId)).toEqual([2])
+  })
+
+  it('compares relative positions by each boss’s facing', () => {
+    // 兩場 Boss 面向相反，兩人都站在自己 Boss 正面 5 yalm：只平移會差 10，依面向旋轉後相同
+    const d = { start: 0, end: 10_000, maxDistance: 30, mirror: null, mechanics: [{ abilityId: 1, t: 5000 }] }
+    const [out] = attachBossDistances(
+      [d],
+      {
+        mine: [s(4, 115, 100), s(6, 115, 100)],
+        ref: [s(4, 85, 100), s(6, 85, 100)],
+        mineBoss: [s(4, 120, 100), s(6, 120, 100)].map((p) => ({ ...p, facing: Math.PI })),
+        refBoss: [s(4, 80, 100), s(6, 80, 100)].map((p) => ({ ...p, facing: 0 })),
+      },
+      8,
+    )
+    expect(out.mechanics[0].sameToBoss).toBe(true)
   })
 
   it('does not judge relative positions without boss positions', () => {
