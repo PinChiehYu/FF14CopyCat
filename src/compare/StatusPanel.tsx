@@ -5,7 +5,8 @@ import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl, isPenaltyStatusName } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import { deathAt, type CastBar, type SideData } from './load'
-import type { ReactNode } from 'react'
+import { isRangedFiller, lossFillerTimes } from '../jobs/rangedFillers'
+import { useMemo, type ReactNode } from 'react'
 
 // Boss 施放：顯示游標前後這段時間內的
 const BOSS_WINDOW_MS = 5000
@@ -63,6 +64,8 @@ function RecentActions({
   isGcd: (abilityId: number) => boolean
 }) {
   const recent = side.playerCasts.filter((c) => c.t <= t && c.t > t - RECENT_MS)
+  // 算止損的止損技（開場起手與強化效果中的不算）；播放時不必每次重算
+  const fillers = useMemo(() => lossFillerTimes(side, isGcd), [side, isGcd])
   // 由舊到新分組：GCD 開新的一組，能力技加進目前這組（窗口開頭的能力技自成一組、沒有 GCD）
   const groups: { gcd: (typeof recent)[number] | null; weaves: typeof recent }[] = []
   for (const c of recent) {
@@ -75,10 +78,11 @@ function RecentActions({
   const icon = (c: (typeof recent)[number], kind: 'gcd' | 'ogcd') => {
     const ability = abilities.get(c.abilityId)
     const age = t - c.t
-    const title = `${abilityName(c.abilityId)}（${kind === 'gcd' ? 'GCD' : '能力技'}，${(age / 1000).toFixed(1)} 秒前）`
+    const filler = fillers.has(c.t) && isRangedFiller(c.abilityId)
+    const title = `${abilityName(c.abilityId)}（${filler ? '止損技' : kind === 'gcd' ? 'GCD' : '能力技'}，${(age / 1000).toFixed(1)} 秒前）`
     const fade = Math.max(0, (age - RECENT_SOLID_MS) / (RECENT_MS - RECENT_SOLID_MS))
     const style = { opacity: 1 - fade * 0.65 }
-    const className = `recent-action ${kind}${c === newest ? ' newest' : ''}`
+    const className = `recent-action ${kind}${c === newest ? ' newest' : ''}${filler ? ' filler' : ''}`
     return ability?.icon ? (
       <img key={`${c.t}-${c.abilityId}`} className={className} src={abilityIconUrl(ability.icon)} alt={title} title={title} style={style} />
     ) : (

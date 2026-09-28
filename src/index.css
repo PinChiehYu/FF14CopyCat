@@ -2094,6 +2094,25 @@ h3 {
   outline-offset: -1px;
 }
 
+/* 止損技（近戰與坦克的遠程 GCD）：金黃外框；用 box-shadow，與「最新」的 outline 可同時顯示 */
+.cast.filler,
+.recent-action.filler,
+.usage-icon.filler {
+  box-shadow: 0 0 0 2px var(--warning);
+}
+
+.cast.filler {
+  z-index: 1;
+}
+
+.tag.filler {
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 0.75em;
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
 .aura-wrap {
   position: relative;
   display: inline-block;

@@ -9,6 +9,7 @@ import type { AbilityCategory } from '../jobs/roleActions'
 import { groupUsage } from './usageGroups'
 import { Tabs } from '../ui/Tabs'
 import { HelpTip } from './HelpTip'
+import { isRangedFiller } from '../jobs/rangedFillers'
 
 const seconds = (ms: number, digits = 1) => (ms / 1000).toFixed(digits)
 
@@ -170,8 +171,11 @@ export function Metrics({
     return (
       <li key={u.abilityId} className={`usage-card${solo ? '' : diff < 0 ? ' fewer' : diff > 0 ? ' more' : ''}`}>
         <div className="usage-name" title={ability?.englishName}>
-          {ability && <img className="usage-icon" src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />}
+          {ability && (
+            <img className={`usage-icon${isRangedFiller(u.abilityId) ? ' filler' : ''}`} src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />
+          )}
           <span>{ability?.name ?? `#${u.abilityId}`}</span>
+          {isRangedFiller(u.abilityId) && <span className="tag filler">止損</span>}
         </div>
         <dl className="usage-stats">
           <div>
@@ -279,6 +283,7 @@ export function Metrics({
             !solo &&
               '平均時機：把你（依 Boss 機制對齊後）與參考的每次使用依序配對（相距 30 秒以內才算同一次），計算你平均早或晚多少；使用 30 次以上的技能（連擊等）不計算。',
             '普通攻擊不顯示在時間軸，次數明顯較少通常代表離 Boss 太遠或停手較久。',
+            '「止損」：近戰與坦克離開 Boss 時用的遠程 GCD（例如投盾、飛刀），威力低；用得多代表離 Boss 太遠或走位不順。',
           ]
             .filter(Boolean)
             .join('\n')}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { JOB_CATEGORIES } from './generated'
 import { getJob } from './index'
 import { abilityCategory } from './roleActions'
+import { isRangedFiller, lossFillerTimes, RANGED_FILLERS } from './rangedFillers'
 
 const job = (subType: string) => {
   const module = getJob(subType)
@@ -72,5 +73,30 @@ describe('abilityCategory', () => {
     expect(abilityCategory(36988, job('BlackMage'))).toBe('movement') // Retrace
     expect(abilityCategory(34646, job('Viper'))).toBe('movement') // Slither
     expect(abilityCategory(3573, job('BlackMage'))).toBe('normal') // Ley Lines 是輸出技能
+  })
+})
+
+describe('ranged fillers', () => {
+  it('are GCDs of their own job', () => {
+    for (const [subType, id] of Object.entries(RANGED_FILLERS)) {
+      expect(job(subType).isGcd(id), subType).toBe(true)
+    }
+    expect(isRangedFiller(2247)).toBe(true)
+    expect(isRangedFiller(7477)).toBe(false)
+  })
+})
+
+describe('lossFillerTimes', () => {
+  const isGcd = (id: number) => id !== 999
+  it('skips the opening pull and casts under an enhancement', () => {
+    const casts = [
+      { t: -500, abilityId: 24386 }, // 開打前預讀勾刃
+      { t: 800, abilityId: 46 }, // 開場第一個 GCD 的飛斧
+      { t: 60_000, abilityId: 90 }, // 貫穿尖效果提高中
+      { t: 90_000, abilityId: 90 }, // 一般的貫穿尖：止損
+      { t: 95_000, abilityId: 999 },
+    ]
+    const buffs = [{ statusId: 1_001_870, start: 55_000, end: 60_200 }]
+    expect([...lossFillerTimes({ playerCasts: casts, buffs }, isGcd)]).toEqual([90_000])
   })
 })

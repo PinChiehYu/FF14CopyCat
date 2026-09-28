@@ -507,6 +507,10 @@
 
 ## 技術變更紀錄
 
+### 2026-09-29 止損技
+- `jobs/rangedFillers.ts`：`RANGED_FILLERS`（9 個職業各一個遠程 GCD，以 xivapi Action 表查證名稱、職業與射程 20～25；忍者飛刀為 2247，不是 2414〔落肘〕）、`isRangedFiller()`、`lossFillerTimes()`（排除開打前、開打後第一個 GCD、身上有強化效果〔1870／2845／1236，容許效果移除晚 500 毫秒〕的施放）。`Timeline`、`StatusPanel` 以 `lossFillerTimes()` 決定外框，`Metrics` 的使用次數卡片以 `isRangedFiller()` 加標籤。測試確認 9 個都是該職業的 GCD。
+- 調查：xivanalysis（b240252）的 `core/modules/DisengageGcds.tsx` 是「遠程攻擊使用次數」統計（只有 war/Tomahawk、gnb/LightningShot 繼承），rpr/Harpe、vpr/Snaps 各有「少用」的統計，都只計次、不扣分。
+
 ### 2026-09-29 DoT 覆蓋率與提早續上
 - 新增 `SideData.debuffApplications`、`jobs/dotRules.ts`、`analysis/dots.ts`、`compare/Dots.tsx`，建議新增 `dotAdvice()`（比較與只有我都用）。演算法與移植差異見「前端資料處理／DoT」。
 - 實測（本機）：M8S 武士基準 彼岸花 我 94.0%、提早 1.4 秒／分，參考 89.7%、0.9 秒／分；黑魔驗證 高階雷電＋高階中雷電 我 93.8%、1.1 秒／分，參考 97.0%、2.1 秒／分（我未達 95% 且低於參考 → 建議）。

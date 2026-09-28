@@ -8,6 +8,7 @@ import type { JobModule } from '../jobs'
 import type { SideData } from './load'
 import type { TimelineWindow } from '../analysis/windows'
 import { HelpTip } from './HelpTip'
+import { isRangedFiller, lossFillerTimes } from '../jobs/rangedFillers'
 
 const ZOOM_LEVELS = [10, 20, 40, 80] // 每秒像素
 
@@ -110,6 +111,11 @@ export function Timeline({
   const totalMs = Math.max(axis.ref(ref.duration), axis.mine(mine.duration))
   const width = x(totalMs) + 40
 
+  // 算止損的止損技施放（各側的戰鬥時間；開場起手與強化效果中的不算）
+  const fillers = useMemo(() => {
+    const isGcd = (id: number) => (job ? job.isGcd(id) : true)
+    return { mine: lossFillerTimes(mine, isGcd), ref: reference ? lossFillerTimes(reference, isGcd) : new Set<number>() }
+  }, [mine, reference, job])
   const allLanes = useMemo(
     () => [
       ...(reference ? lanes(reference, '參考', 'ref', job, axis.ref, (t) => t) : []),
@@ -136,6 +142,7 @@ export function Timeline({
             reference && '時間軸以參考日誌為準；我的施放已依 Boss 機制對齊。',
             reference && '一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。',
             '灰底為 Boss 無法選中。滑鼠停在圖示上可看技能與原始時間。',
+            '金黃框：止損技（近戰與坦克離開 Boss 時用的遠程 GCD，例如投盾、飛刀）；用得多代表離 Boss 太遠或走位不順。開場起手（開打前與第一個 GCD）與有強化效果時（貫穿尖、勾刃、燕飛效果提高）不標。',
           ]
             .filter(Boolean)
             .join('\n')}
@@ -168,6 +175,7 @@ export function Timeline({
               axis={axis}
               abilities={abilities}
               allLanes={allLanes}
+              fillers={fillers}
               highlights={highlights}
               windows={windows}
               pxPerSec={pxPerSec}
@@ -189,6 +197,7 @@ function TimelineLanesImpl({
   axis,
   abilities,
   allLanes,
+  fillers,
   highlights,
   windows,
   pxPerSec,
@@ -201,6 +210,8 @@ function TimelineLanesImpl({
   axis: DisplayAxis
   abilities: Map<number, Ability>
   allLanes: Lane[]
+  /** 算止損的止損技施放時間（各側的戰鬥時間） */
+  fillers: { mine: Set<number>; ref: Set<number> }
   highlights: { start: number; end: number }[]
   windows: (TimelineWindow & { side: 'mine' | 'ref' })[]
   pxPerSec: number
@@ -305,13 +316,14 @@ function TimelineLanesImpl({
                     lane.side === 'mine'
                       ? `${formatFightTime(c.original)}（對齊後 ${formatFightTime(c.aligned)}）`
                       : formatFightTime(c.original)
+                  const filler = isRangedFiller(c.abilityId) && fillers[lane.side].has(c.original)
                   return ability ? (
                     <img
                       key={i}
-                      className="cast"
+                      className={filler ? 'cast filler' : 'cast'}
                       src={abilityIconUrl(ability.icon)}
                       alt={ability.name}
-                      title={`${ability.name}${ability.englishName ? `（${ability.englishName}）` : ''} ${time}`}
+                      title={`${ability.name}${ability.englishName ? `（${ability.englishName}）` : ''}${filler ? '・止損技' : ''} ${time}`}
                       loading="lazy"
                       style={{ left: x(c.t) }}
                     />
