@@ -507,6 +507,9 @@
 
 ## 技術變更紀錄
 
+### 2026-09-29 止損技與參考比較
+- `rangedFillers.ts` 新增 `compareFillers()`（我的每次換成參考時間後，參考在 `FILLER_MATCH_MS`＝5 秒內有沒有止損技）；`Comparison.tsx` 以 `lossFillerTimes()` 算出兩邊比較範圍內的時間，交給 `compare/Fillers.tsx`（經 `Metrics` 的 `afterGcd` 放在停手時段下方）與 `advice.ts` 的 `fillerAdvice()`（比較與只有我都用）；`usageAdvice()` 跳過止損技。
+
 ### 2026-09-29 止損技
 - `jobs/rangedFillers.ts`：`RANGED_FILLERS`（9 個職業各一個遠程 GCD，以 xivapi Action 表查證名稱、職業與射程 20～25；忍者飛刀為 2247，不是 2414〔落肘〕）、`isRangedFiller()`、`lossFillerTimes()`（排除開打前、開打後第一個 GCD、身上有強化效果〔1870／2845／1236，容許效果移除晚 500 毫秒〕的施放）。`Timeline`、`StatusPanel` 以 `lossFillerTimes()` 決定外框，`Metrics` 的使用次數卡片以 `isRangedFiller()` 加標籤。測試確認 9 個都是該職業的 GCD。
 - 調查：xivanalysis（b240252）的 `core/modules/DisengageGcds.tsx` 是「遠程攻擊使用次數」統計（只有 war/Tomahawk、gnb/LightningShot 繼承），rpr/Harpe、vpr/Snaps 各有「少用」的統計，都只計次、不扣分。

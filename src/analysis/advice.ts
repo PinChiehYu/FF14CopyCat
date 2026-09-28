@@ -20,6 +20,7 @@ import { controlNames } from './control'
 import type { WindowSummary } from './windows'
 import { clipSeverity, type DotSummary } from './dots'
 import { fflogsStatusId } from '../jobs/dotRules'
+import { compareFillers, isRangedFiller } from '../jobs/rangedFillers'
 
 export type Severity = 'high' | 'medium' | 'low'
 
@@ -66,6 +67,10 @@ export interface AdviceInput {
   cooldowns?: CooldownPair[]
   /** DoT 覆蓋率與提早續上（xivanalysis 的 DoTs），兩邊依規則順序對應 */
   dots?: DotPair[]
+  /** 算止損的止損技施放時間（各自的戰鬥時間；見 jobs/rangedFillers.ts 的 lossFillerTimes） */
+  fillers?: { mine: number[]; ref: number[] }
+  /** 這個職業的止損技 ID（名稱用） */
+  fillerId?: number
 }
 
 /** 同一條 DoT 規則兩邊的結果；沒有參考時 ref 為 null */
@@ -276,6 +281,9 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUs
       if (fewer > 0) roleFewer.push(`${name}（${u.mine}／${u.ref}）`)
       continue
     }
+
+    // 止損技另由 fillerAdvice 依時間與參考比較
+    if (isRangedFiller(u.abilityId)) continue
 
     if (gcd && u.ref === 0 && u.mine >= 3) {
       const first = firstUse(u.abilityId)
@@ -549,6 +557,54 @@ function dotAdvice(input: { dots?: DotPair[]; abilityName: (id: number) => strin
   return items
 }
 
+// 止損技最多列出幾次、幾次以上列為建議（否則參考）
+const MAX_FILLERS_LISTED = 5
+const FILLER_MEDIUM_COUNT = 3
+
+/**
+ * 止損技（近戰與坦克的遠程 GCD，見 jobs/rangedFillers.ts）：
+ * 有參考時，列出參考在同一段（前後 5 秒）沒有用止損技的次數；沒有參考時列出我用的次數。
+ * @param fillers 算止損的施放時間（各自的戰鬥時間；開場起手、強化效果中的已排除）
+ */
+function fillerAdvice(input: {
+  fillers?: { mine: number[]; ref: number[] | null }
+  abilityName: (id: number) => string
+  fillerId?: number
+  mineToRef: (t: number) => number
+}): Advice[] {
+  const f = input.fillers
+  if (!f || f.mine.length === 0) return []
+  const name = input.fillerId !== undefined ? input.abilityName(input.fillerId) : '止損技'
+  const list = (times: number[]) =>
+    times
+      .slice(0, MAX_FILLERS_LISTED)
+      .map((t) => formatFightTime(t))
+      .join('、') + (times.length > MAX_FILLERS_LISTED ? ' 等' : '')
+  const mineRef = f.mine.map(input.mineToRef)
+  if (f.ref === null) {
+    return [
+      {
+        severity: f.mine.length >= FILLER_MEDIUM_COUNT ? 'medium' : 'low',
+        title: `${name}（止損技）用了 ${f.mine.length} 次`,
+        detail: `${list(mineRef)}。止損技威力低，代表那時離 Boss 太遠；檢查是否能提早移動、貼近 Boss 或改用較強的遠程技能。選了參考日誌後可以看前輩在同一段是否也需要。`,
+        at: mineRef[0],
+      },
+    ]
+  }
+  const { shared, onlyMine } = compareFillers(mineRef, f.ref)
+  if (onlyMine.length === 0) return []
+  return [
+    {
+      severity: onlyMine.length >= FILLER_MEDIUM_COUNT ? 'medium' : 'low',
+      title: `${name}（止損技）用了 ${f.mine.length} 次（參考 ${f.ref.length} 次），其中 ${onlyMine.length} 次參考沒有用`,
+      detail:
+        `參考在同一段（前後 5 秒）沒有用止損技：${list(onlyMine)}。止損技威力低，對照這些時間的站位，看參考怎麼留在 Boss 身邊。` +
+        (shared.length > 0 ? `另外 ${shared.length} 次參考也用了，多半是機制造成。` : ''),
+      at: onlyMine[0],
+    },
+  ]
+}
+
 const ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2 }
 
 function sortAdvice(items: Advice[]): Advice[] {
@@ -572,6 +628,10 @@ export interface SoloAdviceInput {
   potionUses: number | null
   /** DoT（ref 為 null） */
   dots?: DotPair[]
+  /** 算止損的止損技施放時間（見 jobs/rangedFillers.ts 的 lossFillerTimes） */
+  fillers?: number[]
+  /** 這個職業的止損技 ID（名稱用） */
+  fillerId?: number
 }
 
 /**
@@ -627,6 +687,14 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
 
   items.push(...cooldownAdvice({ cooldowns: input.cooldowns, abilityName, mineToRef: (t) => t }))
   items.push(...dotAdvice({ dots: input.dots, abilityName, mineToRef: (t) => t }))
+  items.push(
+    ...fillerAdvice({
+      fillers: input.fillers && { mine: input.fillers, ref: null },
+      fillerId: input.fillerId,
+      abilityName,
+      mineToRef: (t) => t,
+    }),
+  )
 
   // 技能窗口：依規則評分，有不合格就提出（沒有參考可比較合格率）
   for (const summary of input.windows) {
@@ -681,6 +749,7 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...windowAdvice(input),
     ...prepullAdvice(input),
     ...usageAdvice(input),
+    ...fillerAdvice(input),
     ...positionAdvice(input),
   ]
   // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 冷卻技 → DoT → 技能窗口 → 開打前 → 技能 → 站位）

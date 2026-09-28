@@ -36,6 +36,8 @@ import { AdviceList } from './AdviceList'
 import { HelpTip } from './HelpTip'
 import { Mechanics, MechanicsHeading } from './Mechanics'
 import { Dots, DotsHeading } from './Dots'
+import { Fillers } from './Fillers'
+import { lossFillerTimes, RANGED_FILLERS } from '../jobs/rangedFillers'
 import { DOT_RULES, fflogsStatusId } from '../jobs/dotRules'
 import { evaluateDot } from '../analysis/dots'
 import { Metrics } from './Metrics'
@@ -577,6 +579,14 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       })),
     [mine, mineInRange, refInRange, solo],
   )
+  // 止損技：兩邊算止損的施放時間（各自的時間、比較範圍內；開場起手與強化效果中的不算）
+  const fillerId = RANGED_FILLERS[mine.selection.player.subType]
+  const fillers = useMemo(() => {
+    if (fillerId === undefined) return null
+    const isGcd = (id: number) => (job ? job.isGcd(id) : true)
+    const times = (side: SideData) => [...lossFillerTimes(side, isGcd)].sort((a, b) => a - b)
+    return { mine: times(mineInRange), ref: solo ? null : times(refInRange) }
+  }, [fillerId, job, mineInRange, refInRange, solo])
   const englishName = useCallback(
     (id: number) => {
       const a = abilities.get(id)
@@ -598,6 +608,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         // 強化藥：得到強化藥效果的次數（含開打前）
         potionUses: mineInRange.buffs.filter((b) => b.statusId === MEDICATED).length,
         dots,
+        fillers: fillers?.mine,
+        fillerId,
       })
     }
     return generateAdvice({
@@ -621,8 +633,10 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       pushes,
       cooldowns,
       dots,
+      fillers: fillers?.ref ? { mine: fillers.mine, ref: fillers.ref } : undefined,
+      fillerId,
     })
-  }, [solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns, dots])
+  }, [solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns, dots, fillers, fillerId])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)
@@ -694,10 +708,23 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
           cooldowns={cooldowns}
           mineToRef={alignment.mineToRef}
           abilityName={abilityName}
+          afterGcd={
+            fillers &&
+            fillerId !== undefined && (
+              <Fillers
+                fillerId={fillerId}
+                fillers={fillers}
+                abilities={abilities}
+                abilityName={abilityName}
+                mineToRef={alignment.mineToRef}
+                onJump={jumpTo}
+              />
+            )
+          }
         />
       </>
     ),
-    [solo, advice, jumpTo, windows, dots, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
+    [solo, advice, jumpTo, windows, dots, fillers, fillerId, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
   )
 
   return (

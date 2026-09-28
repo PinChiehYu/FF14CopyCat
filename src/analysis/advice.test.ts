@@ -323,6 +323,33 @@ describe('generateAdvice', () => {
   })
 })
 
+describe('ranged filler advice', () => {
+  it('lists fillers the reference did not need around the same time', () => {
+    const advice = generateAdvice(input({ fillers: { mine: [60_000, 120_000], ref: [62_000] }, fillerId: 7486 }))
+    const filler = advice.find((a) => a.title.includes('（止損技）'))
+    expect(filler?.title).toBe('#7486（止損技）用了 2 次（參考 1 次），其中 1 次參考沒有用')
+    expect(filler?.at).toBe(120_000)
+    // 參考在同一段都用了：機制造成，不提
+    expect(generateAdvice(input({ fillers: { mine: [60_000], ref: [58_000] }, fillerId: 7486 })).some((a) => a.title.includes('（止損技）'))).toBe(false)
+  })
+
+  it('reports my fillers without a reference', () => {
+    const advice = generateSoloAdvice({
+      abilityName: (id) => `#${id}`,
+      deaths: [],
+      durationMs: 600_000,
+      stops: [],
+      windows: [],
+      cooldowns: [],
+      penalties: [],
+      potionUses: 1,
+      fillers: [30_000, 90_000, 150_000],
+      fillerId: 2247,
+    })
+    expect(advice.map((a) => [a.severity, a.title])).toEqual([['medium', '#2247（止損技）用了 3 次']])
+  })
+})
+
 describe('generateSoloAdvice', () => {
   const solo = (overrides: Partial<SoloAdviceInput> = {}): SoloAdviceInput => ({
     abilityName: (id) => names[id] ?? `#${id}`,

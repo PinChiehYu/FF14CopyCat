@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { JOB_CATEGORIES } from './generated'
 import { getJob } from './index'
 import { abilityCategory } from './roleActions'
-import { isRangedFiller, lossFillerTimes, RANGED_FILLERS } from './rangedFillers'
+import { compareFillers, isRangedFiller, lossFillerTimes, RANGED_FILLERS } from './rangedFillers'
 
 const job = (subType: string) => {
   const module = getJob(subType)
@@ -98,5 +98,11 @@ describe('lossFillerTimes', () => {
     ]
     const buffs = [{ statusId: 1_001_870, start: 55_000, end: 60_200 }]
     expect([...lossFillerTimes({ playerCasts: casts, buffs }, isGcd)]).toEqual([90_000])
+  })
+})
+
+describe('compareFillers', () => {
+  it('separates fillers the reference also needed from avoidable ones', () => {
+    expect(compareFillers([60_000, 120_000, 200_000], [63_000, 300_000])).toEqual({ shared: [60_000], onlyMine: [120_000, 200_000] })
   })
 })

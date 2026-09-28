@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { controlNames } from '../analysis/control'
 import { LATE_LISTED_MS, type CooldownPair, type CooldownUsage } from '../analysis/cooldowns'
 import type { AbilityUsage, GcdStats, LostWindow } from '../analysis/metrics'
@@ -141,7 +142,10 @@ export function Metrics({
   mineToRef,
   abilityName,
   solo = false,
+  afterGcd,
 }: {
+  /** 接在 GCD 與停手時段之後的區塊（止損技） */
+  afterGcd?: ReactNode
   /** 沒有職業模組時為 null；還沒有參考日誌時 ref 為 null */
   gcd: { mine: GcdStats; ref: GcdStats | null } | null
   /** 還沒有參考日誌：只列我的數字 */
@@ -274,6 +278,7 @@ export function Metrics({
       ) : (
         <p className="hint">此職業尚未有專屬規則，無法計算 GCD 指標。</p>
       )}
+      {afterGcd}
 
       <h3>
         技能使用次數

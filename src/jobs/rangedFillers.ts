@@ -42,6 +42,21 @@ const ENHANCED_BY: Record<number, number> = {
 // 強化效果在施放完成時被消耗，移除事件可能比施放時間稍晚
 const ENHANCED_TOLERANCE_MS = 500
 
+// 兩邊的止損技相距這麼近（參考時間）視為同一段（同一個機制逼兩人離開 Boss）
+export const FILLER_MATCH_MS = 5000
+
+/**
+ * 我的每次止損技與參考比較：參考在前後 FILLER_MATCH_MS 內也用了止損技的（多半是機制逼的）與參考沒有用的（可以改善的）。
+ * @param mine 我的止損技時間（已換成參考時間）
+ * @param ref 參考的止損技時間
+ */
+export function compareFillers(mine: number[], ref: number[]): { shared: number[]; onlyMine: number[] } {
+  const shared: number[] = []
+  const onlyMine: number[] = []
+  for (const t of mine) (ref.some((r) => Math.abs(r - t) <= FILLER_MATCH_MS) ? shared : onlyMine).push(t)
+  return { shared, onlyMine }
+}
+
 /**
  * 一側「算止損」的止損技施放時間（該側的戰鬥時間）。不算的：
  * - 開打前與開打後第一個 GCD：戰士飛斧、暗黑傷殘、槍刃雷電彈、奪魂者勾刃等是標準起手（開場拉怪、預讀），不是被迫離開。

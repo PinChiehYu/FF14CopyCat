@@ -2105,6 +2105,29 @@ h3 {
   z-index: 1;
 }
 
+.fillers-table th {
+  white-space: nowrap;
+}
+
+.filler-chip {
+  margin: 2px 4px 2px 0;
+  padding: 1px 6px;
+  font: inherit;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 參考在同一段沒有用止損技：可以改善 */
+.filler-chip.avoidable {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 60%, transparent);
+}
+
+/* 參考也用了：多半是機制造成 */
+.filler-chip.shared {
+  color: var(--text-muted);
+}
+
 .tag.filler {
   margin-left: 6px;
   padding: 0 5px;
