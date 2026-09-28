@@ -9,9 +9,10 @@ import type { ReactNode } from 'react'
 
 // Boss 施放：顯示游標前後這段時間內的
 const BOSS_WINDOW_MS = 5000
-// 最近使用的技能：顯示這段時間內的，最多幾個
-const RECENT_MS = 4000
-const MAX_RECENT = 6
+// 最近使用的技能：顯示這段時間內的，最多幾組（一組＝一個 GCD 與其後穿插的能力技）；前 RECENT_SOLID_MS 不淡化
+const RECENT_MS = 8000
+const RECENT_SOLID_MS = 4000
+const MAX_RECENT_GROUPS = 4
 // 被取消的詠唱在取消後保留顯示的時間
 const CANCELLED_SHOW_MS = 600
 
@@ -44,26 +45,56 @@ function ControlBarView({ start, end, t, name }: { start: number; end: number; t
 }
 
 /** 最近使用的技能：由新到舊，越舊越淡。 */
-function RecentActions({ side, t, abilities, abilityName }: { side: SideData; t: number; abilities: Map<number, Ability>; abilityName: (id: number) => string }) {
-  const recent = side.playerCasts
-    .filter((c) => c.t <= t && c.t > t - RECENT_MS)
-    .slice(-MAX_RECENT)
-    .reverse()
+/**
+ * 最近使用的技能，以 GCD 分組：每組是一個 GCD（大圖示）與其後穿插的能力技（小圖示），由新到舊排列，
+ * 看得出「GCD → 插了幾個能力技 → 下一個 GCD」。最新的一個加框；前 RECENT_SOLID_MS 不淡化，之後越舊越淡。
+ */
+function RecentActions({
+  side,
+  t,
+  abilities,
+  abilityName,
+  isGcd,
+}: {
+  side: SideData
+  t: number
+  abilities: Map<number, Ability>
+  abilityName: (id: number) => string
+  isGcd: (abilityId: number) => boolean
+}) {
+  const recent = side.playerCasts.filter((c) => c.t <= t && c.t > t - RECENT_MS)
+  // 由舊到新分組：GCD 開新的一組，能力技加進目前這組（窗口開頭的能力技自成一組、沒有 GCD）
+  const groups: { gcd: (typeof recent)[number] | null; weaves: typeof recent }[] = []
+  for (const c of recent) {
+    if (isGcd(c.abilityId)) groups.push({ gcd: c, weaves: [] })
+    else if (groups.length > 0) groups.at(-1)!.weaves.push(c)
+    else groups.push({ gcd: null, weaves: [c] })
+  }
+  const shown = groups.slice(-MAX_RECENT_GROUPS).reverse()
+  const newest = recent.at(-1)
+  const icon = (c: (typeof recent)[number], kind: 'gcd' | 'ogcd') => {
+    const ability = abilities.get(c.abilityId)
+    const age = t - c.t
+    const title = `${abilityName(c.abilityId)}（${kind === 'gcd' ? 'GCD' : '能力技'}，${(age / 1000).toFixed(1)} 秒前）`
+    const fade = Math.max(0, (age - RECENT_SOLID_MS) / (RECENT_MS - RECENT_SOLID_MS))
+    const style = { opacity: 1 - fade * 0.65 }
+    const className = `recent-action ${kind}${c === newest ? ' newest' : ''}`
+    return ability?.icon ? (
+      <img key={`${c.t}-${c.abilityId}`} className={className} src={abilityIconUrl(ability.icon)} alt={title} title={title} style={style} />
+    ) : (
+      <span key={`${c.t}-${c.abilityId}`} className={`${className} aura-text`} title={title} style={style}>
+        {abilityName(c.abilityId).slice(0, 2)}
+      </span>
+    )
+  }
   return (
-    <div className="recent-actions" aria-label="最近使用的技能">
-      {recent.map((c) => {
-        const ability = abilities.get(c.abilityId)
-        const age = t - c.t
-        const title = `${abilityName(c.abilityId)}（${(age / 1000).toFixed(1)} 秒前）`
-        const style = { opacity: 1 - (age / RECENT_MS) * 0.7 }
-        return ability?.icon ? (
-          <img key={`${c.t}-${c.abilityId}`} className="recent-action" src={abilityIconUrl(ability.icon)} alt={title} title={title} style={style} />
-        ) : (
-          <span key={`${c.t}-${c.abilityId}`} className="recent-action aura-text" title={title} style={style}>
-            {abilityName(c.abilityId).slice(0, 2)}
-          </span>
-        )
-      })}
+    <div className="recent-actions" aria-label="最近使用的技能（大圖示為 GCD，其後的小圖示為穿插的能力技）">
+      {shown.map((g) => (
+        <span key={`${(g.gcd ?? g.weaves[0]).t}`} className="recent-group">
+          {g.gcd && icon(g.gcd, 'gcd')}
+          {g.weaves.map((c) => icon(c, 'ogcd'))}
+        </span>
+      ))}
     </div>
   )
 }
@@ -93,6 +124,7 @@ function SideStatus({
   time,
   control,
   namedStatus,
+  isGcd,
 }: {
   label: string
   side: SideData
@@ -105,6 +137,7 @@ function SideStatus({
   time?: number
   abilities: Map<number, Ability>
   abilityName: (id: number) => string
+  isGcd: (abilityId: number) => boolean
 }) {
   const hp = hpAt(side.hp, t)
   const pct = hp ? Math.round((hp.hp / hp.maxHp) * 100) : null
@@ -169,7 +202,7 @@ function SideStatus({
       ) : (
         <div className="cast-bar idle" />
       )}
-      <RecentActions side={side} t={t} abilities={abilities} abilityName={abilityName} />
+      <RecentActions side={side} t={t} abilities={abilities} abilityName={abilityName} isGcd={isGcd} />
       <div className="aura-row">{buffs.length > 0 ? buffs.map(icon) : <span className="hint-inline">沒有自身 Buff</span>}</div>
     </div>
   )
@@ -232,6 +265,7 @@ export function StatusPanel({
   abilityName,
   control,
   namedStatus,
+  isGcd,
 }: {
   mine: SideData
   reference: SideData
@@ -242,6 +276,8 @@ export function StatusPanel({
   abilityName: (id: number) => string
   control: Set<number>
   namedStatus: (id: number) => boolean
+  /** 職業的 GCD 判斷（最近使用的技能分組用） */
+  isGcd: (abilityId: number) => boolean
 }) {
   const mineT = refToMine(cursor)
   return (
@@ -269,6 +305,7 @@ export function StatusPanel({
         abilityName={abilityName}
         control={control}
         namedStatus={namedStatus}
+        isGcd={isGcd}
       />
       <SideStatus
         label="參考"
@@ -278,6 +315,7 @@ export function StatusPanel({
         abilityName={abilityName}
         control={control}
         namedStatus={namedStatus}
+        isGcd={isGcd}
       />
     </div>
   )

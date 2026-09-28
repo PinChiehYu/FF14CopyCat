@@ -364,6 +364,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
     (id: number) => !isUnnamedAbility(abilities.get(id)?.englishName ?? abilities.get(id)?.name),
     [abilities],
   )
+  // 當下狀態的最近技能依 GCD 分組；職業沒有規則時全部視為 GCD（不分組）
+  const isGcd = useCallback((id: number) => (job ? job.isGcd(id) : true), [job])
 
   const { gcd, lost } = useMemo(() => {
     if (!job) return { gcd: null, lost: [] }
@@ -666,6 +668,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
             namedStatus={namedStatus}
             abilities={abilities}
             abilityName={abilityName}
+            isGcd={isGcd}
           />
         }
       />

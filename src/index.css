@@ -1974,21 +1974,38 @@ h3 {
 }
 
 /* 最近使用的技能：由新到舊 */
+/* 固定一行高，放不下時截斷（最舊的在右邊被截掉），播放時不換行 */
 .recent-actions {
   display: flex;
-  gap: 3px;
-  min-height: 26px;
+  gap: 8px;
+  height: 26px;
   margin-bottom: 4px;
   align-items: center;
+  overflow: hidden;
+}
+
+/* 一組＝一個 GCD（大）與其後穿插的能力技（小）；組間留較大間隔 */
+.recent-group {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  align-items: flex-end;
 }
 
 .recent-action {
+  flex: none;
   width: 24px;
   height: 24px;
   border-radius: 4px;
 }
 
-.recent-action:first-child {
+.recent-action.ogcd {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+
+.recent-action.newest {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
