@@ -2,7 +2,7 @@ import type { TimedCast } from '../analysis/alignment'
 import { aurasAt, hpAt, type Aura } from '../analysis/buffs'
 import { controlNames } from '../analysis/control'
 import { formatFightTime } from '../analysis/timeline'
-import { abilityIconUrl } from '../fflogs/report'
+import { abilityIconUrl, isPenaltyStatusName } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import { deathAt, type CastBar, type SideData } from './load'
 import type { ReactNode } from 'react'
@@ -117,6 +117,14 @@ function SideStatus({
     <AuraIcon key={a.statusId} aura={a} t={t} ability={abilities.get(a.statusId)} name={abilityName(a.statusId)} />
   )
   const dead = deathAt(side.deaths, t)
+  // 讓輸出下降的懲罰效果（傷害降低、衰弱、瀕死）：外框高光並在標題列顯示
+  const penalties = side.bossDebuffs.filter((d) => {
+    if (d.start > t || t >= d.end) return false
+    const ability = abilities.get(d.statusId)
+    return isPenaltyStatusName(ability?.englishName ?? ability?.name ?? '')
+  })
+  const penaltyText = (d: (typeof penalties)[number]) =>
+    `${abilityName(d.statusId)}${d.openEnded ? '' : ` ${Math.ceil((d.end - t) / 1000)}s`}`
   // 這一側當下的 Boss 控場（兩邊各自的時間，可能不同）
   const controls = side.bossDebuffs.filter((d) => control.has(d.statusId) && d.start <= t && t < d.end)
   const controlBar =
@@ -128,9 +136,15 @@ function SideStatus({
           name: controlNames(controls.map((d) => d.statusId).filter(namedStatus), abilityName),
         }
   return (
-    <div className={`side-status${dead ? ' dead' : ''}`}>
+    <div className={`side-status${dead ? ' dead' : penalties.length > 0 ? ' penalized' : ''}`}>
       <div className="side-status-head">
         <span className={label === '我' ? 'mine' : 'ref'}>{label}</span>
+        {/* 懲罰效果（死亡時由死亡標示）；單行截斷，完整內容在滑鼠提示 */}
+        {!dead && penalties.length > 0 && (
+          <span className="penalty-badge" title={`讓輸出下降的效果：\n${penalties.map(penaltyText).join('\n')}`}>
+            ▼ {penalties.map(penaltyText).join('、')}
+          </span>
+        )}
         {/* 參考的時間就是播放列的時間；只有我的（對齊前的原始時間）不同才顯示 */}
         {time !== undefined && (
           <span className="hint-inline" title="你的日誌中的原始時間">

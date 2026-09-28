@@ -27,6 +27,14 @@ export function isPotionName(englishName: string): boolean {
   return /Gemdraught|Tincture|Draught|Potion/i.test(englishName)
 }
 
+/**
+ * 讓輸出下降的懲罰效果（英文名稱）：傷害降低（機制失誤）、衰弱與瀕死（復活後）。各副本名稱相同、ID 不同。
+ * 易傷（Vulnerability Up）不算：許多機制本來就會施加，太頻繁。
+ */
+export function isPenaltyStatusName(englishName: string): boolean {
+  return /^(Damage Down|Weakness|Brink of Death)$/i.test(englishName.trim())
+}
+
 export function abilityMap(report: Report): Map<number, Ability> {
   return new Map(report.masterData.abilities.map((a) => [a.gameID, a]))
 }

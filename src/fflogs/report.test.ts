@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isStatusId, playersInFight } from './report'
+import { isPenaltyStatusName, isStatusId, playersInFight } from './report'
 import type { Actor, Fight, Report } from './types'
 
 function actor(id: number, name: string, subType: string, type = 'Player'): Actor {
@@ -39,6 +39,17 @@ const report: Report = {
 describe('playersInFight', () => {
   it('returns real players in the fight, excluding limit break pseudo-actors', () => {
     expect(playersInFight(report, fight).map((a) => a.id)).toEqual([2, 34])
+  })
+})
+
+describe('isPenaltyStatusName', () => {
+  it('matches statuses that lower output, not common vulnerability debuffs', () => {
+    expect(isPenaltyStatusName('Damage Down')).toBe(true)
+    expect(isPenaltyStatusName('Weakness')).toBe(true)
+    expect(isPenaltyStatusName('Brink of Death')).toBe(true)
+    expect(isPenaltyStatusName('Magic Vulnerability Up')).toBe(false)
+    expect(isPenaltyStatusName('Vulnerability Up')).toBe(false)
+    expect(isPenaltyStatusName('Physical Damage Down')).toBe(false)
   })
 })
 

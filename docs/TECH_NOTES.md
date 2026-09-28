@@ -494,6 +494,9 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 懲罰效果的標示
+- `fflogs/report.ts` 新增 `isPenaltyStatusName()`（英文名稱 `Damage Down`／`Weakness`／`Brink of Death`，完全比對；`Physical Damage Down` 等不算）；`StatusPanel` 的 `SideStatus` 從 `SideData.bossDebuffs`（`debuffsOnPlayer()`，衰弱、瀕死也在其中）取當下的懲罰效果，`.side-status.penalized` 與 `.penalty-badge`；新增色彩變數 `--warning`（淺色 #a67c00、深色 #f2c94c，與「我」的橘色區隔）。
+
 ### 2026-09-28 俯視圖說明與 Boss 機制列固定行數
 - `Positions.tsx` 的 `.arena-caption` 改為 `div`，內含兩個 `.arena-caption-line`（`min-height: 1.5em`、`nowrap`、`text-overflow: ellipsis`）；`StatusPanel` 移除 `twoBosses`，固定畫兩個 `BossNow`；`Positions` 的 `status` 改回 `ReactNode`。
 - 驗證方式：以程式設定播放列拉桿逐 3 秒推進整場、切換三種視角，記錄 `.arena-caption`、`.boss-now-pair` 高度與卡片列的頁面位置。手機寬度（375 px）另有 `.aura-row` 在 Buff 多時折成兩行（26 → 55 px，例 M8S 騎士基準 0:09），不在這次範圍。

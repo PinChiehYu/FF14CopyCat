@@ -6,6 +6,8 @@
   --border: #e0dee4;
   --accent: #7a3bd6;
   --error: #c62828;
+  /* 懲罰效果（傷害降低等）；金黃色，與「我」的橘色區隔 */
+  --warning: #a67c00;
   --ref: #2b7bd6;
   --mine: #d9731a;
   --anchor: #7a3bd6;
@@ -30,6 +32,7 @@
     --border: #2e303a;
     --accent: #c084fc;
     --error: #ef9a9a;
+    --warning: #f2c94c;
     --ref: #6aa8f0;
     --mine: #f0a35e;
     --anchor: #c084fc;
@@ -1878,6 +1881,24 @@ h3 {
 
 .side-status.dead {
   border-color: var(--error);
+}
+
+/* 懲罰效果（傷害降低、衰弱等）：金黃色外框高光 */
+.side-status.penalized {
+  border-color: var(--warning);
+  box-shadow: 0 0 0 1px var(--warning);
+}
+
+.penalty-badge {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0 6px;
+  overflow: hidden;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--warning);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .side-status.dead .cast-bar,
