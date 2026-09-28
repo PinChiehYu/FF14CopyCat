@@ -232,7 +232,6 @@ function SummaryTable({
                 key={d.t}
                 type="button"
                 className="death-chip"
-                title={d.abilityId !== null ? `被「${abilityName(d.abilityId)}」擊殺` : '死亡'}
                 onClick={() => onJump(s === mine ? mineToRef(d.t) : d.t)}
               >
                 ✕ {formatFightTime(d.t).replace(/\.\d$/, '')}

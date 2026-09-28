@@ -1099,7 +1099,6 @@ button:disabled {
 /* 兩邊遊戲版本不同 */
 .patch-differs {
   color: var(--mine);
-  cursor: help;
 }
 
 /* 摘要的 rDPS：比參考少多少 */
@@ -1117,9 +1116,6 @@ button:disabled {
 /* 開打前：對方沒有的效果 */
 .prepull-only {
   color: var(--mine);
-  text-decoration: underline dotted;
-  text-underline-offset: 3px;
-  cursor: help;
 }
 
 h3 {
