@@ -225,13 +225,13 @@ function SummaryTable({
     },
     {
       label: '比較範圍',
-      // 一定從 0:00 開始，只顯示結束點；沒被裁切的一方（戰鬥長度已在選單上）只標「全場」
+      // 一定從 0:00 開始，只顯示結束點；沒被裁切的一方（戰鬥長度已在選單上）只標「全場」。
+      // 被裁掉的秒數以短標示「−N.Ns」，說明放在滑鼠提示（手機上原本的長句會換行）
       cell: (s, end) =>
         s.duration - end >= 1000 ? (
-          <>
-            到 {formatFightTime(end)}
-            <span className="hint-inline">（之後 {((s.duration - end) / 1000).toFixed(1)} 秒不列入統計）</span>
-          </>
+          <span title={`之後 ${((s.duration - end) / 1000).toFixed(1)} 秒不列入統計（另一方的戰鬥已結束，沒有比較對象）`}>
+            到 {formatFightTime(end)} <span className="hint-inline">−{((s.duration - end) / 1000).toFixed(1)}s</span>
+          </span>
         ) : (
           '全場'
         ),
