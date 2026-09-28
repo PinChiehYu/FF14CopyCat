@@ -1,6 +1,8 @@
 import {
+  BOSS_LIMITS,
   bossPoseAt,
   distanceAt,
+  positionAt,
   MIRROR_LABELS,
   toBossFrame,
   type Divergence,
@@ -78,7 +80,7 @@ function bounds(players: PositionSample[][], boss: PositionSample[], cursor: num
 }
 
 /** Boss 在圖外時，在圖邊畫指向它的箭頭（從圖中心往 Boss 方向與內縮邊框的交點）。 */
-function EdgeArrow({ target, label }: { target: Point; label: string }) {
+function EdgeArrow({ target, label, className }: { target: Point; label: string; className?: string }) {
   const c = MAP_SIZE / 2
   const dx = target.x - c
   const dy = target.y - c
@@ -92,7 +94,7 @@ function EdgeArrow({ target, label }: { target: Point; label: string }) {
   const tx = Math.min(MAP_SIZE - 40, Math.max(40, x - (dx / len) * 26))
   const ty = Math.min(MAP_SIZE - 8, Math.max(14, y - (dy / len) * 22 + 4))
   return (
-    <g className="edge-arrow">
+    <g className={`edge-arrow${className ? ` ${className}` : ''}`}>
       <polygon points="9,0 -6,-7 -6,7" transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${angle.toFixed(1)})`} />
       <text x={tx.toFixed(1)} y={ty.toFixed(1)} textAnchor="middle">
         {label}
@@ -101,35 +103,74 @@ function EdgeArrow({ target, label }: { target: Point; label: string }) {
   )
 }
 
+/** Boss 標記：在圖內畫圓點，在圖外畫邊緣箭頭並標示離 from 多遠。 */
+function BossMarker({
+  at,
+  px,
+  from,
+  label,
+  className,
+}: {
+  at: Point
+  px: (p: Point) => Point
+  from: Point | null | undefined
+  label: string
+  className: string
+}) {
+  const p = px(at)
+  if (p.x >= 0 && p.x <= MAP_SIZE && p.y >= 0 && p.y <= MAP_SIZE) {
+    return <circle className={`boss-dot ${className}`} cx={p.x} cy={p.y} r={9} />
+  }
+  const distance = from ? ` ${Math.hypot(at.x - from.x, at.y - from.y).toFixed(0)} yalm` : ''
+  return <EdgeArrow target={p} label={`${label}${distance}`} className={className} />
+}
+
+/**
+ * 場地俯視圖（北方朝上）。
+ * - two-bosses：照實際位置畫兩人與兩場的 Boss（我的 Boss 橘框、參考的 Boss 藍框）
+ * - aligned：我的位置平移到參考 Boss 的位置（見 alignToBoss），只畫參考的 Boss
+ */
 function Arena({
+  mode,
   track,
   cursor,
   mineSamples,
+  mineAlignedSamples,
   refSamples,
   bossSamples,
+  mineBossSamples,
 }: {
+  mode: 'two-bosses' | 'aligned'
   track: TrackPoint[]
   cursor: number
+  /** 我的原始位置（參考時間） */
   mineSamples: PositionSample[]
+  mineAlignedSamples: PositionSample[]
   refSamples: PositionSample[]
   bossSamples: PositionSample[]
+  mineBossSamples: PositionSample[]
 }) {
-  const { minX, minY, size } = bounds([mineSamples, refSamples], bossSamples, cursor)
+  const twoBosses = mode === 'two-bosses'
+  const { minX, minY, size } = bounds(
+    [twoBosses ? mineSamples : mineAlignedSamples, refSamples],
+    twoBosses ? [...bossSamples, ...mineBossSamples] : bossSamples,
+    cursor,
+  )
   const scale = MAP_SIZE / size
   const px = (p: Point) => ({ x: (p.x - minX) * scale, y: (p.y - minY) * scale })
-  const trail = (key: 'mine' | 'ref') =>
+  // track 的 mine 是原始位置；對齊 Boss 時改用平移後的位置
+  const mineAt = (p: TrackPoint) => (twoBosses ? p.mine : positionAt(mineAlignedSamples, p.t))
+  const trail = (pick: (p: TrackPoint) => Point | null) =>
     track
-      .filter((p) => p.t > cursor - TRAIL_MS && p.t <= cursor && p[key])
-      .map((p) => px(p[key]!))
+      .filter((p) => p.t > cursor - TRAIL_MS && p.t <= cursor)
+      .map(pick)
+      .filter((p): p is Point => p !== null)
+      .map(px)
       .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
       .join(' ')
   const now = nearest(track, cursor)
-  const bossPx = now?.boss ? px(now.boss) : null
-  const bossInside = bossPx !== null && bossPx.x >= 0 && bossPx.x <= MAP_SIZE && bossPx.y >= 0 && bossPx.y <= MAP_SIZE
-  // 圖外的 Boss：標示離我多遠（沒有我的位置時用參考）
-  const from = now?.mine ?? now?.ref
-  const bossDistance =
-    now?.boss && from ? `${Math.hypot(now.boss.x - from.x, now.boss.y - from.y).toFixed(0)} yalm` : ''
+  const mine = now ? mineAt(now) : null
+  const mineBoss = twoBosses && now ? positionAt(mineBossSamples, now.t, BOSS_LIMITS) : null
   // 每 5 yalm 一條格線
   const grid = Array.from({ length: Math.ceil(size / 5) + 1 }, (_, i) => Math.ceil(minX / 5) * 5 + i * 5)
   const gridY = Array.from({ length: Math.ceil(size / 5) + 1 }, (_, i) => Math.ceil(minY / 5) * 5 + i * 5)
@@ -142,23 +183,20 @@ function Arena({
       {gridY.map((gy) => (
         <line key={`y${gy}`} className="grid" y1={(gy - minY) * scale} y2={(gy - minY) * scale} x1={0} x2={MAP_SIZE} />
       ))}
-      <polyline className="trail ref" points={trail('ref')} />
-      <polyline className="trail mine" points={trail('mine')} />
-      {bossPx &&
-        (bossInside ? (
-          <circle className="boss-dot" cx={bossPx.x} cy={bossPx.y} r={9} />
-        ) : (
-          <EdgeArrow target={bossPx} label={`Boss ${bossDistance}`} />
-        ))}
+      <polyline className="trail ref" points={trail((p) => p.ref)} />
+      <polyline className="trail mine" points={trail(mineAt)} />
+      {now?.boss && (
+        <BossMarker at={now.boss} px={px} from={now.ref} label={twoBosses ? '參考 Boss' : 'Boss'} className={twoBosses ? 'ref' : ''} />
+      )}
+      {mineBoss && <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" />}
       {now?.ref && <circle className="dot ref" cx={px(now.ref).x} cy={px(now.ref).y} r={6} />}
-      {now?.mine && <circle className="dot mine" cx={px(now.mine).x} cy={px(now.mine).y} r={6} />}
+      {mine && <circle className="dot mine" cx={px(mine).x} cy={px(mine).y} r={6} />}
       <text className="north" x={MAP_SIZE - 14} y={16}>
         N
       </text>
     </svg>
   )
 }
-
 /** 以 Boss 為中心時，一側在某時間點相對於自己那一場 Boss 的位置 */
 function relativeAt(player: Point | null, bossSamples: PositionSample[], t: number): Point | null {
   if (!player) return null
@@ -176,16 +214,22 @@ const BOSS_VIEW_STEP_YALM = 10
 function BossArena({
   track,
   cursor,
+  mineSamples,
   mineBoss,
   refBoss,
 }: {
   track: TrackPoint[]
   cursor: number
+  /** 我的原始位置（參考時間） */
+  mineSamples: PositionSample[]
   /** 我的日誌的 Boss 位置（已換算成參考時間） */
   mineBoss: PositionSample[]
   refBoss: PositionSample[]
 }) {
-  const rel = (p: TrackPoint) => ({ mine: relativeAt(p.mine, mineBoss, p.t), ref: relativeAt(p.ref, refBoss, p.t) })
+  const rel = (p: TrackPoint) => ({
+    mine: relativeAt(positionAt(mineSamples, p.t), mineBoss, p.t),
+    ref: relativeAt(p.ref, refBoss, p.t),
+  })
   const now = nearest(track, cursor)
   const current = now ? rel(now) : { mine: null, ref: null }
   // 範圍：游標前後 10 秒內離 Boss 最遠的距離，對齊 10 yalm
@@ -247,14 +291,17 @@ function BossArena({
   )
 }
 
-type ArenaMode = 'arena' | 'boss'
+// two-bosses：場地、兩場的 Boss 都畫；aligned：我的位置對齊到參考的 Boss；boss：以 Boss 為中心
+type ArenaMode = 'two-bosses' | 'aligned' | 'boss'
 const ARENA_MODE_KEY = 'arenaMode'
 
 function readArenaMode(): ArenaMode {
   try {
-    return localStorage.getItem(ARENA_MODE_KEY) === 'boss' ? 'boss' : 'arena'
+    const saved = localStorage.getItem(ARENA_MODE_KEY)
+    // 舊版的 arena（只畫參考的 Boss）改為兩個 Boss
+    return saved === 'boss' ? 'boss' : saved === 'arena' || saved === 'two-bosses' ? 'two-bosses' : 'aligned'
   } catch {
-    return 'arena'
+    return 'aligned'
   }
 }
 
@@ -321,6 +368,7 @@ export function Positions({
   refSamples,
   bossSamples,
   mineBossSamples,
+  mineAlignedSamples,
   threshold,
   duration,
   cursor,
@@ -333,8 +381,10 @@ export function Positions({
   abilityName: (id: number) => string
   track: TrackPoint[]
   divergences: Divergence[]
-  /** 已換算成參考時間 */
+  /** 我的原始位置，已換算成參考時間 */
   mineSamples: PositionSample[]
+  /** 我的位置對齊到參考 Boss 後（只用於俯視圖的「對齊 Boss」） */
+  mineAlignedSamples: PositionSample[]
   refSamples: PositionSample[]
   /** 參考日誌的 Boss 位置（決定俯視圖的範圍） */
   bossSamples: PositionSample[]
@@ -364,6 +414,9 @@ export function Positions({
   // 以 Boss 為中心需要兩邊當下的 Boss 位置與面向；沒有時（Boss 無法選取、轉場）暫時以場地顯示
   const bossFrameReady = bossPoseAt(bossSamples, cursor) !== null && bossPoseAt(mineBossSamples, cursor) !== null
   const showBossFrame = mode === 'boss' && bossFrameReady
+  // 對齊 Boss：這個時間點兩邊都有 Boss 位置時才有對齊
+  const alignedNow =
+    positionAt(bossSamples, cursor, BOSS_LIMITS) !== null && positionAt(mineBossSamples, cursor, BOSS_LIMITS) !== null
   // 機制不同優先於其他標示：站位不同多半是機制造成
   const byVariant = divergences.filter((d) => d.variant).length
   const atMechanic = divergences.filter((d) => !d.variant && d.mechanics.length > 0).length
@@ -405,12 +458,21 @@ export function Positions({
           <div className="arena-modes" role="group" aria-label="俯視圖視角">
             <button
               type="button"
-              className={mode === 'arena' ? 'active' : undefined}
-              aria-pressed={mode === 'arena'}
-              title="北方朝上，範圍跟著目前的場地"
-              onClick={() => changeMode('arena')}
+              className={mode === 'two-bosses' ? 'active' : undefined}
+              aria-pressed={mode === 'two-bosses'}
+              title="北方朝上，照實際位置畫兩人與兩場的 Boss（橘框：我的 Boss、藍框：參考的 Boss）"
+              onClick={() => changeMode('two-bosses')}
             >
-              場地
+              兩個 Boss
+            </button>
+            <button
+              type="button"
+              className={mode === 'aligned' ? 'active' : undefined}
+              aria-pressed={mode === 'aligned'}
+              title="北方朝上；保留你相對於你那一場 Boss 的位置，平移到參考 Boss 的位置上（不旋轉）。只影響這張圖，距離與站位差異仍以場地上的位置計算"
+              onClick={() => changeMode('aligned')}
+            >
+              對齊 Boss
             </button>
             <button
               type="button"
@@ -428,16 +490,38 @@ export function Positions({
             )}
           </div>
           {showBossFrame ? (
-            <BossArena track={track} cursor={cursor} mineBoss={mineBossSamples} refBoss={bossSamples} />
+            <BossArena track={track} cursor={cursor} mineSamples={mineSamples} mineBoss={mineBossSamples} refBoss={bossSamples} />
           ) : (
-            <Arena track={track} cursor={cursor} mineSamples={mineSamples} refSamples={refSamples} bossSamples={bossSamples} />
+            <Arena
+              mode={mode === 'two-bosses' ? 'two-bosses' : 'aligned'}
+              track={track}
+              cursor={cursor}
+              mineSamples={mineSamples}
+              mineAlignedSamples={mineAlignedSamples}
+              refSamples={refSamples}
+              bossSamples={bossSamples}
+              mineBossSamples={mineBossSamples}
+            />
           )}
           <p className="arena-caption">
             <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
-            <span className="legend boss" title={now?.boss ? undefined : '這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）'}>
-              ● Boss{now?.boss ? '' : '（不在場）'}
-            </span>
-            {now?.distance != null && `　相距 ${now.distance.toFixed(1)} yalm`}
+            {mode === 'two-bosses' ? (
+              <>
+                <span className="legend boss mine">◯ 我的 Boss</span> <span className="legend boss ref">◯ 參考 Boss</span>
+              </>
+            ) : (
+              <span className="legend boss" title={now?.boss ? undefined : '這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）'}>
+                ● Boss{now?.boss ? '' : '（不在場）'}
+              </span>
+            )}
+            {mode === 'aligned' && !alignedNow && (
+              <span className="hint-inline" title="這個時間點至少一邊沒有 Boss 的位置（Boss 無法選取、轉場等），你的位置以原始位置顯示">
+                （未對齊）
+              </span>
+            )}
+            {now?.distance != null && (
+              <span title="兩人在場地上的距離（不論俯視圖的視角）；站位差異依此判斷">　相距 {now.distance.toFixed(1)} yalm</span>
+            )}
           </p>
         </div>
         {status}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attachMechanics, attachVariants, bossPoseAt, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
+import { alignToBoss, attachMechanics, attachVariants, bossPoseAt, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
 
 const s = (seconds: number, x: number, y: number): PositionSample => ({ t: seconds * 1000, x, y })
 
@@ -113,5 +113,22 @@ describe('bossPoseAt / toBossFrame', () => {
     expect(round(toBossFrame({ x: 95, y: 100 }, pose))).toEqual({ x: 0, y: 5 }) // 背面 → 下
     // 面向朝上時，Boss 的右手邊（面向方向順時針 90°，座標 +y）在畫面右側
     expect(round(toBossFrame({ x: 100, y: 105 }, pose))).toEqual({ x: 5, y: 0 })
+  })
+})
+
+describe('alignToBoss', () => {
+  it('moves my position by the offset between the two bosses and keeps it where a boss is missing', () => {
+    // 我那場 Boss 在 (110, 100)、參考的在 (100, 100)：我在自己 Boss 左方 5 yalm，對齊後在參考 Boss 左方 5 yalm
+    const mine = [
+      { t: 0, x: 105, y: 100 },
+      { t: 60_000, x: 50, y: 50 },
+    ]
+    const mineBoss = [{ t: 0, x: 110, y: 100 }]
+    const refBoss = [{ t: 0, x: 100, y: 100 }]
+    expect(alignToBoss(mine, mineBoss, refBoss)).toEqual([
+      { t: 0, x: 95, y: 100 },
+      // 60 秒時沒有 Boss 位置（超過沿用時間）：維持原始位置
+      { t: 60_000, x: 50, y: 50 },
+    ])
   })
 })

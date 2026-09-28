@@ -13,7 +13,7 @@ import { mainMechanicDifferences, mainMechanicGroups } from '../analysis/mainMec
 import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, lostGcdWindows } from '../analysis/metrics'
 import { attachControl, controlStatuses, controlWindows } from '../analysis/control'
-import { attachMechanics, attachVariants, compareTracks, distanceAt, divergences } from '../analysis/positions'
+import { alignToBoss, attachMechanics, attachVariants, compareTracks, distanceAt, divergences } from '../analysis/positions'
 import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, fetchDamageSummary, type AbilityName, type DamageSummary } from '../fflogs/client'
 import { abilityMap, isPotionName, isUnnamedAbility } from '../fflogs/report'
@@ -417,6 +417,11 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
   )
   const positions = useMemo(() => {
     const mineSamples = mineInRange.playerPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
+    // 我的 Boss 位置換算成參考時間（以 Boss 為中心、兩個 Boss 的俯視圖與對齊用）
+    const mineBossSamples = mineInRange.bossPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
+    // 俯視圖「對齊 Boss」用：我的位置平移到參考 Boss 的位置
+    const mineAlignedSamples = alignToBoss(mineSamples, mineBossSamples, reference.bossPositions)
+    // 距離與站位差異以場地上的絕對位置計算：對齊 Boss 在 Boss 隨機換邊（M7S）、依小怪站位（M6S）時會失真
     const track = compareTracks(mineSamples, refInRange.playerPositions, reference.bossPositions, compareEnd)
     // 標示每段差異期間、兩人仍相距超過門檻時結算的 Boss 機制（參考日誌的 Boss 施放），
     // 以及兩邊隨機機制不同的（例如熱舞綠光 A 面／B 面的先後）：站位不同可能是機制造成
@@ -424,9 +429,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
       attachMechanics(divergences(track, DIVERGENCE_YALM), refInRange.bossCasts, (t) => distanceAt(track, t), DIVERGENCE_YALM),
       mechanics,
     )
-    // 以 Boss 為中心的俯視圖用：我的 Boss 位置換算成參考時間
-    const mineBossSamples = mineInRange.bossPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
-    return { mineSamples, mineBossSamples, track, divergences: found }
+    return { mineSamples, mineAlignedSamples, mineBossSamples, track, divergences: found }
   }, [mineInRange, refInRange, reference, alignment, compareEnd, mechanics])
   // 報告技能清單中沒有的（兩邊都沒用過）也用查到的繁中名稱
   const abilityName = useCallback(
@@ -632,6 +635,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded }: { mine: SideData; re
         refSamples={refInRange.playerPositions}
         bossSamples={refInRange.bossPositions}
         mineBossSamples={positions.mineBossSamples}
+          mineAlignedSamples={positions.mineAlignedSamples}
         threshold={DIVERGENCE_YALM}
         duration={compareEnd}
         cursor={cursor}

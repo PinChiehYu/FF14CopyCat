@@ -55,6 +55,21 @@ export function positionAt(
   return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }
 }
 
+/**
+ * 把我的位置對齊到參考的 Boss：保留我相對於我那一場 Boss 的位置（只平移、不旋轉，北方仍朝上），
+ * 放到同一時間參考 Boss 的位置上。兩場 Boss 站位不同（換場落點、位移時間不同）時，比較的是相對於 Boss 的站位。
+ * 任一邊當下沒有 Boss 位置（無法選中、轉場等）時沿用原始位置。
+ * @param samples 我的位置（參考時間）
+ * @param mineBoss 我的日誌的 Boss 位置（參考時間）
+ */
+export function alignToBoss(samples: PositionSample[], mineBoss: PositionSample[], refBoss: PositionSample[]): PositionSample[] {
+  return samples.map((s) => {
+    const mb = positionAt(mineBoss, s.t, BOSS_LIMITS)
+    const rb = positionAt(refBoss, s.t, BOSS_LIMITS)
+    return mb && rb ? { ...s, x: s.x - mb.x + rb.x, y: s.y - mb.y + rb.y } : s
+  })
+}
+
 // Boss 面向取最接近的取樣，最多相差這麼久
 const FACING_HOLD_MS = 5000
 

@@ -103,6 +103,14 @@
 - `positionAt()`：線性內插；玩家相鄰取樣超過 4 秒不內插、最多沿用 1 秒（`PLAYER_LIMITS`）；Boss 放寬為 30 秒／10 秒（`BOSS_LIMITS`）。
 - `compareTracks()`：每 0.5 秒取樣兩人位置；對稱判斷以當下 Boss 位置與場地中心（`estimateCenter()`＝參考 Boss 位置中位數）為中心，做左右、前後、點對稱，取與我最近者。
 - `divergences()`：距離 > 8 yalm、持續 ≥ 2 秒、間隔 2 秒內合併；對稱後 ≤ 6 yalm 且 < 原距離一半的點視為可由對稱解釋，同一種對稱超過區段一半時標示。
+- `alignToBoss()`：我的位置加上（參考 Boss − 我的 Boss）的位移（兩場 Boss 位置都以 `BOSS_LIMITS` 內插，任一邊沒有時沿用原始位置），只供俯視圖的「對齊 Boss」視角；`compareTracks()` 仍用原始位置。以比較基準驗證判定是否該改用對齊後位置（2026-09-28）：
+  | 比較 | 絕對位置 | 平移對齊 | 連面向旋轉（`toBossFrame`） |
+  |---|---|---|---|
+  | M8S 武士 | 16 段 | 16 | 22 |
+  | M8S 騎士 | 24 | 24 | 22 |
+  | M8S 黑魔 | 12 | 13 | 13 |
+  | M7S 武士 | 13 | 12 | 23 |
+  - M8S 平移量小（2～7% 的取樣平移 > 3 yalm）。M7S 第二階段 Boss 隨機站在兩側平台（我 3:08～4:03 在 (127, −8)、4:06 後 (73, 17)；參考相反），兩人都站在 Boss 往場中心那側：絕對距離約 20 yalm、平移後約 40 yalm、旋轉後 2～4 yalm。M6S（`WATKBdHRh7m8PNQt` #11 vs `QZ8tGLMJbzrAaHwP` #13）小怪階段平移平均 4、最大 15.6 yalm，站位差異段落因此改變。旋轉在 M8S 第二階段 Boss 面向隨坦克轉動時增加段數。沒有一種基準都對，判定維持絕對位置。
 - `attachMechanics()`：參考日誌的 Boss 施放去重（1 秒）、排除施放超過 8 次的技能，取落在差異區段內、且當下 `distanceAt()` > 8 yalm 的施放，存入 `Divergence.mechanics`。
 
 ### Boss 機制差異（`src/analysis/mechanics.ts`）
@@ -244,6 +252,13 @@
 - **Boss**：施放最多次的敵人為主 Boss（Howling Blade 有多個同名 actor）。部分 Boss 技能沒有名稱（42672 顯示為 `unknown_a6b0`）。
 - **隨機機制**：同一機制的隨機變化使用不同技能 ID，甚至同名不同 ID。Howling Blade：Windfang／Stonefang、Eminent Reign／Revolutionary Reign、Wolves' Reign（#41880/#43369 vs #42927/#43370 等）、Hero's Blow（#42079/#42080 vs #42081/#42082）、Sand Surge（#43138 vs #43520）。
 - **語系**：FFLogs 有 `cn.`、`ja.` 等子網域，**沒有 `tw.fflogs.com`**；API 的 `translate` 只翻成英文。
+
+## 小怪與多目標（2026-09-28 調查）
+
+- FFLogs 對同名的多隻小怪只給一個角色 ID，以 `sourceInstance`／`targetInstance`（第幾隻）區分；本站的位置與施放都不看 instance，Boss 本體（subType Boss）在已看過的零式整場都只有 instance 1，因此不受影響。
+- M7S（`dbN4HXY3QPzMRvDw` #4、`YbakGgfzPQjJ4MK7` #5）：Boss 本體 Brute Abombinator 1 隻；另有同名的隱形施放者（subType NPC、臨時 gameID 2,000,000＋ID，施放 320 次）；小怪 Blooming Abomination（gameID 18308）約 1:09～1:19 有 4 隻（instance 1～4）、約 8:25～8:38 再出現數隻。玩家在 3:00～5:30 打的都是 Boss 本體（在不同平台）。
+- M6S（`WATKBdHRh7m8PNQt` #11、`QZ8tGLMJbzrAaHwP` #13）：Boss 本體 Sugar Riot 1 隻、隱形施放者 15 個 instance；小怪階段約 3:49～6:40：Mu（6 隻）、Yan（3）、Gimme Cat（3）、Feather Ray（4）、Jabberwock（2），另有 Sweet Shot（12，約 6:44～7:35，只施放）。小怪出現時有 `targetabilityupdate`（變成可選中），死亡不會再有；Boss 整場可選中，但玩家主要打小怪，Boss 位置取樣稀疏（有些 15 秒只有 1 筆）。
+- 俯視圖目前不畫小怪。之後若要「標記小怪階段並跳過比較」，可從小怪（非 Boss、非臨時 gameID 的敵人）的可選中事件、玩家攻擊目標與死亡事件判斷期間。
 
 ## 開打前的資料（2026-09-26 調查）
 
@@ -473,6 +488,9 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-28 俯視圖三種視角
+- `positions.ts` 新增 `alignToBoss()`；`Comparison.tsx` 另算 `mineAlignedSamples`；`Positions.tsx` 的 `Arena` 分 `two-bosses`／`aligned`（`BossMarker` 畫圓點或邊緣箭頭），視角存在 `localStorage` 的 `arenaMode`（舊值 `arena` 視為兩個 Boss，預設 `aligned`）。站位差異仍以原始位置計算（驗證見「站位」）。
 
 ### 2026-09-28 cactbot 解析 `# Ability`；機制差異以同機制版本優先
 - `scripts/gen-mechanics.mjs` 的正規表示式接受 `# Ability`，重新產生後 M5S 放縱勁舞 42861／42862 合為一組。修正前 M5S `BF76r8yKh4wGaYkm` #1 vs `2HVnbyKxLYpcq739` #15 的放縱勁舞（3:03～3:22，每 2.4 秒一下、方向隨機）整段錯開一下（時間差 −2.7 秒），修正後 −0.5～0.1 秒。

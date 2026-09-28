@@ -1584,6 +1584,37 @@ h3 {
   opacity: 0.7;
 }
 
+/* 兩個 Boss：以外框顏色區分我的與參考的 Boss */
+.arena .boss-dot.mine,
+.arena .boss-dot.ref {
+  stroke-width: 3;
+  opacity: 0.85;
+}
+
+.arena .boss-dot.mine {
+  stroke: var(--mine);
+}
+
+.arena .boss-dot.ref {
+  stroke: var(--ref);
+}
+
+.arena .edge-arrow.mine polygon {
+  fill: var(--mine);
+}
+
+.arena .edge-arrow.ref polygon {
+  fill: var(--ref);
+}
+
+.legend.boss.mine {
+  color: var(--mine);
+}
+
+.legend.boss.ref {
+  color: var(--ref);
+}
+
 .arena .north {
   fill: var(--text-muted);
   font-size: 12px;
