@@ -479,6 +479,52 @@ button:disabled {
   font-size: 0.9em;
 }
 
+/* 說明收在「?」圖示：滑鼠停留為瀏覽器提示，點擊展開說明框 */
+.help-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.35em;
+  font-size: 1rem;
+  font-weight: normal;
+}
+
+.help-tip-button {
+  width: 1.15em;
+  height: 1.15em;
+  padding: 0;
+  border: 1px solid var(--text-muted);
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  font: 600 0.75em/1 system-ui, sans-serif;
+  cursor: help;
+}
+
+.help-tip-button:hover,
+.help-tip-button[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.help-tip-bubble {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -8px;
+  z-index: 20;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
 .summary-table {
   width: 100%;
   max-width: 720px;

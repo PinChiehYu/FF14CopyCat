@@ -32,6 +32,7 @@ import {
   type SideData,
 } from './load'
 import { AdviceList } from './AdviceList'
+import { HelpTip } from './HelpTip'
 import { Mechanics } from './Mechanics'
 import { Metrics } from './Metrics'
 import { Positions } from './Positions'
@@ -211,8 +212,12 @@ function SummaryTable({
     ...(reference ? [{ key: 'ref', label: '參考', side: reference, end: refEnd }] : []),
   ]
   const damageOf = (s: SideData) => (s === mine ? damage.mine : damage.ref)
-  // 玩家、戰鬥、結果與長度已在上方的選單顯示，這裡只列比較才有的資訊
-  const rows: { label: string; cell: (s: SideData, end: number) => ReactNode }[] = [
+  // 兩邊都有的開打前效果（放在「開打前」的說明裡）
+  const sharedPrepull = reference ? mine.prepull.filter((id) => reference.prepull.includes(id)) : []
+  const prCount = damage.mine?.pr?.count ?? damage.ref?.pr?.count
+  // 玩家、戰鬥、結果與長度已在上方的選單顯示，這裡只列比較才有的資訊。
+  // 各列的說明放在列名旁的「?」（help），格子裡只放資料
+  const rows: { label: string; help?: string; cell: (s: SideData, end: number) => ReactNode }[] = [
     {
       // 死亡是最優先的改進：放在第一列，紅色標示，可點擊跳到該時間
       label: '死亡',
@@ -240,6 +245,7 @@ function SummaryTable({
     {
       // FFLogs 的 rDPS：自己的傷害扣掉隊友 Buff 加成的部分、加上自己 Buff 給隊友的貢獻（整場）
       label: 'rDPS',
+      help: `整場的 rDPS（FFLogs 計算）＝DPS − 隊友 Buff 加成 ＋ 自己 Buff 貢獻，比 DPS 更能反映個人表現。${reference ? '紅字為比參考少的差距。' : ''}滑鼠停在數字上可看各項數值與 aDPS。`,
       cell: (s) => {
         const side = damageOf(s)
         if (side === undefined) return <span className="hint-inline">…</span>
@@ -253,11 +259,7 @@ function SummaryTable({
             title={`整場（FFLogs 計算）\nrDPS ${round(d.rdps)}＝DPS ${round(d.dps)} − 隊友 Buff 加成 ${round(d.taken)} ＋ 自己 Buff 貢獻 ${round(d.given)}\naDPS ${round(d.adps)}`}
           >
             <strong>{round(d.rdps)}</strong>
-            {other && d.rdps < other.rdps && (
-              <span className="rdps-diff" title="比參考少">
-                −{round(other.rdps - d.rdps)}
-              </span>
-            )}
+            {other && d.rdps < other.rdps && <span className="rdps-diff">−{round(other.rdps - d.rdps)}</span>}
           </span>
         )
       },
@@ -265,48 +267,31 @@ function SummaryTable({
     {
       // 這場的 rDPS 在繁中服排名（Worker 掃描的公開日誌）中的百分位；未擊殺或沒有資料時「—」
       label: '繁中服 PR',
+      help: `這場的 rDPS 與本站收錄的繁中服${prCount ? ` ${prCount} 位` : ''}同職業玩家各自最好的一場比較（自己已在排名中時不和自己比），同「搜尋前輩日誌」的 PR。未擊殺或沒有這個職業的排名資料時為「—」。`,
       cell: (s) => {
         const side = damageOf(s)
         if (side === undefined) return <span className="hint-inline">…</span>
-        if (!side.pr) {
-          return (
-            <span className="hint-inline" title={s.selection.fight.kill ? '沒有這個職業的繁中服排名資料' : '未擊殺，不計算 PR'}>
-              —
-            </span>
-          )
-        }
-        return (
-          <span
-            title={`這場的 rDPS 與繁中服 ${side.pr.count} 位玩家各自最好的一場比較（自己已在排名中時不和自己比）\n資料庫中 rDPS 比這場高的擊殺：${side.pr.better} 場`}
-          >
-            <strong>{side.pr.pr}</strong>
-          </span>
-        )
+        if (!side.pr) return <span className="hint-inline">—</span>
+        return <strong>{side.pr.pr}</strong>
       },
     },
     {
       // 依戰鬥日期對照繁中服版本；兩邊不同時標示（技能窗口依各自版本評分，差異列在表格下方）
       label: '版本',
+      help: `依戰鬥日期對照繁中服的版本上線日期（FFLogs 的報告沒有記錄遊戲版本）。${reference ? '兩邊不同時變色，技能窗口依各自版本的規則評分。' : ''}`,
       cell: (s) => {
         const p = s === mine ? patches.mine : patches.ref
         const differs = patches.mine.key !== patches.ref.key
-        return (
-          <span
-            className={differs ? 'patch-differs' : undefined}
-            title="依戰鬥日期對照繁中服的版本上線日期（FFLogs 的報告沒有記錄遊戲版本）"
-          >
-            {p.key}
-          </span>
-        )
+        return <span className={differs ? 'patch-differs' : undefined}>{p.key}</span>
       },
     },
     ...(reference === null ? [] : [{
       label: '比較範圍',
-      // 一定從 0:00 開始，只顯示結束點；沒被裁切的一方（戰鬥長度已在選單上）只標「全場」。
-      // 被裁掉的秒數以短標示「−N.Ns」，說明放在滑鼠提示（手機上原本的長句會換行）
+      help: '兩場都在進行的時段才列入統計，一定從 0:00 開始。較長的一方只比到另一方結束，「−N.Ns」為之後不列入統計的秒數；沒被裁切的一方為「全場」。',
+      // 一定從 0:00 開始，只顯示結束點；沒被裁切的一方（戰鬥長度已在選單上）只標「全場」
       cell: (s: SideData, end: number) =>
         s.duration - end >= 1000 ? (
-          <span title={`之後 ${((s.duration - end) / 1000).toFixed(1)} 秒不列入統計（另一方的戰鬥已結束，沒有比較對象）`}>
+          <span>
             到 {formatFightTime(end)} <span className="hint-inline">−{((s.duration - end) / 1000).toFixed(1)}s</span>
           </span>
         ) : (
@@ -317,24 +302,25 @@ function SummaryTable({
       // FFLogs 沒有開打前的施放事件，以開打當下身上的自身效果推知；只列對方沒有的效果，兩邊都有的放在滑鼠提示。
       // 沒有參考時全部列出
       label: '開打前',
+      help: [
+        '開打當下身上已有的自身效果，推知開打前用過的技能（FFLogs 沒有開打前的施放紀錄）。',
+        reference && '每邊只列對方沒有的效果；兩邊完全相同時為「相同」。',
+        sharedPrepull.length > 0 && `兩邊都有：${sharedPrepull.map(abilityName).join('、')}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
       cell: (s) => {
         if (s.prepull.length === 0) return <span className="hint-inline">—</span>
         if (!reference) return s.prepull.map(abilityName).join('、')
         const other = s === mine ? reference : mine
-        const shared = s.prepull.filter((id) => other.prepull.includes(id))
         const only = s.prepull.filter((id) => !other.prepull.includes(id))
-        const sharedTitle = shared.length > 0 ? `兩邊都有：${shared.map(abilityName).join('、')}` : undefined
         if (only.length === 0) {
           // 兩邊完全相同才寫「相同」；對方多了效果時這邊沒有可列的
           const same = other.prepull.every((id) => s.prepull.includes(id))
-          return (
-            <span className="hint-inline" title={sharedTitle}>
-              {same ? '相同' : '—'}
-            </span>
-          )
+          return <span className="hint-inline">{same ? '相同' : '—'}</span>
         }
         return (
-          <span title={[`${s === mine ? '參考' : '你'}開打時沒有這些效果`, sharedTitle].filter(Boolean).join('\n')}>
+          <span>
             {only.map((id, i) => (
               <span key={id}>
                 {i > 0 && '、'}
@@ -361,7 +347,10 @@ function SummaryTable({
       <tbody>
         {rows.map((row) => (
           <tr key={row.label}>
-            <th>{row.label}</th>
+            <th>
+              {row.label}
+              {row.help && <HelpTip text={row.help} />}
+            </th>
             {sides.map((s) => (
               <td key={s.key}>{row.cell(s.side, s.end)}</td>
             ))}

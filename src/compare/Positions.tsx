@@ -17,6 +17,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { mechanicLabel } from '../analysis/mechanics'
 import { formatFightTime } from '../analysis/timeline'
+import { HelpTip } from './HelpTip'
 
 // 地圖上顯示游標前多久的移動軌跡
 const TRAIL_MS = 5000
@@ -646,39 +647,27 @@ export function Positions({
 
   return (
     <section className="positions" data-tab={shownTab}>
-      {/* 一行摘要，說明放在滑鼠提示；沒有參考時沒有距離與站位差異 */}
+      {/* 一行摘要，說明放在「?」；沒有參考時沒有距離與站位差異 */}
       {!solo && (
       <p className="positions-summary">
-        <span
-          title={`兩人相距超過 ${threshold} yalm、持續 2 秒以上的時段。兩場 Boss 站在不同位置（相距超過 ${BOSS_FRAME_GAP_YALM} yalm）時，距離改以各自 Boss 為基準（同「以 Boss 為中心」視角）；距離圖底部的細條標示這些時段`}
-        >
+        <span>
           站位差異 <strong>{divergences.length}</strong> 段
         </span>
-        {atMechanic > 0 && (
-          <span className="tag mechanic" title="Boss 機制結算時仍站在不同位置，最值得對照；其餘多半只是移動路線不同">
-            機制 {atMechanic}
-          </span>
-        )}
-        {byVariant > 0 && (
-          <span className="tag variant" title="這些時段兩邊的 Boss 隨機機制不同，站位不同多半是機制造成">
-            機制不同 {byVariant}
-          </span>
-        )}
-        {untargetable > 0 && (
-          <span className="tag" title={UNTARGETABLE_TITLE}>
-            無法選中 {untargetable}
-          </span>
-        )}
-        {mirrored > 0 && (
-          <span className="tag" title="你的位置接近參考位置的對稱點，可能是攻略或分配不同">
-            可能對稱 {mirrored}
-          </span>
-        )}
-        {bossFramed > 0 && (
-          <span className="tag" title={BOSS_FRAME_TITLE}>
-            以 Boss 為基準 {bossFramed}
-          </span>
-        )}
+        {atMechanic > 0 && <span className="tag mechanic">機制 {atMechanic}</span>}
+        {byVariant > 0 && <span className="tag variant">機制不同 {byVariant}</span>}
+        {untargetable > 0 && <span className="tag">無法選中 {untargetable}</span>}
+        {mirrored > 0 && <span className="tag">可能對稱 {mirrored}</span>}
+        {bossFramed > 0 && <span className="tag">以 Boss 為基準 {bossFramed}</span>}
+        <HelpTip
+          text={[
+            `站位差異：兩人相距超過 ${threshold} yalm、持續 2 秒以上的時段；每段只屬於一種分類。距離圖的虛線為門檻，點擊圖表移動時間。`,
+            '機制：Boss 機制結算時仍站在不同位置，最值得對照；其餘多半只是移動路線不同。',
+            '機制不同：這些時段兩邊的 Boss 隨機機制不同，站位不同多半是機制造成。',
+            `無法選中：${UNTARGETABLE_TITLE}`,
+            '可能對稱：你的位置接近參考位置的對稱點，可能是攻略或分配不同。',
+            `以 Boss 為基準：${BOSS_FRAME_TITLE}；距離圖底部的細條標示這些時段。`,
+          ].join('\n')}
+        />
       </p>
       )}
       {!solo && (

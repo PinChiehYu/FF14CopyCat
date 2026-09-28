@@ -7,6 +7,7 @@ import type { Ability } from '../fflogs/types'
 import type { JobModule } from '../jobs'
 import type { SideData } from './load'
 import type { TimelineWindow } from '../analysis/windows'
+import { HelpTip } from './HelpTip'
 
 const ZOOM_LEVELS = [10, 20, 40, 80] // 每秒像素
 
@@ -130,12 +131,15 @@ export function Timeline({
             ))}
           </select>
         </label>
-        <span className="hint">
-          {reference
-            ? '時間軸以參考日誌為準；我的施放已依 Boss 機制對齊。一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。'
-            : ''}
-          灰底為 Boss 無法選中。滑鼠停在圖示上可看技能與原始時間。
-        </span>
+        <HelpTip
+          text={[
+            reference && '時間軸以參考日誌為準；我的施放已依 Boss 機制對齊。',
+            reference && '一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。',
+            '灰底為 Boss 無法選中。滑鼠停在圖示上可看技能與原始時間。',
+          ]
+            .filter(Boolean)
+            .join('\n')}
+        />
       </div>
 
       <div className="timeline-body">
