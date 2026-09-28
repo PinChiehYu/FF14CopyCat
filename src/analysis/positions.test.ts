@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { alignToBoss, attachMechanics, attachVariants, bossPoseAt, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
+import { alignToBoss, attachMechanics, attachUntargetable, attachVariants, bossPoseAt, compareTracks, divergences, positionAt, toBossFrame, type PositionSample } from './positions'
 
 const s = (seconds: number, x: number, y: number): PositionSample => ({ t: seconds * 1000, x, y })
 
@@ -71,9 +71,37 @@ describe('compareTracks / divergences', () => {
       { t: 43_500, abilityId: 4 }, // 區段結束後 → 不算
     ]
     const distance = (t: number) => (t === 15_500 ? 5 : t >= 10_000 && t <= 16_000 ? 10 : 2)
-    const [a, b] = attachMechanics(divs, boss, distance, 8)
+    const [a, b] = attachMechanics(divs, { mine: [], ref: boss, mineToRef: (t) => t }, distance, 8)
     expect(a.mechanics.map((m) => m.abilityId)).toEqual([2])
     expect(b.mechanics).toEqual([])
+  })
+
+  it('lists the mechanics of both sides, pairing the same ability within 5 seconds', () => {
+    const divs = [{ start: 10_000, end: 20_000, maxDistance: 10, mirror: null, mechanics: [] }]
+    // 我的時間比參考晚 2 秒
+    const mineToRef = (t: number) => t - 2000
+    const ref = [
+      { t: 12_000, abilityId: 1 }, // 我在 14.5 秒（參考時間 12.5）結算 → 合成一筆
+      { t: 18_000, abilityId: 2 }, // 我這邊沒有 → 只有參考
+    ]
+    const mine = [
+      { t: 14_500, abilityId: 1 },
+      { t: 17_000, abilityId: 3 }, // 參考時間 15 秒、只有我
+      { t: 40_000, abilityId: 2 }, // 相差太遠，不與參考的 2 配對
+    ]
+    const [d] = attachMechanics(divs, { mine, ref, mineToRef }, () => 10, 8)
+    expect(d.mechanics).toEqual([
+      { abilityId: 1, t: 12_000, ref: 12_000, mine: 14_500 },
+      { abilityId: 3, t: 15_000, mine: 17_000 },
+      { abilityId: 2, t: 18_000, ref: 18_000, mine: undefined },
+    ])
+  })
+
+  it('marks divergences overlapping a span when the boss cannot be targeted', () => {
+    const d = (start: number, end: number) => ({ start, end, maxDistance: 10, mirror: null, mechanics: [] })
+    const [a, b] = attachUntargetable([d(10_000, 20_000), d(30_000, 40_000)], [{ start: 18_000, end: 25_000 }])
+    expect(a.untargetable).toBe(true)
+    expect(b.untargetable).toBeUndefined()
   })
 
   it('attaches a random mechanic variant during or shortly before a divergence', () => {

@@ -266,6 +266,22 @@ describe('generateAdvice', () => {
     expect(advice[0].detail).toMatch('1:40.0（你：Ikishoten；參考：Meikyo Shisui）')
   })
 
+  it('groups position differences while the boss cannot be targeted into one low item', () => {
+    const advice = generateAdvice(
+      input({
+        divergences: [
+          // 轉場時機制結算、相距很遠：不列為站錯
+          { start: 100_000, end: 106_000, maxDistance: 17, mirror: null, mechanics: [{ t: 101_000, abilityId: 1 }], untargetable: true },
+          // 也不算在「可能是不同攻略」
+          { start: 200_000, end: 210_000, maxDistance: 15, mirror: 'left-right', mechanics: [], untargetable: true },
+        ],
+      }),
+    )
+    expect(advice).toHaveLength(1)
+    expect(advice[0]).toMatchObject({ severity: 'low', title: '2 段站位差異發生在 Boss 無法選中時', at: 100_000 })
+    expect(advice[0].detail).toMatch('1:40.0、3:20.0。')
+  })
+
   it('adds ability IDs when variants share a name', () => {
     const variant = { t: 95_000, mine: [42081], ref: [42079], kind: 'variant' as const }
     const [a] = generateAdvice(

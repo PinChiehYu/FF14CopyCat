@@ -6,6 +6,7 @@ import {
   MIRROR_LABELS,
   toBossFrame,
   type Divergence,
+  type DivergenceMechanic,
   type Point,
   type PositionSample,
   type TrackPoint,
@@ -21,6 +22,7 @@ const CHART_WIDTH = 1000
 const CHART_HEIGHT = 90
 // 每段站位差異最多列出幾個機制
 const MAX_LISTED_MECHANICS = 3
+const UNTARGETABLE_TITLE = '這段期間 Boss 無法選中（轉場等），玩家常被強制移動或無法移動，站位不同不一定是站錯；不列入站位建議'
 
 function nearest(track: TrackPoint[], t: number): TrackPoint | undefined {
   if (track.length === 0) return undefined
@@ -346,7 +348,7 @@ function DistanceChart({
       {divergences.map((d) => (
         <rect
           key={d.start}
-          className={d.variant || d.mirror ? 'band mirrored' : d.mechanics.length > 0 ? 'band mechanic' : 'band'}
+          className={d.variant || d.mirror || d.untargetable ? 'band mirrored' : d.mechanics.length > 0 ? 'band mechanic' : 'band'}
           x={x(d.start)}
           width={Math.max(2, x(d.end) - x(d.start))}
           y={0}
@@ -418,9 +420,11 @@ export function Positions({
   const alignedNow =
     positionAt(bossSamples, cursor, BOSS_LIMITS) !== null && positionAt(mineBossSamples, cursor, BOSS_LIMITS) !== null
   // 機制不同優先於其他標示：站位不同多半是機制造成
+  // 其次是 Boss 無法選中（轉場等）：玩家常被強制移動或無法移動
   const byVariant = divergences.filter((d) => d.variant).length
-  const atMechanic = divergences.filter((d) => !d.variant && d.mechanics.length > 0).length
-  const mirrored = divergences.filter((d) => !d.variant && d.mirror).length
+  const untargetable = divergences.filter((d) => !d.variant && d.untargetable).length
+  const atMechanic = divergences.filter((d) => !d.variant && !d.untargetable && d.mechanics.length > 0).length
+  const mirrored = divergences.filter((d) => !d.variant && !d.untargetable && d.mirror).length
 
   return (
     <section className="positions">
@@ -437,6 +441,11 @@ export function Positions({
         {byVariant > 0 && (
           <span className="tag variant" title="這些時段兩邊的 Boss 隨機機制不同，站位不同多半是機制造成">
             機制不同 {byVariant}
+          </span>
+        )}
+        {untargetable > 0 && (
+          <span className="tag" title={UNTARGETABLE_TITLE}>
+            無法選中 {untargetable}
           </span>
         )}
         {mirrored > 0 && (
@@ -567,12 +576,22 @@ function DivergenceCards({
   return (
     <ol className="divergence-cards" ref={strip}>
       {divergences.map((d, i) => {
-        // 同一段內重複的機制名稱只列一次，最多列 3 個；附上機制結算當下兩人的距離
-        const seen = new Set<string>()
-        const unique = d.mechanics
-          .map((m) => ({ name: abilityName(m.abilityId), t: m.t }))
-          .filter((m) => !seen.has(m.name) && seen.add(m.name))
-        const classes = ['divergence-card', !d.variant && d.mechanics.length > 0 && 'at-mechanic', d.variant && 'by-variant', i === active && 'active']
+        // 同一段內重複的機制名稱只列一次，最多列 3 個；附上兩邊各自結算的時間與結算當下兩人的距離。
+        // 同名的不同版本（左右等，技能 ID 不同）各自只有一邊，合併後兩邊的時間各取第一個
+        const byName = new Map<string, DivergenceMechanic & { name: string }>()
+        for (const m of d.mechanics) {
+          const name = abilityName(m.abilityId)
+          const first = byName.get(name)
+          if (!first) byName.set(name, { ...m, name })
+          else byName.set(name, { ...first, mine: first.mine ?? m.mine, ref: first.ref ?? m.ref })
+        }
+        const unique = [...byName.values()]
+        const classes = [
+          'divergence-card',
+          !d.variant && !d.untargetable && d.mechanics.length > 0 && 'at-mechanic',
+          d.variant && 'by-variant',
+          i === active && 'active',
+        ]
         const variantTitle = d.variant
           ? [
               `兩邊的 Boss 隨機機制不同（${formatFightTime(d.variant.t)}）`,
@@ -598,9 +617,14 @@ function DivergenceCards({
                   </span>
                 ) : (
                   <>
+                    {d.untargetable && (
+                      <span className="tag" title={UNTARGETABLE_TITLE}>
+                        Boss 無法選中
+                      </span>
+                    )}
                     {d.mechanics.length > 0 && <span className="tag mechanic">機制</span>}
-                    {d.mirror && <span className="tag">可能是{MIRROR_LABELS[d.mirror]}站位</span>}
-                    {d.mechanics.length === 0 && !d.mirror && <span className="card-sub">移動路線不同</span>}
+                    {d.mirror && !d.untargetable && <span className="tag">可能是{MIRROR_LABELS[d.mirror]}站位</span>}
+                    {d.mechanics.length === 0 && !d.mirror && !d.untargetable && <span className="card-sub">移動路線不同</span>}
                   </>
                 )}
               </span>
@@ -612,8 +636,8 @@ function DivergenceCards({
                     return (
                       <span key={m.name} className={now ? 'card-mechanic now' : 'card-mechanic'}>
                         <span className="card-mechanic-name">{m.name}</span>
-                        <span className="card-sub">
-                          {formatFightTime(m.t)}
+                        <span className="card-sub" title="兩邊各自結算的時間（各自的戰鬥時間）；—：這段期間那一邊沒有結算">
+                          我 {m.mine !== undefined ? formatFightTime(m.mine) : '—'} · 參考 {m.ref !== undefined ? formatFightTime(m.ref) : '—'}
                           {distance != null && ` · ${distance.toFixed(1)} yalm`}
                         </span>
                       </span>

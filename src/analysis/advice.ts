@@ -312,7 +312,9 @@ function positionAdvice(input: AdviceInput): Advice[] {
   const lostNote = (d: Divergence) => (overlapsLost(d) ? '這段同時少打了 GCD，站位可能讓你無法持續攻擊。' : '')
   // 兩邊隨機機制不同（見 attachVariants）的站位差異是機制造成的，不逐段列出，最後合併成一則參考
   const byVariant = divergences.filter((d) => d.variant)
-  const unexplained = divergences.filter((d) => !d.mirror && !d.variant)
+  // Boss 無法選中（轉場等）時玩家常被強制移動或無法移動，站位差異不算站錯，同樣合併成一則參考
+  const untargetable = divergences.filter((d) => d.untargetable && !d.variant)
+  const unexplained = divergences.filter((d) => !d.mirror && !d.variant && !d.untargetable)
 
   // 站位差異在 Boss 機制結算時才有明顯意義：有機制的差異優先列出，並指出是哪個機制
   const atMechanic = unexplained
@@ -359,7 +361,17 @@ function positionAdvice(input: AdviceInput): Advice[] {
     })
   }
 
-  const mirrored = divergences.filter((d) => d.mirror && !d.variant)
+  if (untargetable.length > 0) {
+    const listed = untargetable.slice(0, MAX_LISTED_TIMES).map((d) => formatFightTime(d.start))
+    items.push({
+      severity: 'low',
+      title: `${untargetable.length} 段站位差異發生在 Boss 無法選中時`,
+      detail: `${listed.join('、')}${untargetable.length > listed.length ? ' 等' : ''}。轉場等 Boss 無法選中的期間，玩家常被強制移動或無法移動，站位不同不一定是站錯。`,
+      at: untargetable[0].start,
+    })
+  }
+
+  const mirrored = divergences.filter((d) => d.mirror && !d.variant && !d.untargetable)
   if (mirrored.length > 0) {
     const kinds = [...new Set(mirrored.map((d) => MIRROR_LABELS[d.mirror!]))].join('、')
     items.push({

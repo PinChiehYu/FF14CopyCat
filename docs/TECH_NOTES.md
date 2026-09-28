@@ -111,7 +111,8 @@
   | M8S 黑魔 | 12 | 13 | 13 |
   | M7S 武士 | 13 | 12 | 23 |
   - M8S 平移量小（2～7% 的取樣平移 > 3 yalm）。M7S 第二階段 Boss 隨機站在兩側平台（我 3:08～4:03 在 (127, −8)、4:06 後 (73, 17)；參考相反），兩人都站在 Boss 往場中心那側：絕對距離約 20 yalm、平移後約 40 yalm、旋轉後 2～4 yalm。M6S（`WATKBdHRh7m8PNQt` #11 vs `QZ8tGLMJbzrAaHwP` #13）小怪階段平移平均 4、最大 15.6 yalm，站位差異段落因此改變。旋轉在 M8S 第二階段 Boss 面向隨坦克轉動時增加段數。沒有一種基準都對，判定維持絕對位置。
-- `attachMechanics()`：參考日誌的 Boss 施放去重（1 秒）、排除施放超過 8 次的技能，取落在差異區段內、且當下 `distanceAt()` > 8 yalm 的施放，存入 `Divergence.mechanics`。
+- `attachMechanics()`：兩邊的 Boss 施放各自去重（1 秒）、排除施放超過 8 次的技能；我的施放以 `mineToRef()` 換成參考時間。任一邊落在差異區段內、且當下 `distanceAt()` > 8 yalm 的施放存入 `Divergence.mechanics`（`DivergenceMechanic`：`t` 參考時間、`mine`／`ref` 各自的戰鬥時間）。參考的施放與我這邊 `PAIR_MECHANIC_MS`（5 秒）內最近的同一技能配成一筆（我這邊不限區段內、不看距離），剩下只在我這邊區段內結算的另列。卡片依繁中名稱合併同名的不同版本（左右等 ID 不同的，各自只有一邊），兩邊時間各取第一個。
+- `attachUntargetable()`：與任一邊 `SideData.untargetable`（我的換成參考時間）重疊的差異設 `Divergence.untargetable`；卡片標「Boss 無法選中」、距離圖灰色、不算 at-mechanic；`positionAdvice()` 排除（variant 優先），合併成一則參考。日誌沒有「無法移動」的狀態，實測見技術變更紀錄 2026-09-28「站位差異列出兩邊的機制；Boss 無法選中」。
 
 ### Boss 機制差異（`src/analysis/mechanics.ts`）
 
@@ -488,6 +489,11 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-28 站位差異列出兩邊的機制；Boss 無法選中
+- 變更：`positions.ts` 的 `attachMechanics()` 改收兩邊的 Boss 施放（`{ mine, ref, mineToRef }`），`Divergence.mechanics` 改為 `DivergenceMechanic[]`；新增 `attachUntargetable()`、`Divergence.untargetable`。`Comparison.tsx` 傳入兩邊的施放與無法選中時段；`advice.ts`、`Positions.tsx` 依 `untargetable` 排除與標示（見「站位」）。
+- 調查（M7S `dbN4HXY3QPzMRvDw` #4 群青日和 vs `YbakGgfzPQjJ4MK7` #5 布青）：Boss 無法選中 2:28.4～2:43.5（Neo Bombarian Special）、5:52.6～6:10.0（Powerslam），兩場一致；Slaminator（7:12、10:12）期間 Boss 可選中、8 人都沒有停手。轉場期間玩家身上沒有任何敵方 debuff 或其他「無法移動」的效果（全部事件）。位置：2:28～2:32 兩人沿 x≈100 往南被拋出（每秒 23→4 yalm，減速曲線相同，後段與走路速度分不出來），2:37～2:43 完全不動但停在 y=11.6／3.4（相距 8.2 yalm），2:43～2:45 再被移到新場地（同時補師對我用了救出）。位置取樣來自玩家自己的事件，轉場期間稀疏（M8S 轉場 6:43～7:37 約 50 秒完全沒有取樣）。以「超過衝刺速度且沒有自己的位移技能＝強制位移」只抓得到被拋出的前 2～3 秒；M8S 召喚光狼（3:01～4:04，Boss 無法選中）也有多次全隊同時被擊退，其餘時間自由移動，因此「無法選中＋強制位移」也不能當成整段不受控。
+- 驗證：M7S 兩段轉場差異（2:38.5–2:44.5 17.3 yalm、6:07.5–6:10.5 15.2 yalm）改標無法選中、不列建議，建議「參考」分頁合併為「2 段站位差異發生在 Boss 無法選中時」。M8S 武士基準 3:10–3:41、3:50–3:59、4:43–4:51，騎士基準 3:22–3:37、3:41–3:53 改標無法選中（召喚光狼期間的代價）。M5S（死魚眼 vs 陰暗爬行初華）沒有無法選中時段，結果不變。
 
 ### 2026-09-28 俯視圖三種視角
 - `positions.ts` 新增 `alignToBoss()`；`Comparison.tsx` 另算 `mineAlignedSamples`；`Positions.tsx` 的 `Arena` 分 `two-bosses`／`aligned`（`BossMarker` 畫圓點或邊緣箭頭），視角存在 `localStorage` 的 `arenaMode`（舊值 `arena` 視為兩個 Boss，預設 `aligned`）。站位差異仍以原始位置計算（驗證見「站位」）。

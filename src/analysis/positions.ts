@@ -189,10 +189,23 @@ export interface Divergence {
   maxDistance: number
   /** 區段內多數時間，我的位置接近參考的對稱位置（可能是不同攻略）；否則為 null */
   mirror: MirrorKind | null
-  /** 區段期間結算的 Boss 機制（見 attachMechanics）；站位差異在機制結算時才有明顯意義 */
-  mechanics: TimedCast[]
+  /** 區段期間結算的 Boss 機制（兩邊都列出，見 attachMechanics）；站位差異在機制結算時才有明顯意義 */
+  mechanics: DivergenceMechanic[]
   /** 區段期間（或開始前不久）兩邊的 Boss 隨機機制不同（見 attachVariants）：站位不同可能是機制造成 */
   variant?: MechanicDifference
+  /** 區段與任一邊 Boss 無法選中的時段重疊（轉場等，玩家常被強制移動或無法移動；見 attachUntargetable） */
+  untargetable?: boolean
+}
+
+/** 站位差異期間結算的 Boss 機制。兩邊都有（相差 PAIR_MECHANIC_MS 內）時合成一筆，只有一邊結算時另一邊的時間為空。 */
+export interface DivergenceMechanic {
+  abilityId: number
+  /** 參考時間（排序、游標與距離用）：參考有結算時為參考的時間，否則為我的時間換算成參考時間 */
+  t: number
+  /** 我的日誌中結算的時間（我的戰鬥時間） */
+  mine?: number
+  /** 參考日誌中結算的時間 */
+  ref?: number
 }
 
 // 隨機機制差異發生在區段開始前這麼久以內，也視為相關（機制通常先施放、後結算）
@@ -221,20 +234,11 @@ export function distanceAt(track: TrackPoint[], t: number): number | null {
   return track[Math.min(track.length - 1, Math.max(0, Math.round(t / step)))].distance
 }
 
-/**
- * 找出每段站位差異期間結算的 Boss 機制：Boss 施放完成（約為機制結算）落在區段內，
- * 且結算當下兩人距離超過門檻。只看區段前後時間的話，機制密集的戰鬥（例如 Howling Blade）
- * 會掛上還沒分開或已回到相近位置時結算的機制。
- * @param bossCasts 參考日誌的 Boss 施放（參考時間）
- * @param distance 參考時間 t 時兩人的距離
- */
-export function attachMechanics(
-  divergences: Divergence[],
-  bossCasts: TimedCast[],
-  distance: (t: number) => number | null,
-  thresholdYalm: number,
-  { maxOccurrences = 8, dedupeMs = 1000 }: MechanicOptions = {},
-): Divergence[] {
+// 兩邊同一技能的結算相差這麼久以內視為同一次（與 Boss 機制差異的配對相同）
+export const PAIR_MECHANIC_MS = 5000
+
+/** 機制候選：同一技能短時間內重複施放只算一次，施放次數多的（自動攻擊等）不算機制。 */
+function mechanicCasts(bossCasts: TimedCast[], { maxOccurrences = 8, dedupeMs = 1000 }: MechanicOptions): TimedCast[] {
   const last = new Map<number, number>()
   const deduped = [...bossCasts]
     .sort((a, b) => a.t - b.t)
@@ -245,15 +249,60 @@ export function attachMechanics(
     })
   const counts = new Map<number, number>()
   for (const c of deduped) counts.set(c.abilityId, (counts.get(c.abilityId) ?? 0) + 1)
-  const mechanics = deduped.filter((c) => (counts.get(c.abilityId) ?? 0) <= maxOccurrences)
+  return deduped.filter((c) => (counts.get(c.abilityId) ?? 0) <= maxOccurrences)
+}
 
-  return divergences.map((d) => ({
-    ...d,
-    mechanics: mechanics.filter((m) => {
-      const d0 = distance(m.t)
-      return m.t >= d.start && m.t <= d.end && d0 !== null && d0 > thresholdYalm
-    }),
-  }))
+/**
+ * 找出每段站位差異期間結算的 Boss 機制，兩邊都列出：任一邊的 Boss 施放完成（約為機制結算）落在區段內，
+ * 且結算當下兩人距離超過門檻。只看區段前後時間的話，機制密集的戰鬥（例如 Howling Blade）
+ * 會掛上還沒分開或已回到相近位置時結算的機制。另一邊 PAIR_MECHANIC_MS 內有同一技能時合成一筆（附上兩邊的時間），
+ * 兩場的機制時間不同（轉場、推進）時也看得出各自何時結算。
+ * @param bossCasts 兩邊的 Boss 施放（各自的戰鬥時間）；mineToRef 把我的時間換算成參考時間
+ * @param distance 參考時間 t 時兩人的距離
+ */
+export function attachMechanics(
+  divergences: Divergence[],
+  bossCasts: { mine: TimedCast[]; ref: TimedCast[]; mineToRef: (t: number) => number },
+  distance: (t: number) => number | null,
+  thresholdYalm: number,
+  options: MechanicOptions = {},
+): Divergence[] {
+  const ref = mechanicCasts(bossCasts.ref, options)
+  const mine = mechanicCasts(bossCasts.mine, options).map((c) => ({ ...c, own: c.t, t: bossCasts.mineToRef(c.t) }))
+  const apart = (t: number) => {
+    const d0 = distance(t)
+    return d0 !== null && d0 > thresholdYalm
+  }
+
+  return divergences.map((d) => {
+    const inside = (t: number) => t >= d.start && t <= d.end && apart(t)
+    const used = new Set<number>()
+    const out: DivergenceMechanic[] = []
+    // 參考的機制：找我這邊最近的同一技能（不限區段內，另一邊的結算時間也列出）
+    for (const r of ref.filter((c) => inside(c.t))) {
+      let best = -1
+      for (let i = 0; i < mine.length; i++) {
+        const gap = Math.abs(mine[i].t - r.t)
+        if (used.has(i) || mine[i].abilityId !== r.abilityId || gap > PAIR_MECHANIC_MS) continue
+        if (best < 0 || gap < Math.abs(mine[best].t - r.t)) best = i
+      }
+      if (best >= 0) used.add(best)
+      out.push({ abilityId: r.abilityId, t: r.t, ref: r.t, mine: best >= 0 ? mine[best].own : undefined })
+    }
+    // 只有我這邊在區段內結算的
+    mine.forEach((m, i) => {
+      if (!used.has(i) && inside(m.t)) out.push({ abilityId: m.abilityId, t: m.t, mine: m.own })
+    })
+    return { ...d, mechanics: out.sort((a, b) => a.t - b.t) }
+  })
+}
+
+/**
+ * 標示與 Boss 無法選中的時段重疊的站位差異（任一邊；時段為參考時間）。轉場時玩家常被強制移動、落地後無法移動，
+ * 日誌沒有「無法移動」的狀態，位置取樣也稀疏，站位差異照樣顯示但不當成站錯。
+ */
+export function attachUntargetable(divergences: Divergence[], spans: { start: number; end: number }[]): Divergence[] {
+  return divergences.map((d) => (spans.some((s) => s.start < d.end && s.end > d.start) ? { ...d, untargetable: true } : d))
 }
 
 /** 對稱位置能解釋大部分差距：對稱後距離在門檻的 3/4 內，且不到原距離的一半。 */
