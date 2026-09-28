@@ -494,6 +494,9 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 俯視圖在游標時間內插
+- `Positions.tsx` 的 `Arena`／`BossArena` 當下位置改為 `positionAt(samples, cursor)`（Boss 用 `BOSS_LIMITS`、面向 `bossPoseAt(…, cursor)`），原本是 `nearest(track, cursor)`（track 每 0.5 秒）；軌跡為游標前的 track 取樣再接上當下位置。`BossArena` 新增 `refSamples`。站位判定（track、距離圖、卡片、左下角的判定距離）不變。
+
 ### 2026-09-28 圖例疊在俯視圖；最近技能順序；Buff 列
 - `Positions.tsx`：`.arena-caption` 移除，圖例與提示放進 `.arena-overlay.top`（`.arena-legend`、`.arena-hints`，由上而下排列）。
 - `StatusPanel.tsx`：`RecentActions` 每組先畫 `[...weaves].reverse()` 再畫 GCD；`SideStatus` 的自身 Buff 依 `end` 排序；`.aura-row` 改為固定高度（桌面 32 px、手機 26 px）、`overflow: hidden`、子元素 `flex: none`。

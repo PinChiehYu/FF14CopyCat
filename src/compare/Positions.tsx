@@ -205,21 +205,22 @@ function Arena({
   const scale = MAP_SIZE / size
   const px = (p: Point) => ({ x: (p.x - minX) * scale, y: (p.y - minY) * scale })
   // track 的 mine 是原始位置；對齊 Boss 時改用平移後的位置
-  const mineAt = (p: TrackPoint) => (twoBosses ? p.mine : positionAt(mineAlignedSamples, p.t))
-  const trail = (pick: (p: TrackPoint) => Point | null) =>
-    track
-      .filter((p) => p.t > cursor - TRAIL_MS && p.t <= cursor)
-      .map(pick)
+  const mineSource = twoBosses ? mineSamples : mineAlignedSamples
+  // 當下的位置直接在游標時間內插（track 每 0.5 秒一點，取最近的點播放時會一格一格跳）
+  const mine = positionAt(mineSource, cursor)
+  const ref = positionAt(refSamples, cursor)
+  const refBoss = positionAt(bossSamples, cursor, BOSS_LIMITS)
+  const mineBoss = twoBosses ? positionAt(mineBossSamples, cursor, BOSS_LIMITS) : null
+  // 軌跡：前 5 秒的 track 取樣，接到當下的位置
+  const trail = (pick: (p: TrackPoint) => Point | null, current: Point | null) =>
+    [...track.filter((p) => p.t > cursor - TRAIL_MS && p.t < cursor).map(pick), current]
       .filter((p): p is Point => p !== null)
       .map(px)
       .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
       .join(' ')
-  const now = nearest(track, cursor)
-  const mine = now ? mineAt(now) : null
-  const mineBoss = twoBosses && now ? positionAt(mineBossSamples, now.t, BOSS_LIMITS) : null
   // Boss 面向（前後 5 秒內有取樣才有）
-  const refFacing = now ? bossPoseAt(bossSamples, now.t)?.facing : undefined
-  const mineFacing = twoBosses && now ? bossPoseAt(mineBossSamples, now.t)?.facing : undefined
+  const refFacing = bossPoseAt(bossSamples, cursor)?.facing
+  const mineFacing = twoBosses ? bossPoseAt(mineBossSamples, cursor)?.facing : undefined
   // 每 5 yalm 一條格線
   const grid = Array.from({ length: Math.ceil(size / 5) + 1 }, (_, i) => Math.ceil(minX / 5) * 5 + i * 5)
   const gridY = Array.from({ length: Math.ceil(size / 5) + 1 }, (_, i) => Math.ceil(minY / 5) * 5 + i * 5)
@@ -232,21 +233,12 @@ function Arena({
       {gridY.map((gy) => (
         <line key={`y${gy}`} className="grid" y1={(gy - minY) * scale} y2={(gy - minY) * scale} x1={0} x2={MAP_SIZE} />
       ))}
-      <polyline className="trail ref" points={trail((p) => p.ref)} />
-      <polyline className="trail mine" points={trail(mineAt)} />
+      <polyline className="trail ref" points={trail((p) => p.ref, ref)} />
+      <polyline className="trail mine" points={trail((p) => (twoBosses ? p.mine : positionAt(mineAlignedSamples, p.t)), mine)} />
       {/* 兩個 Boss 重疊時參考的 Boss 在上方（後畫） */}
       {mineBoss && <BossMarker at={mineBoss} px={px} from={mine} label="我的 Boss" className="mine" facing={mineFacing} />}
-      {now?.boss && (
-        <BossMarker
-          at={now.boss}
-          px={px}
-          from={now.ref}
-          label="參考 Boss"
-          className="ref"
-          facing={refFacing}
-        />
-      )}
-      {now?.ref && <circle className="dot ref" cx={px(now.ref).x} cy={px(now.ref).y} r={6} />}
+      {refBoss && <BossMarker at={refBoss} px={px} from={ref} label="參考 Boss" className="ref" facing={refFacing} />}
+      {ref && <circle className="dot ref" cx={px(ref).x} cy={px(ref).y} r={6} />}
       {mine && <circle className="dot mine" cx={px(mine).x} cy={px(mine).y} r={6} />}
       <text className="north" x={MAP_SIZE - 14} y={16}>
         N
@@ -272,6 +264,7 @@ function BossArena({
   track,
   cursor,
   mineSamples,
+  refSamples,
   mineBoss,
   refBoss,
 }: {
@@ -279,16 +272,18 @@ function BossArena({
   cursor: number
   /** 我的原始位置（參考時間） */
   mineSamples: PositionSample[]
+  refSamples: PositionSample[]
   /** 我的日誌的 Boss 位置（已換算成參考時間） */
   mineBoss: PositionSample[]
   refBoss: PositionSample[]
 }) {
-  const rel = (p: TrackPoint) => ({
-    mine: relativeAt(positionAt(mineSamples, p.t), mineBoss, p.t),
-    ref: relativeAt(p.ref, refBoss, p.t),
+  const relAt = (t: number) => ({
+    mine: relativeAt(positionAt(mineSamples, t), mineBoss, t),
+    ref: relativeAt(positionAt(refSamples, t), refBoss, t),
   })
-  const now = nearest(track, cursor)
-  const current = now ? rel(now) : { mine: null, ref: null }
+  const rel = (p: TrackPoint) => relAt(p.t)
+  // 當下的位置直接在游標時間內插（不取 track 的 0.5 秒取樣，播放時才不會一格一格跳）
+  const current = relAt(cursor)
   // 範圍：游標前後 10 秒內離 Boss 最遠的距離，對齊 10 yalm
   const around = track.filter((p) => Math.abs(p.t - cursor) <= VIEW_WINDOW_MS && p.t % 1000 === 0).map(rel)
   const far = Math.max(
@@ -300,9 +295,7 @@ function BossArena({
   const c = MAP_SIZE / 2
   const px = (p: Point) => ({ x: c + p.x * scale, y: c + p.y * scale })
   const trail = (key: 'mine' | 'ref') =>
-    track
-      .filter((p) => p.t > cursor - TRAIL_MS && p.t <= cursor)
-      .map((p) => rel(p)[key])
+    [...track.filter((p) => p.t > cursor - TRAIL_MS && p.t < cursor).map((p) => rel(p)[key]), current[key]]
       .filter((p): p is Point => p !== null)
       .map(px)
       .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
@@ -620,7 +613,14 @@ export function Positions({
           {/* 圖例與提示（左上）、距離（左下）疊在俯視圖內，不另佔行；右上是北方的 N */}
           <div className="arena-wrap">
             {showBossFrame ? (
-              <BossArena track={track} cursor={cursor} mineSamples={mineSamples} mineBoss={mineBossSamples} refBoss={bossSamples} />
+              <BossArena
+                track={track}
+                cursor={cursor}
+                mineSamples={mineSamples}
+                refSamples={refSamples}
+                mineBoss={mineBossSamples}
+                refBoss={bossSamples}
+              />
             ) : (
               <Arena
                 mode={mode === 'two-bosses' ? 'two-bosses' : 'aligned'}
