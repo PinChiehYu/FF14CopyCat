@@ -1836,12 +1836,17 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* 固定一行高，放不下時截掉右邊（剩餘時間長的排在後面，見 SideStatus），播放時不換行跳動 */
 .aura-row {
   display: flex;
-  flex-wrap: wrap;
   gap: 3px;
-  min-height: 32px;
+  height: 32px;
   align-items: center;
+  overflow: hidden;
+}
+
+.aura-row > * {
+  flex: none;
 }
 
 /* 狀態圖示原圖為 24×32 直式，維持比例 */
@@ -2066,13 +2071,7 @@ h3 {
   border-color: var(--border);
 }
 
-.arena-caption {
-  margin: 4px 0 0;
-  font-size: 0.85em;
-  font-variant-numeric: tabular-nums;
-}
-
-/* 俯視圖內的疊加文字：左下距離、左上提示（右上是北方的 N） */
+/* 俯視圖內的疊加文字：左上圖例與提示、左下距離（右上是北方的 N） */
 .arena-wrap {
   position: relative;
 }
@@ -2089,14 +2088,31 @@ h3 {
   pointer-events: auto;
 }
 
-.arena-overlay.hints {
+/* 左上：圖例一行，其下為提示（有時才出現） */
+.arena-overlay.top {
   top: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.arena-legend {
+  max-width: 100%;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border-radius: 4px;
+}
+
+.arena-hints {
   display: flex;
   gap: 6px;
   color: var(--text-muted);
 }
 
-.arena-overlay.hints span {
+.arena-hints span {
   padding: 0 4px;
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   border-radius: 4px;
@@ -2108,15 +2124,6 @@ h3 {
   color: var(--text);
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   border-radius: 4px;
-}
-
-/* 每行固定一行高（空的也保留），過長時截斷：播放時內容改變不跳動 */
-.arena-caption-line {
-  min-height: 1.5em;
-  margin: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .legend.mine {
@@ -2570,7 +2577,7 @@ h3 {
   }
 
   .aura-row {
-    min-height: 24px;
+    height: 26px;
   }
 
   /* 時間軸：縮窄左側標籤欄 */

@@ -494,6 +494,10 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 圖例疊在俯視圖；最近技能順序；Buff 列
+- `Positions.tsx`：`.arena-caption` 移除，圖例與提示放進 `.arena-overlay.top`（`.arena-legend`、`.arena-hints`，由上而下排列）。
+- `StatusPanel.tsx`：`RecentActions` 每組先畫 `[...weaves].reverse()` 再畫 GCD；`SideStatus` 的自身 Buff 依 `end` 排序；`.aura-row` 改為固定高度（桌面 32 px、手機 26 px）、`overflow: hidden`、子元素 `flex: none`。
+
 ### 2026-09-28 俯視圖疊加文字
 - `Positions.tsx`：`Arena`／`BossArena` 外包 `.arena-wrap`（`position: relative`），距離與提示改為 `.arena-overlay.distance`（左下）／`.hints`（左上）絕對定位、半透明底；`.arena-caption` 只剩圖例一行。驗證：三種視角、整場每 4 秒取樣，圖例高度固定 20 px、疊加文字都在 `.arena` 範圍內（桌面與 375 px）。
 

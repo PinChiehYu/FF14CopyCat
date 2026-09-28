@@ -617,7 +617,7 @@ export function Positions({
               以 Boss 為中心
             </button>
           </div>
-          {/* 距離（左下）與提示（左上）疊在俯視圖內，不另佔一行；右上是北方的 N */}
+          {/* 圖例與提示（左上）、距離（左下）疊在俯視圖內，不另佔行；右上是北方的 N */}
           <div className="arena-wrap">
             {showBossFrame ? (
               <BossArena track={track} cursor={cursor} mineSamples={mineSamples} mineBoss={mineBossSamples} refBoss={bossSamples} />
@@ -633,14 +633,27 @@ export function Positions({
                 mineBossSamples={mineBossSamples}
               />
             )}
-            <div className="arena-overlay hints">
-              {!now?.boss && <span title="這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）">Boss 不在場</span>}
-              {mode === 'boss' && !bossFrameReady && (
-                <span title="這個時間點至少一邊沒有 Boss 的位置或面向（Boss 無法選取、轉場等），暫以場地顯示">暫以場地顯示</span>
-              )}
-              {mode === 'aligned' && !alignedNow && (
-                <span title="這個時間點至少一邊沒有 Boss 的位置（Boss 無法選取、轉場等），你的位置以原始位置顯示">未對齊</span>
-              )}
+            <div className="arena-overlay top">
+              <div className="arena-legend">
+                <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
+                {mode === 'two-bosses' ? (
+                  <>
+                    <span className="legend boss mine">◯ 我的 Boss</span> <span className="legend boss ref">◯ 參考 Boss</span>
+                  </>
+                ) : (
+                  // 對齊 Boss（含以 Boss 為中心暫以場地顯示時）畫的是參考的 Boss，外框同「兩個 Boss」的參考 Boss
+                  <span className={showBossFrame ? 'legend boss' : 'legend boss ref'}>{showBossFrame ? '▲ Boss' : '◯ 參考 Boss'}</span>
+                )}
+              </div>
+              <div className="arena-hints">
+                {!now?.boss && <span title="這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）">Boss 不在場</span>}
+                {mode === 'boss' && !bossFrameReady && (
+                  <span title="這個時間點至少一邊沒有 Boss 的位置或面向（Boss 無法選取、轉場等），暫以場地顯示">暫以場地顯示</span>
+                )}
+                {mode === 'aligned' && !alignedNow && (
+                  <span title="這個時間點至少一邊沒有 Boss 的位置（Boss 無法選取、轉場等），你的位置以原始位置顯示">未對齊</span>
+                )}
+              </div>
             </div>
             {now?.distance != null && (
               <div
@@ -655,20 +668,6 @@ export function Positions({
                 <strong>{now.distance.toFixed(1)}</strong>
               </div>
             )}
-          </div>
-          {/* 圖例固定一行，播放時不換行、不跳動 */}
-          <div className="arena-caption">
-            <p className="arena-caption-line">
-              <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
-              {mode === 'two-bosses' ? (
-                <>
-                  <span className="legend boss mine">◯ 我的 Boss</span> <span className="legend boss ref">◯ 參考 Boss</span>
-                </>
-              ) : (
-                // 對齊 Boss（含以 Boss 為中心暫以場地顯示時）畫的是參考的 Boss，外框同「兩個 Boss」的參考 Boss
-                <span className={showBossFrame ? 'legend boss' : 'legend boss ref'}>{showBossFrame ? '● Boss' : '◯ 參考 Boss'}</span>
-              )}
-            </p>
           </div>
         </div>
         {status}

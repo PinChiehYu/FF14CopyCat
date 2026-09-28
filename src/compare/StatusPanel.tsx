@@ -88,11 +88,12 @@ function RecentActions({
     )
   }
   return (
-    <div className="recent-actions" aria-label="最近使用的技能（大圖示為 GCD，其後的小圖示為穿插的能力技）">
+    <div className="recent-actions" aria-label="最近使用的技能（由左到右由新到舊；大圖示為 GCD，左邊的小圖示為之後穿插的能力技）">
       {shown.map((g) => (
         <span key={`${(g.gcd ?? g.weaves[0]).t}`} className="recent-group">
+          {/* 整列由左到右是由新到舊：組內也一樣，GCD 之後才按的能力技放在 GCD 左邊（新的在左） */}
+          {[...g.weaves].reverse().map((c) => icon(c, 'ogcd'))}
           {g.gcd && icon(g.gcd, 'gcd')}
-          {g.weaves.map((c) => icon(c, 'ogcd'))}
         </span>
       ))}
     </div>
@@ -143,7 +144,10 @@ function SideStatus({
   const pct = hp ? Math.round((hp.hp / hp.maxHp) * 100) : null
   const player = side.selection.player
   // 只列角色自己的 Buff（學習重點）；隊友給的 Buff 與敵人給的 Debuff 不顯示
-  const buffs = aurasAt(side.auras, t).filter((a) => a.sourceId === player.id && !a.debuff)
+  // 剩餘時間短的在前（爆發期的 Buff 是學習重點）；一行放不下時截掉的是右邊剩餘時間長的（進食、坦姿等）
+  const buffs = aurasAt(side.auras, t)
+    .filter((a) => a.sourceId === player.id && !a.debuff)
+    .sort((a, b) => a.end - b.end)
   // 詠唱中的技能；被取消的詠唱在取消後短暫保留，讓播放時看得到
   const casting = side.castBars.find((b) => b.start <= t && (t < b.end || (b.interrupted && t < b.end + CANCELLED_SHOW_MS)))
   const icon = (a: Aura) => (
