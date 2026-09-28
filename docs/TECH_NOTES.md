@@ -507,6 +507,11 @@
 
 ## 技術變更紀錄
 
+### 2026-09-29 穿插過多（Weaving）
+- `scripts/gen-job-data.mjs` 多抓 Action 的 `Cast100ms`、`Recast100ms`，產生 `GCD_TIMING`（與一般 GCD〔瞬發、2.5 秒〕不同的 GCD：[基本詠唱, 基本復唱]）；GCD 集合不變。
+- `analysis/weaving.ts` 的 `badWeaves()`：依序走過玩家施放（排除道具與 Pneuma、Star Prism 的治療），每遇到 GCD 就檢查前一段；實際詠唱時間以 `SideData.castBars` 中開始時間相同、沒有中斷的讀條判斷（黑魔驗證 152 條讀條中 147 條對上施放，其餘為被中斷）；復唱＝`GCD_TIMING` 的基本復唱 ×（這一側 `gcdStats` 的 GCD ÷ 2.5 秒）。職業覆寫移植自 xivanalysis dawntrail（b240252）的 drg／mnk／nin／pct／sge／vpr `Weaving`；blm 的以太步等例外與冰火層數規則、sch 的建議文字沒有移植（sch 的分級有）。與 xivanalysis 的差異：最後一個 GCD 之後不檢查（xivanalysis 以戰鬥結束當下一個 GCD，比較範圍裁切時不是真的結束）；死亡時略過包含死亡的那一段（xivanalysis 從死亡時間重新計算）。
+- `advice.ts` 的 `weavingAdvice()`、`compare/Weaving.tsx`、`Timeline` 的 `weaveMarks`（能力技列頂部的 `.weave-bar`）。
+
 ### 2026-09-29 止損技與參考比較
 - `rangedFillers.ts` 新增 `compareFillers()`（我的每次換成參考時間後，參考在 `FILLER_MATCH_MS`＝5 秒內有沒有止損技）；`Comparison.tsx` 以 `lossFillerTimes()` 算出兩邊比較範圍內的時間，交給 `compare/Fillers.tsx`（經 `Metrics` 的 `afterGcd` 放在停手時段下方）與 `advice.ts` 的 `fillerAdvice()`（比較與只有我都用）；`usageAdvice()` 跳過止損技。
 

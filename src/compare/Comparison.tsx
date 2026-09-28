@@ -17,7 +17,8 @@ import { alignToBoss, attachBossDistances, attachMechanics, attachUntargetable, 
 import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, type AbilityName } from '../fflogs/client'
 import { useSideDamage, type SideDamage } from './sideDamage'
-import { abilityMap, isPotionName, isUnnamedAbility } from '../fflogs/report'
+import { abilityMap, isItemId, isPotionName, isUnnamedAbility } from '../fflogs/report'
+import { badWeaves, type BadWeave } from '../analysis/weaving'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
 import {
@@ -37,6 +38,7 @@ import { HelpTip } from './HelpTip'
 import { Mechanics, MechanicsHeading } from './Mechanics'
 import { Dots, DotsHeading } from './Dots'
 import { Fillers } from './Fillers'
+import { Weaving } from './Weaving'
 import { lossFillerTimes, RANGED_FILLERS } from '../jobs/rangedFillers'
 import { DOT_RULES, fflogsStatusId } from '../jobs/dotRules'
 import { evaluateDot } from '../analysis/dots'
@@ -587,6 +589,16 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
     const times = (side: SideData) => [...lossFillerTimes(side, isGcd)].sort((a, b) => a - b)
     return { mine: times(mineInRange), ref: solo ? null : times(refInRange) }
   }, [fillerId, job, mineInRange, refInRange, solo])
+  // 穿插過多導致 GCD 延後（xivanalysis 的 Weaving）：兩邊各自、比較範圍內
+  const weaving = useMemo(() => {
+    if (!job) return null
+    const subType = mine.selection.player.subType
+    const find = (side: SideData, gcdMs: number | null) => badWeaves(side, subType, job.isGcd, isItemId, gcdMs)
+    return {
+      mine: find(mineInRange, gcd?.mine.gcdMs ?? null),
+      ref: solo ? null : find(refInRange, gcd?.ref?.gcdMs ?? null),
+    }
+  }, [job, mine, mineInRange, refInRange, gcd, solo])
   const englishName = useCallback(
     (id: number) => {
       const a = abilities.get(id)
@@ -609,6 +621,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         potionUses: mineInRange.buffs.filter((b) => b.statusId === MEDICATED).length,
         dots,
         fillers: fillers?.mine,
+        weaving: weaving?.mine,
+        subType: mine.selection.player.subType,
         fillerId,
       })
     }
@@ -634,9 +648,11 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       cooldowns,
       dots,
       fillers: fillers?.ref ? { mine: fillers.mine, ref: fillers.ref } : undefined,
+      weaving: weaving?.ref ? { mine: weaving.mine, ref: weaving.ref } : undefined,
+      subType: mine.selection.player.subType,
       fillerId,
     })
-  }, [solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns, dots, fillers, fillerId])
+  }, [solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns, dots, fillers, fillerId, weaving])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)
@@ -660,6 +676,16 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       ]),
     [windows, abilityName],
   )
+  const weaveMarks = useMemo(() => {
+    const marks = (list: BadWeave[] | null | undefined, side: 'mine' | 'ref') =>
+      (list ?? []).map((w) => ({
+        side,
+        start: w.start,
+        end: w.end,
+        title: `穿插過多：${w.weaves.map((a) => abilityName(a.abilityId)).join('、')}（${w.weaves.length} 個，可 ${Math.max(0, w.allowed)}），GCD 晚 ${(w.delayMs / 1000).toFixed(1)} 秒`,
+      }))
+    return [...marks(weaving?.mine, 'mine'), ...marks(weaving?.ref, 'ref')]
+  }, [weaving, abilityName])
 
   // 不隨游標變動的區塊先做好，播放時游標每秒更新多次，不必跟著重繪
   const staticSections = useMemo(
@@ -709,22 +735,26 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
           mineToRef={alignment.mineToRef}
           abilityName={abilityName}
           afterGcd={
-            fillers &&
-            fillerId !== undefined && (
-              <Fillers
-                fillerId={fillerId}
-                fillers={fillers}
-                abilities={abilities}
-                abilityName={abilityName}
-                mineToRef={alignment.mineToRef}
-                onJump={jumpTo}
-              />
-            )
+            <>
+              {weaving && (
+                <Weaving weaving={weaving} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
+              )}
+              {fillers && fillerId !== undefined && (
+                <Fillers
+                  fillerId={fillerId}
+                  fillers={fillers}
+                  abilities={abilities}
+                  abilityName={abilityName}
+                  mineToRef={alignment.mineToRef}
+                  onJump={jumpTo}
+                />
+              )}
+            </>
           }
         />
       </>
     ),
-    [solo, advice, jumpTo, windows, dots, fillers, fillerId, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
+    [solo, advice, jumpTo, windows, dots, fillers, fillerId, weaving, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
   )
 
   return (
@@ -819,6 +849,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         job={job}
         highlights={timelineHighlights}
         windows={timelineWindows}
+        weaveMarks={weaveMarks}
         pushes={pushes}
         focus={focus}
         cursor={cursor}

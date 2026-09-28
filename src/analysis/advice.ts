@@ -21,6 +21,7 @@ import type { WindowSummary } from './windows'
 import { clipSeverity, type DotSummary } from './dots'
 import { fflogsStatusId } from '../jobs/dotRules'
 import { compareFillers, isRangedFiller } from '../jobs/rangedFillers'
+import { weavingSeverity, type BadWeave } from './weaving'
 
 export type Severity = 'high' | 'medium' | 'low'
 
@@ -71,6 +72,10 @@ export interface AdviceInput {
   fillers?: { mine: number[]; ref: number[] }
   /** 這個職業的止損技 ID（名稱用） */
   fillerId?: number
+  /** 穿插過多（見 analysis/weaving.ts），各自的戰鬥時間 */
+  weaving?: { mine: BadWeave[]; ref: BadWeave[] }
+  /** 職業（FFLogs subType；穿插過多的分級用） */
+  subType?: string
 }
 
 /** 同一條 DoT 規則兩邊的結果；沒有參考時 ref 為 null */
@@ -557,6 +562,40 @@ function dotAdvice(input: { dots?: DotPair[]; abilityName: (id: number) => strin
   return items
 }
 
+// 穿插過多最多列出幾次
+const MAX_WEAVES_LISTED = 5
+
+/**
+ * 穿插過多導致 GCD 延後（xivanalysis 的 Weaving）：依次數分級；有參考時只在我比參考多時提。
+ * 時間：我的戰鬥時間以 mineToRef 換成參考時間。
+ */
+function weavingAdvice(input: {
+  weaving?: { mine: BadWeave[]; ref: BadWeave[] | null }
+  subType?: string
+  abilityName: (id: number) => string
+  mineToRef: (t: number) => number
+}): Advice[] {
+  const w = input.weaving
+  if (!w || w.mine.length === 0 || (w.ref && w.mine.length <= w.ref.length)) return []
+  const severity = weavingSeverity(w.mine.length, input.subType ?? '')
+  if (!severity) return []
+  const delay = w.mine.reduce((sum, b) => sum + b.delayMs, 0)
+  const byDelay = [...w.mine].sort((a, b) => b.delayMs - a.delayMs)
+  const worst = byDelay.slice(0, MAX_WEAVES_LISTED).sort((a, b) => a.start - b.start)
+  return [
+    {
+      severity,
+      title: `穿插過多 ${w.mine.length} 次，GCD 共延後 ${seconds(delay)} 秒${w.ref ? `（參考 ${w.ref.length} 次）` : ''}`,
+      detail:
+        `延後最多的：${worst
+          .map((b) => `${formatFightTime(input.mineToRef(b.start))}（${b.weaves.map((a) => input.abilityName(a.abilityId)).join('、')}，晚 ${seconds(b.delayMs)} 秒）`)
+          .join('、')}。` + '一個 GCD 之間穿插的能力技太多會延後下一個 GCD；把能力技分散到其他 GCD 之間，或在瞬發 GCD 之後穿插。',
+      // 「查看」跳到延後最多的一次
+      at: input.mineToRef(byDelay[0].start),
+    },
+  ]
+}
+
 // 止損技最多列出幾次、幾次以上列為建議（否則參考）
 const MAX_FILLERS_LISTED = 5
 const FILLER_MEDIUM_COUNT = 3
@@ -632,6 +671,10 @@ export interface SoloAdviceInput {
   fillers?: number[]
   /** 這個職業的止損技 ID（名稱用） */
   fillerId?: number
+  /** 穿插過多（見 analysis/weaving.ts） */
+  weaving?: BadWeave[]
+  /** 職業（FFLogs subType；穿插過多的分級用） */
+  subType?: string
 }
 
 /**
@@ -687,6 +730,14 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
 
   items.push(...cooldownAdvice({ cooldowns: input.cooldowns, abilityName, mineToRef: (t) => t }))
   items.push(...dotAdvice({ dots: input.dots, abilityName, mineToRef: (t) => t }))
+  items.push(
+    ...weavingAdvice({
+      weaving: input.weaving && { mine: input.weaving, ref: null },
+      subType: input.subType,
+      abilityName,
+      mineToRef: (t) => t,
+    }),
+  )
   items.push(
     ...fillerAdvice({
       fillers: input.fillers && { mine: input.fillers, ref: null },
@@ -749,6 +800,7 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...windowAdvice(input),
     ...prepullAdvice(input),
     ...usageAdvice(input),
+    ...weavingAdvice(input),
     ...fillerAdvice(input),
     ...positionAdvice(input),
   ]

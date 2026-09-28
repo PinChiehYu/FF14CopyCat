@@ -1321,6 +1321,29 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* 時間軸：穿插過多（能力技列頂部的紅線） */
+.weave-bar {
+  position: absolute;
+  top: 0;
+  height: 3px;
+  background: var(--error);
+  border-radius: 2px;
+}
+
+/* 穿插過多：時間｜穿插的能力技圖示｜個數｜GCD 晚幾秒 */
+.lost-list.weave-list li {
+  grid-template-columns: 5em auto 5.5em 1fr;
+}
+
+.weave-icons {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.weave-icons .usage-icon {
+  margin-right: 0;
+}
+
 .metrics {
   overflow-x: auto;
 }

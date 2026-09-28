@@ -6,7 +6,7 @@
 import { writeFileSync } from 'node:fs'
 
 const API = 'https://xivapi-v2.xivcdn.com/api/sheet/Action'
-const FIELDS = 'Name,CooldownGroup,AdditionalCooldownGroup,IsPvP,IsPlayerAction,ClassJobLevel,ClassJob.Abbreviation,ActionCategory'
+const FIELDS = 'Name,CooldownGroup,AdditionalCooldownGroup,IsPvP,IsPlayerAction,ClassJobLevel,ClassJob.Abbreviation,ActionCategory,Cast100ms,Recast100ms'
 const GCD_GROUP = 58
 // ActionCategory 的極限技（9 與 15 都叫 Limit Break）
 const LIMIT_BREAK_CATEGORIES = [9, 15]
@@ -145,9 +145,16 @@ const rows = await fetchAll()
 const isPlayerSkill = (f) => !f.IsPvP && (f.IsPlayerAction || f.ClassJobLevel > 0)
 
 // 所有非 PvP 的玩家技能中的 GCD（含沒有 ClassJob 的變形技能，例如 Midare Setsugekka）
-const gcd = rows
-  .filter((r) => isPlayerSkill(r.fields) && (r.fields.CooldownGroup === GCD_GROUP || r.fields.AdditionalCooldownGroup === GCD_GROUP))
-  .map((r) => r.row_id)
+const gcdRows = rows.filter(
+  (r) => isPlayerSkill(r.fields) && (r.fields.CooldownGroup === GCD_GROUP || r.fields.AdditionalCooldownGroup === GCD_GROUP),
+)
+const gcd = gcdRows.map((r) => r.row_id)
+// GCD 的基本詠唱與復唱時間（毫秒，未計技能速度）：只列與一般 GCD（瞬發、2.5 秒）不同的
+const gcdTiming = Object.fromEntries(
+  gcdRows
+    .filter((r) => r.fields.Cast100ms > 0 || (r.fields.Recast100ms > 0 && r.fields.Recast100ms !== 25))
+    .map((r) => [r.row_id, [r.fields.Cast100ms * 100, (r.fields.Recast100ms || 25) * 100]]),
+)
 
 // 極限技（非 PvP）：技能使用次數不計入
 const categoryOf = (f) => f.ActionCategory?.value ?? f.ActionCategory?.row_id
@@ -187,6 +194,12 @@ const out = `// 由 scripts/gen-job-data.mjs 從遊戲資料產生，請勿手�
 
 /** 所有 GCD 技能 ID（公共冷卻群組 58），共 ${gcd.length} 個。 */
 export const GCD_IDS: ReadonlySet<number> = new Set(${JSON.stringify(gcd)})
+
+/**
+ * 與一般 GCD（瞬發、復唱 2.5 秒）不同的 GCD：[基本詠唱時間, 基本復唱時間]（毫秒，未計技能速度），共 ${Object.keys(gcdTiming).length} 個。
+ * 穿插能力技的判斷用（見 analysis/weaving.ts）。
+ */
+export const GCD_TIMING: Readonly<Record<number, readonly [number, number]>> = ${JSON.stringify(gcdTiming)}
 
 /** 極限技（ActionCategory 為 Limit Break、非 PvP），共 ${limitBreaks.length} 個。 */
 export const LIMIT_BREAK_IDS: ReadonlySet<number> = new Set(${JSON.stringify(limitBreaks)})

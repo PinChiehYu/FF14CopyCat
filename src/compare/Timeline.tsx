@@ -12,6 +12,14 @@ import { isRangedFiller, lossFillerTimes } from '../jobs/rangedFillers'
 
 const ZOOM_LEVELS = [10, 20, 40, 80] // 每秒像素
 
+/** 時間軸上標示的穿插過多（該側自己的戰鬥時間） */
+export interface WeaveMark {
+  side: 'mine' | 'ref'
+  start: number
+  end: number
+  title: string
+}
+
 interface Lane {
   label: string
   side: 'mine' | 'ref'
@@ -53,6 +61,7 @@ export function Timeline({
   job,
   highlights = [],
   windows = [],
+  weaveMarks = [],
   pushes = [],
   focus = null,
   cursor,
@@ -70,6 +79,8 @@ export function Timeline({
   highlights?: { start: number; end: number }[]
   /** 技能窗口（各側自己的戰鬥時間），畫在該側 GCD 列的底部 */
   windows?: (TimelineWindow & { side: 'mine' | 'ref' })[]
+  /** 穿插過多（各側自己的戰鬥時間）：前一個 GCD 到被延後的 GCD */
+  weaveMarks?: WeaveMark[]
   /** 推進差距（例如轉場）：兩邊各自照實際長度排開，較快的一方補上空白 */
   pushes?: PushDifference[]
   /** 要捲動到的參考時間；每次傳入新物件就會捲動一次 */
@@ -142,6 +153,7 @@ export function Timeline({
             reference && '時間軸以參考日誌為準；我的施放已依 Boss 機制對齊。',
             reference && '一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。',
             '灰底為 Boss 無法選中。滑鼠停在圖示上可看技能與原始時間。',
+            '能力技列頂部的紅線：穿插過多，下一個 GCD 被延後（從前一個 GCD 到被延後的 GCD）。',
             '金黃框：止損技（近戰與坦克離開 Boss 時用的遠程 GCD，例如投盾、飛刀）；用得多代表離 Boss 太遠或走位不順。開場起手（開打前與第一個 GCD）與有強化效果時（貫穿尖、勾刃、燕飛效果提高）不標。',
           ]
             .filter(Boolean)
@@ -178,6 +190,7 @@ export function Timeline({
               fillers={fillers}
               highlights={highlights}
               windows={windows}
+              weaveMarks={weaveMarks}
               pxPerSec={pxPerSec}
               totalMs={totalMs}
               onSeek={onSeek}
@@ -200,6 +213,7 @@ function TimelineLanesImpl({
   fillers,
   highlights,
   windows,
+  weaveMarks,
   pxPerSec,
   totalMs,
   onSeek,
@@ -214,6 +228,7 @@ function TimelineLanesImpl({
   fillers: { mine: Set<number>; ref: Set<number> }
   highlights: { start: number; end: number }[]
   windows: (TimelineWindow & { side: 'mine' | 'ref' })[]
+  weaveMarks: WeaveMark[]
   pxPerSec: number
   totalMs: number
   onSeek?: (t: number) => void
@@ -305,6 +320,13 @@ function TimelineLanesImpl({
                         style={span(at(w.start), at(w.end))}
                         title={w.title}
                       />
+                    ))}
+                {/* 穿插過多：畫在每側最後一列（能力技列）頂部，從前一個 GCD 到被延後的 GCD */}
+                {allLanes.findLastIndex((l) => l.side === lane.side) === laneIndex &&
+                  weaveMarks
+                    .filter((w) => w.side === lane.side)
+                    .map((w) => (
+                      <span key={`weave-${w.start}`} className="weave-bar" style={span(at(w.start), at(w.end))} title={w.title} />
                     ))}
                 {lane.side === 'mine' &&
                   highlights.map((h) => (

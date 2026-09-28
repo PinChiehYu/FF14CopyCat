@@ -323,6 +323,24 @@ describe('generateAdvice', () => {
   })
 })
 
+describe('weaving advice', () => {
+  const weave = (start: number, delayMs: number) => ({ start, end: start + 3000, weaves: [{ t: start + 700, abilityId: 23 }], allowed: 2, delayMs })
+
+  it('reports bad weaves when I have more than the reference', () => {
+    const advice = generateAdvice(input({ weaving: { mine: [weave(10_000, 700), weave(20_000, 1200)], ref: [] }, subType: 'Paladin' }))
+    const item = advice.find((a) => a.title.startsWith('穿插過多'))
+    expect(item).toMatchObject({ severity: 'medium', title: '穿插過多 2 次，GCD 共延後 1.9 秒（參考 0 次）', at: 20_000 })
+    // 不比參考多時不提
+    const same = generateAdvice(input({ weaving: { mine: [weave(10_000, 700)], ref: [weave(9000, 500)] }, subType: 'Paladin' }))
+    expect(same.some((a) => a.title.startsWith('穿插過多'))).toBe(false)
+  })
+
+  it('uses the scholar tiers', () => {
+    const advice = generateAdvice(input({ weaving: { mine: [weave(10_000, 700)], ref: [] }, subType: 'Scholar' }))
+    expect(advice.find((a) => a.title.startsWith('穿插過多'))?.severity).toBe('low')
+  })
+})
+
 describe('ranged filler advice', () => {
   it('lists fillers the reference did not need around the same time', () => {
     const advice = generateAdvice(input({ fillers: { mine: [60_000, 120_000], ref: [62_000] }, fillerId: 7486 }))
