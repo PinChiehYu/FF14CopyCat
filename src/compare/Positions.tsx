@@ -174,7 +174,7 @@ function BossMarker({
 /**
  * 場地俯視圖（北方朝上）。
  * - two-bosses：照實際位置畫兩人與兩場的 Boss（我的 Boss 橘框、參考的 Boss 藍框）
- * - aligned：我的位置平移到參考 Boss 的位置（見 alignToBoss），只畫參考的 Boss
+ * - aligned：我的位置平移到參考 Boss 的位置（見 alignToBoss），只畫參考的 Boss（藍框，同 two-bosses 的參考 Boss）
  */
 function Arena({
   mode,
@@ -239,8 +239,8 @@ function Arena({
           at={now.boss}
           px={px}
           from={now.ref}
-          label={twoBosses ? '參考 Boss' : 'Boss'}
-          className={twoBosses ? 'ref' : ''}
+          label="參考 Boss"
+          className="ref"
           facing={refFacing}
         />
       )}
@@ -599,8 +599,13 @@ export function Positions({
                 <span className="legend boss mine">◯ 我的 Boss</span> <span className="legend boss ref">◯ 參考 Boss</span>
               </>
             ) : (
-              <span className="legend boss" title={now?.boss ? undefined : '這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）'}>
-                ● Boss{now?.boss ? '' : '（不在場）'}
+              // 對齊 Boss（含以 Boss 為中心暫以場地顯示時）畫的是參考的 Boss，外框同「兩個 Boss」的參考 Boss
+              <span
+                className={showBossFrame ? 'legend boss' : 'legend boss ref'}
+                title={now?.boss ? undefined : '這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）'}
+              >
+                {showBossFrame ? '● Boss' : '◯ 參考 Boss'}
+                {now?.boss ? '' : '（不在場）'}
               </span>
             )}
             {mode === 'aligned' && !alignedNow && (
