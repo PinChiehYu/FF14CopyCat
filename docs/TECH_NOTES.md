@@ -490,6 +490,9 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 兩個 Boss 的當下機制
+- `StatusPanel` 抽出 `BossNow`（一場的 Boss 最近／接下來的施放，施放與游標為同一場的戰鬥時間），新增 `twoBosses` 參數；`Positions` 的 `status` 改為 `(twoBosses) => ReactNode`，依俯視圖視角（`mode === 'two-bosses'`）決定；兩行時我的 Boss 用 `mine.bossCasts` 與 `refToMine(cursor)`。原本的 `bossCasts` 參數移除（改取 `reference.bossCasts`）。
+
 ### 2026-09-28 站位差異列出兩邊的機制；Boss 無法選中
 - 變更：`positions.ts` 的 `attachMechanics()` 改收兩邊的 Boss 施放（`{ mine, ref, mineToRef }`），`Divergence.mechanics` 改為 `DivergenceMechanic[]`；新增 `attachUntargetable()`、`Divergence.untargetable`。`Comparison.tsx` 傳入兩邊的施放與無法選中時段；`advice.ts`、`Positions.tsx` 依 `untargetable` 排除與標示（見「站位」）。
 - 調查（M7S `dbN4HXY3QPzMRvDw` #4 群青日和 vs `YbakGgfzPQjJ4MK7` #5 布青）：Boss 無法選中 2:28.4～2:43.5（Neo Bombarian Special）、5:52.6～6:10.0（Powerslam），兩場一致；Slaminator（7:12、10:12）期間 Boss 可選中、8 人都沒有停手。轉場期間玩家身上沒有任何敵方 debuff 或其他「無法移動」的效果（全部事件）。位置：2:28～2:32 兩人沿 x≈100 往南被拋出（每秒 23→4 yalm，減速曲線相同，後段與走路速度分不出來），2:37～2:43 完全不動但停在 y=11.6／3.4（相距 8.2 yalm），2:43～2:45 再被移到新場地（同時補師對我用了救出）。位置取樣來自玩家自己的事件，轉場期間稀疏（M8S 轉場 6:43～7:37 約 50 秒完全沒有取樣）。以「超過衝刺速度且沒有自己的位移技能＝強制位移」只抓得到被拋出的前 2～3 秒；M8S 召喚光狼（3:01～4:04，Boss 無法選中）也有多次全隊同時被擊退，其餘時間自由移動，因此「無法選中＋強制位移」也不能當成整段不受控。

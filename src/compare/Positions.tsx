@@ -378,8 +378,8 @@ export function Positions({
   onJump,
   status,
 }: {
-  /** 顯示在站位圖旁的當下狀態（血量、Buff） */
-  status?: ReactNode
+  /** 顯示在站位圖旁的當下狀態（血量、Buff、Boss 施放）；參數為俯視圖是否顯示兩場的 Boss */
+  status?: (twoBosses: boolean) => ReactNode
   abilityName: (id: number) => string
   track: TrackPoint[]
   divergences: Divergence[]
@@ -533,7 +533,7 @@ export function Positions({
             )}
           </p>
         </div>
-        {status}
+        {status?.(mode === 'two-bosses')}
       </div>
       <DivergenceCards divergences={divergences} track={track} cursor={cursor} abilityName={abilityName} onJump={onJump} />
     </section>

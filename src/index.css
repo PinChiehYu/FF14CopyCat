@@ -1707,6 +1707,13 @@ h3 {
   flex: none;
 }
 
+/* 兩個 Boss：兩場的 Boss 各一行 */
+.boss-now-pair {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .boss-now-name {
   flex: 0 1 auto;
   min-width: 2em;
@@ -2381,7 +2388,8 @@ h3 {
     min-width: 0;
   }
 
-  .boss-now {
+  .boss-now,
+  .boss-now-pair {
     grid-column: 1 / -1;
   }
 

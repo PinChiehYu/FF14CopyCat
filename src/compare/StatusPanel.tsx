@@ -5,6 +5,7 @@ import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import { deathAt, type CastBar, type SideData } from './load'
+import type { ReactNode } from 'react'
 
 // Boss 施放：顯示游標前後這段時間內的
 const BOSS_WINDOW_MS = 5000
@@ -160,13 +161,60 @@ function SideStatus({
   )
 }
 
-/** 游標時間點上，兩邊玩家的血量與自身 Buff，以及 Boss 最近與即將施放的技能。 */
+/** Boss 最近與即將施放的技能（單行：名稱過長時截斷，完整內容在滑鼠提示）。casts 與 t 為同一場的戰鬥時間。 */
+function BossNow({
+  label,
+  casts,
+  t,
+  abilityName,
+}: {
+  label: ReactNode
+  casts: TimedCast[]
+  t: number
+  abilityName: (id: number) => string
+}) {
+  const recent = casts.filter((c) => c.t <= t && c.t > t - BOSS_WINDOW_MS).at(-1)
+  const upcoming = casts.find((c) => c.t > t && c.t <= t + BOSS_WINDOW_MS)
+  return (
+    <p
+      className="boss-now"
+      title={[
+        recent && `${abilityName(recent.abilityId)}（${((t - recent.t) / 1000).toFixed(1)} 秒前）`,
+        upcoming && `接著：${abilityName(upcoming.abilityId)}（${((upcoming.t - t) / 1000).toFixed(1)} 秒後）`,
+      ]
+        .filter(Boolean)
+        .join('\n')}
+    >
+      {label}
+      {recent ? (
+        <>
+          <span className="boss-now-name">{abilityName(recent.abilityId)}</span>
+          <span className="boss-now-time">{((t - recent.t) / 1000).toFixed(1)}s 前</span>
+        </>
+      ) : (
+        <span className="boss-now-name">—</span>
+      )}
+      {upcoming && (
+        <>
+          <span className="boss-now-next">→</span>
+          <span className="boss-now-name next">{abilityName(upcoming.abilityId)}</span>
+          <span className="boss-now-time">{((upcoming.t - t) / 1000).toFixed(1)}s 後</span>
+        </>
+      )}
+    </p>
+  )
+}
+
+/**
+ * 游標時間點上，兩邊玩家的血量與自身 Buff，以及 Boss 最近與即將施放的技能。
+ * 俯視圖顯示兩個 Boss 時，兩場的 Boss 各一行（各自依自己的戰鬥時間），否則只列參考的 Boss。
+ */
 export function StatusPanel({
   mine,
   reference,
   cursor,
   refToMine,
-  bossCasts,
+  twoBosses,
   abilities,
   abilityName,
   control,
@@ -177,45 +225,34 @@ export function StatusPanel({
   /** 參考時間 */
   cursor: number
   refToMine: (t: number) => number
-  /** 參考日誌的 Boss 施放（參考時間） */
-  bossCasts: TimedCast[]
+  /** 俯視圖是否顯示兩場的 Boss */
+  twoBosses: boolean
   abilities: Map<number, Ability>
   abilityName: (id: number) => string
   control: Set<number>
   namedStatus: (id: number) => boolean
 }) {
-  const recent = bossCasts.filter((c) => c.t <= cursor && c.t > cursor - BOSS_WINDOW_MS).at(-1)
-  const upcoming = bossCasts.find((c) => c.t > cursor && c.t <= cursor + BOSS_WINDOW_MS)
   const mineT = refToMine(cursor)
   return (
     <div className="status-panel">
-      {/* 單行：名稱過長時截斷，完整內容在滑鼠提示 */}
-      <p
-        className="boss-now"
-        title={[
-          recent && `${abilityName(recent.abilityId)}（${((cursor - recent.t) / 1000).toFixed(1)} 秒前）`,
-          upcoming && `接著：${abilityName(upcoming.abilityId)}（${((upcoming.t - cursor) / 1000).toFixed(1)} 秒後）`,
-        ]
-          .filter(Boolean)
-          .join('\n')}
-      >
-        <span className="legend boss">● Boss</span>
-        {recent ? (
-          <>
-            <span className="boss-now-name">{abilityName(recent.abilityId)}</span>
-            <span className="boss-now-time">{((cursor - recent.t) / 1000).toFixed(1)}s 前</span>
-          </>
-        ) : (
-          <span className="boss-now-name">—</span>
-        )}
-        {upcoming && (
-          <>
-            <span className="boss-now-next">→</span>
-            <span className="boss-now-name next">{abilityName(upcoming.abilityId)}</span>
-            <span className="boss-now-time">{((upcoming.t - cursor) / 1000).toFixed(1)}s 後</span>
-          </>
-        )}
-      </p>
+      {twoBosses ? (
+        <div className="boss-now-pair">
+          <BossNow
+            label={<span className="legend boss mine">◯ 我的 Boss</span>}
+            casts={mine.bossCasts}
+            t={mineT}
+            abilityName={abilityName}
+          />
+          <BossNow
+            label={<span className="legend boss ref">◯ 參考 Boss</span>}
+            casts={reference.bossCasts}
+            t={cursor}
+            abilityName={abilityName}
+          />
+        </div>
+      ) : (
+        <BossNow label={<span className="legend boss">● Boss</span>} casts={reference.bossCasts} t={cursor} abilityName={abilityName} />
+      )}
       <SideStatus
         label="我"
         side={mine}
