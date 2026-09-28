@@ -494,6 +494,9 @@
 
 ## 技術變更紀錄
 
+### 2026-09-28 俯視圖疊加文字
+- `Positions.tsx`：`Arena`／`BossArena` 外包 `.arena-wrap`（`position: relative`），距離與提示改為 `.arena-overlay.distance`（左下）／`.hints`（左上）絕對定位、半透明底；`.arena-caption` 只剩圖例一行。驗證：三種視角、整場每 4 秒取樣，圖例高度固定 20 px、疊加文字都在 `.arena` 範圍內（桌面與 375 px）。
+
 ### 2026-09-28 手機版分頁
 - `Positions.tsx`：`section.positions` 設 `data-tab`（`arena`／`status`／`cards`，`localStorage` 的 `positionsTab`），新增 `.positions-tabs`（桌面 `display: none`）；`@media (max-width: 560px)` 依 `data-tab` 隱藏 `.arena-panel`／`.status-panel`／`.divergence-cards`，距離圖 60 px。只用 CSS 切換，三個區塊都保持掛載（播放狀態、卡片置中不重算）。`DivergenceCards` 新增 `shownKey`：隱藏時 `clientWidth` 為 0 不捲動，分頁換回時依 `shownKey` 重新置中；卡片的 `onJump` 另外切到 `arena` 分頁。
 

@@ -2072,6 +2072,44 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* 俯視圖內的疊加文字：左下距離、左上提示（右上是北方的 N） */
+.arena-wrap {
+  position: relative;
+}
+
+.arena-overlay {
+  position: absolute;
+  left: 8px;
+  max-width: calc(100% - 40px);
+  overflow: hidden;
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+}
+
+.arena-overlay.hints {
+  top: 6px;
+  display: flex;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.arena-overlay.hints span {
+  padding: 0 4px;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border-radius: 4px;
+}
+
+.arena-overlay.distance {
+  bottom: 6px;
+  padding: 1px 6px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border-radius: 4px;
+}
+
 /* 每行固定一行高（空的也保留），過長時截斷：播放時內容改變不跳動 */
 .arena-caption-line {
   min-height: 1.5em;

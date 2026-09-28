@@ -617,21 +617,46 @@ export function Positions({
               以 Boss 為中心
             </button>
           </div>
-          {showBossFrame ? (
-            <BossArena track={track} cursor={cursor} mineSamples={mineSamples} mineBoss={mineBossSamples} refBoss={bossSamples} />
-          ) : (
-            <Arena
-              mode={mode === 'two-bosses' ? 'two-bosses' : 'aligned'}
-              track={track}
-              cursor={cursor}
-              mineSamples={mineSamples}
-              mineAlignedSamples={mineAlignedSamples}
-              refSamples={refSamples}
-              bossSamples={bossSamples}
-              mineBossSamples={mineBossSamples}
-            />
-          )}
-          {/* 固定兩行（圖例／當下的距離與提示），播放時內容長短改變也不換行、不跳動 */}
+          {/* 距離（左下）與提示（左上）疊在俯視圖內，不另佔一行；右上是北方的 N */}
+          <div className="arena-wrap">
+            {showBossFrame ? (
+              <BossArena track={track} cursor={cursor} mineSamples={mineSamples} mineBoss={mineBossSamples} refBoss={bossSamples} />
+            ) : (
+              <Arena
+                mode={mode === 'two-bosses' ? 'two-bosses' : 'aligned'}
+                track={track}
+                cursor={cursor}
+                mineSamples={mineSamples}
+                mineAlignedSamples={mineAlignedSamples}
+                refSamples={refSamples}
+                bossSamples={bossSamples}
+                mineBossSamples={mineBossSamples}
+              />
+            )}
+            <div className="arena-overlay hints">
+              {!now?.boss && <span title="這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）">Boss 不在場</span>}
+              {mode === 'boss' && !bossFrameReady && (
+                <span title="這個時間點至少一邊沒有 Boss 的位置或面向（Boss 無法選取、轉場等），暫以場地顯示">暫以場地顯示</span>
+              )}
+              {mode === 'aligned' && !alignedNow && (
+                <span title="這個時間點至少一邊沒有 Boss 的位置（Boss 無法選取、轉場等），你的位置以原始位置顯示">未對齊</span>
+              )}
+            </div>
+            {now?.distance != null && (
+              <div
+                className="arena-overlay distance"
+                title={
+                  now.bossFrame
+                    ? `${BOSS_FRAME_TITLE}\n相對 Boss 相距 ${now.distance.toFixed(1)} yalm；場地上相距 ${now.arenaDistance?.toFixed(1)} yalm；兩場 Boss 相距 ${now.bossGap?.toFixed(1)} yalm`
+                    : `兩人在場地上相距 ${now.distance.toFixed(1)} yalm（不論俯視圖的視角）；兩場 Boss 在同一處，站位差異依此判斷`
+                }
+              >
+                {now.bossFrame ? '相對 Boss ' : '相距 '}
+                <strong>{now.distance.toFixed(1)}</strong>
+              </div>
+            )}
+          </div>
+          {/* 圖例固定一行，播放時不換行、不跳動 */}
           <div className="arena-caption">
             <p className="arena-caption-line">
               <span className="legend mine">● 我</span> <span className="legend ref">● 參考</span>{' '}
@@ -642,36 +667,6 @@ export function Positions({
               ) : (
                 // 對齊 Boss（含以 Boss 為中心暫以場地顯示時）畫的是參考的 Boss，外框同「兩個 Boss」的參考 Boss
                 <span className={showBossFrame ? 'legend boss' : 'legend boss ref'}>{showBossFrame ? '● Boss' : '◯ 參考 Boss'}</span>
-              )}
-            </p>
-            <p className="arena-caption-line">
-              {now?.distance != null &&
-                (now.bossFrame ? (
-                  <span title={`${BOSS_FRAME_TITLE}\n場地上相距 ${now.arenaDistance?.toFixed(1)} yalm；兩場 Boss 相距 ${now.bossGap?.toFixed(1)} yalm`}>
-                    相對 Boss 相距 {now.distance.toFixed(1)} yalm
-                  </span>
-                ) : (
-                  <span title="兩人在場地上的距離（不論俯視圖的視角）；兩場 Boss 在同一處，站位差異依此判斷">
-                    相距 {now.distance.toFixed(1)} yalm
-                  </span>
-                ))}
-              {!now?.boss && (
-                <span className="hint-inline" title="這個時間點沒有 Boss 的位置資料（Boss 無法選取、轉場等）">
-                  {' '}
-                  Boss 不在場
-                </span>
-              )}
-              {mode === 'boss' && !bossFrameReady && (
-                <span className="hint-inline" title="這個時間點至少一邊沒有 Boss 的位置或面向（Boss 無法選取、轉場等），暫以場地顯示">
-                  {' '}
-                  （暫以場地顯示）
-                </span>
-              )}
-              {mode === 'aligned' && !alignedNow && (
-                <span className="hint-inline" title="這個時間點至少一邊沒有 Boss 的位置（Boss 無法選取、轉場等），你的位置以原始位置顯示">
-                  {' '}
-                  （未對齊）
-                </span>
               )}
             </p>
           </div>
