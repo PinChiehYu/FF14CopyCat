@@ -172,7 +172,7 @@
 - Worker `GET /npc-names`：`name` 參數最多 20 個，只允許 `[A-Za-z0-9 '\-.,:!&]`（避免注入搜尋語法），否則 400。回傳 `{ 英文: { name, source } }`，查不到的不回傳。
 - 每個名稱的 xivapi 請求逾時 8 秒；有名稱逾時或失敗時仍回 200（該名稱不回傳），但回應只快取 60 秒，之後可重查。
 - 前端（`App.tsx` 的 `useReport()`）：報告載入後**先以英文顯示並可立即選擇**，另以 `fetchFightNames()` 查詢，查到後以 `translateReport()` 把 `Fight.name` 換成繁中、英文放在 `Fight.englishName`。戰鬥名稱以 `/` 拆段逐段翻譯（FFLogs 對多 NPC 的戰鬥用 `a / b / ...` 命名），不合規則的段落（如 `...`）不送出。查詢失敗時沿用英文。
-- 名稱晚到會換掉 `Selection` 物件，`Comparison.tsx` 的 `useSides()` 只依選擇的鍵（報告／戰鬥／角色 ID）重新載入，避免重抓事件。
+- 名稱晚到會換掉 `Selection` 物件，`Comparison.tsx` 的 `useSide()` 只依選擇的鍵（報告／戰鬥／角色 ID）重新載入，避免重抓事件。
 - 第一版在報告載入時等待翻譯才顯示，名稱未快取時約 7 秒（騎士基準報告 4 個名稱），正式站上曾停在「載入報告中」，因此改為不阻擋。
 - 實測：Howling Blade→呼嘯之劍、Dancing Green→熱舞綠光、Sugar Riot→糖彩狂潮、Brute Abombinator→野蠻憎惡、Valigarmanda→艷翼蛇鳥、living liquid→有生命活水、Cruise Chaser→巡航驅逐者、Queen Eternal→永恆女王；Striking Dummy 查不到（保留英文）。
 
@@ -486,7 +486,7 @@
 - **React 19 `ref` prop**：元件 prop 命名為 `ref` 會被當成保留 prop（lint 報 Cannot access refs during render），改名為 `reference`。
 - **瀏覽器快取**：推送後正式站可能仍顯示舊版，加查詢字串（例如 `?v=<commit>`）或重新整理即可。
 - **FFLogs 權杖端點 429**（2026-09-26）：短時間內多次部署 Worker 並測試後，`/oauth/token` 回 429，所有報告查詢失敗約數分鐘後自行恢復。權杖只快取在 isolate 記憶體，每次部署或新 isolate 都會重新取權杖。Worker 現在把權杖的 429 轉成 503，前端對 429／503 顯示「請求過多…請稍候一分鐘再試」。若再發生頻繁，可考慮把權杖放進 `caches.default` 或 KV 跨 isolate 共用。
-- **摘要顯示的名稱**：`useSides()` 只依 ID 載入事件，`SideData.selection` 是載入當時的選擇（Boss 名稱可能還是英文）；`ComparisonLoader` 會把目前的選擇合併回 `SideData` 再交給 `Loaded`。
+- **摘要顯示的名稱**：`useSide()` 只依 ID 載入事件（並快取），`SideData.selection` 是載入當時的選擇（Boss 名稱可能還是英文）；`Comparison` 會把目前的選擇合併回 `SideData` 再交給 `Loaded`。
 - **技能名稱查詢延遲**：`/abilities` 快取未命中時約 8 秒；在瀏覽器驗證繁中名稱時要等比較載入後再多等幾秒。
 - **CSS 手機規則的位置**（2026-09-27）：`@media (max-width: 560px)` 區塊原本在 `index.css` 中段，之後才定義的元件樣式（狀態面板、圖示等）以相同權重蓋掉了手機規則，使部分手機調整沒有生效；手機區塊移到檔案最後。新增元件樣式要放在該區塊之前。
 - **PowerShell 5.1 寫檔**：`Set-Content -Encoding utf8` 會在檔案開頭加 BOM；改用 Edit／Write 工具或 Node 寫檔。
