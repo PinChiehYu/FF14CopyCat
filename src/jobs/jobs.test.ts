@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { getJob, supportedJobs } from './index'
+import { JOB_CATEGORIES } from './generated'
+import { getJob } from './index'
 import { abilityCategory } from './roleActions'
 
 const job = (subType: string) => {
@@ -9,11 +10,11 @@ const job = (subType: string) => {
 }
 
 describe('job modules', () => {
-  it('covers every combat job with its Traditional Chinese name', () => {
-    expect(supportedJobs()).toHaveLength(21)
-    expect(job('BlackMage').name).toBe('黑魔道士')
-    expect(job('Viper').name).toBe('毒蛇劍士')
-    expect(job('DarkKnight').name).toBe('暗黑騎士')
+  // 繁中名稱見 names.test.ts
+  it('covers every combat job', () => {
+    const subTypes = Object.keys(JOB_CATEGORIES)
+    expect(subTypes).toHaveLength(21)
+    for (const subType of subTypes) expect(getJob(subType), subType).toBeDefined()
     expect(getJob('LimitBreak')).toBeUndefined()
   })
 

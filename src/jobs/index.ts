@@ -34,8 +34,3 @@ const JOBS: JobModule[] = Object.entries(JOB_CATEGORIES).map(([subType, categori
 export function getJob(subType: string): JobModule | undefined {
   return JOBS.find((job) => job.subType === subType)
 }
-
-/** 已有規則的職業（FFLogs subType）。 */
-export function supportedJobs(): string[] {
-  return JOBS.map((job) => job.subType)
-}
