@@ -222,17 +222,21 @@ function BossNow({
   casts,
   t,
   abilityName,
+  focused,
 }: {
   label: ReactNode
   casts: TimedCast[]
   t: number
   abilityName: (id: number) => string
+  /** 是否為使用者關注的機制時間點（高光） */
+  focused?: (c: TimedCast) => boolean
 }) {
   const recent = casts.filter((c) => c.t <= t && c.t > t - BOSS_WINDOW_MS).at(-1)
   const upcoming = casts.find((c) => c.t > t && c.t <= t + BOSS_WINDOW_MS)
+  const hot = (c: TimedCast | undefined) => !!c && !!focused?.(c)
   return (
     <p
-      className="boss-now"
+      className={hot(recent) || hot(upcoming) ? 'boss-now focused' : 'boss-now'}
       title={[
         recent && `${abilityName(recent.abilityId)}（${((t - recent.t) / 1000).toFixed(1)} 秒前）`,
         upcoming && `接著：${abilityName(upcoming.abilityId)}（${((upcoming.t - t) / 1000).toFixed(1)} 秒後）`,
@@ -243,7 +247,7 @@ function BossNow({
       {label}
       {recent ? (
         <>
-          <span className="boss-now-name">{abilityName(recent.abilityId)}</span>
+          <span className={hot(recent) ? 'boss-now-name focused' : 'boss-now-name'}>{abilityName(recent.abilityId)}</span>
           <span className="boss-now-time">{((t - recent.t) / 1000).toFixed(1)}s 前</span>
         </>
       ) : (
@@ -252,7 +256,7 @@ function BossNow({
       {upcoming && (
         <>
           <span className="boss-now-next">→</span>
-          <span className="boss-now-name next">{abilityName(upcoming.abilityId)}</span>
+          <span className={hot(upcoming) ? 'boss-now-name next focused' : 'boss-now-name next'}>{abilityName(upcoming.abilityId)}</span>
           <span className="boss-now-time">{((upcoming.t - t) / 1000).toFixed(1)}s 後</span>
         </>
       )}
@@ -275,7 +279,10 @@ export function StatusPanel({
   control,
   namedStatus,
   isGcd,
+  isFocused,
 }: {
+  /** 關注的機制時間點（技能 ID、我的時間；見 focusedMechanics.ts）；沒有選擇時不高光 */
+  isFocused?: ((abilityId: number, mineT: number) => boolean) | null
   mine: SideData
   reference: SideData | null
   /** 參考時間 */
@@ -297,6 +304,7 @@ export function StatusPanel({
           casts={mine.bossCasts}
           t={mineT}
           abilityName={abilityName}
+          focused={isFocused ? (c) => isFocused(c.abilityId, c.t) : undefined}
         />
         {reference && (
           <BossNow
@@ -304,6 +312,7 @@ export function StatusPanel({
             casts={reference.bossCasts}
             t={cursor}
             abilityName={abilityName}
+            focused={isFocused ? (c) => isFocused(c.abilityId, refToMine(c.t)) : undefined}
           />
         )}
       </div>

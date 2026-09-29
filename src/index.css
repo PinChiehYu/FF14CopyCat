@@ -792,6 +792,45 @@ button:disabled {
   background: var(--anchor);
 }
 
+/* 關注的機制時間點（搜尋前輩日誌中勾選的）：較粗的紫色＋淡紫光暈，與對齊錨點（細紫線）區分 */
+.boss-cast.focused {
+  z-index: 1;
+  top: 2px;
+  width: 5px;
+  margin-left: -2px;
+  height: 28px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* 關注的機制時間點：紫色左條＋淡紫底（機制差異表的列、站位差異卡片與其中的機制、當下狀態的 Boss 列） */
+.mechanics tr.focused > *:first-child,
+.card-mechanic.focused,
+.boss-now.focused {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.mechanics tr.focused > *,
+.card-mechanic.focused,
+.boss-now.focused {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.divergence-card.focused > button {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.card-mechanic.focused {
+  padding-left: 6px;
+}
+
+.boss-now-name.focused {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .cast {
   position: absolute;
   top: 4px;
@@ -900,26 +939,125 @@ button:disabled {
   box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
 }
 
+/* 第一行：職業徽章＋PR 範圍靠左、搜尋靠右（手機同一行） */
 .finder-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+}
+
+.finder-range {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.finder-search {
+  flex: none;
+}
+
+/* 第二行：只看機制與我相同＋關注的時間點數 */
+.finder-same {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
-  margin-bottom: 8px;
+  gap: 4px 6px;
+  padding-top: 8px;
+  margin-bottom: 6px;
+  border-top: 1px solid var(--border);
   font-size: 0.9em;
+}
+
+.finder-focus-count {
+  margin-left: auto;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.log-input .finder-same label,
+.log-input .finder-occurrences label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-weight: normal;
+}
+
+/* 勾選框不套用連結輸入框的整列寬度 */
+.log-input .finder-same input[type='checkbox'],
+.log-input .finder-occurrences input[type='checkbox'] {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
+
+/* 關注的時間點：機制名自成一行（名稱多長都照常換行），時間點標籤在下一行換行排列 */
+.finder-occurrences {
+  max-height: 14rem;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  font-size: 0.85em;
+}
+
+.finder-occurrence-group {
+  padding: 5px 0;
+  border-top: 1px dashed var(--border);
+}
+
+.finder-occurrence-group:first-child {
+  border-top: none;
+}
+
+.log-input .finder-occurrence-group > label {
+  white-space: normal;
+}
+
+.finder-occurrence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  padding-left: 1.3em;
+}
+
+/* 每個標籤整體不斷行，放不下就整個換到下一行；比面板寬時才允許內部換行 */
+.log-input .finder-occurrences label.finder-occurrence {
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 8px 1px 4px;
+  white-space: nowrap;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.log-input .finder-occurrences label.finder-occurrence.on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.finder-occurrence span {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.finder-occurrence small {
+  font-size: 0.85em;
+  color: var(--text-muted);
 }
 
 .finder-panel > .hint,
 .finder-panel > .error {
   margin: 0;
-}
-
-.log-input .finder-controls label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font-weight: normal;
 }
 
 .log-input .finder-controls input[type='number'] {
@@ -933,44 +1071,9 @@ button:disabled {
   border-radius: 4px;
 }
 
-/* 勾選框不套用連結輸入框的整列寬度 */
-.log-input .finder-controls input[type='checkbox'] {
-  display: inline-block;
-  width: auto;
-  margin: 0;
-  padding: 0;
-}
-
 .finder-check {
   white-space: nowrap;
   cursor: pointer;
-}
-
-/* 比對的機制：預設收合，展開後可取消勾選不在意的機制 */
-.finder-mechanics {
-  margin-bottom: 8px;
-  font-size: 0.9em;
-}
-
-.finder-mechanics summary {
-  cursor: pointer;
-  color: var(--text-muted);
-}
-
-.finder-mechanic-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  max-height: 10rem;
-  overflow-y: auto;
-  padding: 6px 2px 2px;
-}
-
-.log-input .finder-mechanic-list label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin: 0;
 }
 
 /* 處理中與完成後的結果區同高（下拉選單＋摘要列），面板不跳動 */
@@ -2399,6 +2502,49 @@ h3 {
 
 /* ---- 手機（窄螢幕）版面：放在檔案最後，才能覆寫前面同權重的規則 ---- */
 @media (max-width: 560px) {
+  /* DoT：覆蓋率與提早續上分兩行、名稱欄可換行，兩欄（我／參考）放得進手機寬度 */
+  .dots-table {
+    table-layout: fixed;
+  }
+
+  .dots-table thead th:first-child,
+  .dots-table tbody th {
+    width: 5em;
+    white-space: normal;
+  }
+
+  .dots-table th,
+  .dots-table td {
+    padding: 6px;
+  }
+
+  .dot-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    white-space: normal;
+  }
+
+  .dot-sep {
+    display: none;
+  }
+
+  .dot-clip {
+    white-space: nowrap;
+  }
+
+  /* 搜尋前輩日誌第一行：手機的數字欄沒有上下箭頭，縮窄（仍放得下 100），職業名稱較長（毒蛇劍士）時也與搜尋鈕同一行 */
+  .finder-range {
+    gap: 4px;
+  }
+
+  .log-input .finder-controls input[type='number'] {
+    width: 3em;
+    padding: 4px;
+    text-align: center;
+  }
+
   /* 穿插過多：圖示縮小、欄距縮短，四個能力技也放得進一行 */
   .lost-list.weave-list li {
     grid-template-columns: 4.2em auto auto 1fr;

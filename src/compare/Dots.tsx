@@ -31,7 +31,8 @@ function Cell({ summary, toRef, onJump }: { summary: DotSummary; toRef: (t: numb
       </span>
       {summary.clipPerMinMs !== null && (
         <>
-          {' · '}
+          {/* 手機上覆蓋率與提早續上分兩行，不顯示分隔點 */}
+          <span className="dot-sep"> · </span>
           {worst ? (
             <button type="button" className={`dot-clip${severity ? ` ${severity}` : ''}`} onClick={() => onJump(toRef(worst.t))}>
               提早 {(summary.clipPerMinMs / 1000).toFixed(1)} 秒／分

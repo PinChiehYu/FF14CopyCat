@@ -575,7 +575,12 @@ export function Positions({
   onJump,
   status,
   solo = false,
+  isFocused = null,
+  refToMine = (t) => t,
 }: {
+  /** 關注的機制時間點（技能 ID、我的時間；見 focusedMechanics.ts），站位差異卡片中對到的機制高光；沒有選擇時為 null */
+  isFocused?: ((abilityId: number, mineT: number) => boolean) | null
+  refToMine?: (t: number) => number
   /**
    * 還沒有參考日誌：只顯示我的站位（refSamples 為空、bossSamples 與 mineBossSamples 都是我的 Boss）；
    * 不顯示距離、站位差異與「兩個 Boss」視角
@@ -668,6 +673,7 @@ export function Positions({
             `以 Boss 為基準：${BOSS_FRAME_TITLE}；距離圖底部的細條標示這些時段。`,
             `相對 Boss 相同：${SAME_TO_BOSS_TITLE}（卡片中灰色的機制）。`,
             '卡片的機制：「我 時間 · 參考 時間」為兩邊各自結算的時間（各自的戰鬥時間，— 為那一邊這段沒有結算）；「相距 · 距王 我／參考」為結算當下兩人的距離與各自離自己 Boss 的距離（yalm，— 為沒有位置資料）。滑鼠停在「機制不同」上可看兩邊不同的機制。',
+            '紫色左條：卡片中有你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）。',
           ].join('\n')}
         />
       </p>
@@ -827,6 +833,8 @@ export function Positions({
         track={track}
         cursor={cursor}
         abilityName={abilityName}
+        isFocused={isFocused}
+        refToMine={refToMine}
         shownKey={shownTab}
         onJump={(t) => {
           onJump(t)
@@ -853,12 +861,16 @@ function DivergenceCards({
   abilityName,
   onJump,
   shownKey,
+  isFocused,
+  refToMine,
 }: {
   divergences: Divergence[]
   track: TrackPoint[]
   cursor: number
   abilityName: (id: number) => string
   onJump: (t: number) => void
+  isFocused: ((abilityId: number, mineT: number) => boolean) | null
+  refToMine: (t: number) => number
   /** 卡片列被重新顯示時改變（手機分頁）：隱藏時量不到位置，顯示後要再置中 */
   shownKey?: string
 }) {
@@ -890,6 +902,14 @@ function DivergenceCards({
           else byName.set(name, { ...first, mine: first.mine ?? m.mine, ref: first.ref ?? m.ref })
         }
         const unique = [...byName.values()]
+        // 關注的機制時間點（名稱）：我的結算時間，只有參考那邊結算時換成我的時間
+        const focusedNames = new Set(
+          isFocused
+            ? d.mechanics
+                .filter((m) => isFocused(m.abilityId, m.mine ?? refToMine(m.ref ?? m.t)))
+                .map((m) => abilityName(m.abilityId))
+            : [],
+        )
         // 每段只有一種分類（與摘要、建議一致）；「以 Boss 為基準」是另外的說明標籤
         const kind = divergenceKind(d)
         const classes = [
@@ -897,6 +917,7 @@ function DivergenceCards({
           kind === 'mechanic' && 'at-mechanic',
           kind === 'variant' && 'by-variant',
           i === active && 'active',
+          focusedNames.size > 0 && 'focused',
         ]
         // 滑鼠提示只放資料（哪些機制不同）；分類的意義在站位摘要的「?」
         const variantTitle = d.variant
@@ -938,7 +959,9 @@ function DivergenceCards({
                     return (
                       <span
                         key={m.name}
-                        className={['card-mechanic', now && 'now', m.sameToBoss && 'same-to-boss'].filter(Boolean).join(' ')}
+                        className={['card-mechanic', now && 'now', m.sameToBoss && 'same-to-boss', focusedNames.has(m.name) && 'focused']
+                          .filter(Boolean)
+                          .join(' ')}
                       >
                         <span className="card-mechanic-name">{m.name}</span>
                         <span className="card-sub">

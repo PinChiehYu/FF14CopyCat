@@ -10,6 +10,7 @@ function mechanicsHelp(main: boolean): string {
       : '比較 Boss 的低頻技能（這個 Boss 沒有 cactbot 資料）。',
     '不同變化：同一時間兩邊施放不同技能，通常是隨機變化；不同版本：名稱相同但技能 ID 不同，通常是方向或位置不同。',
     '這些時間點的站位或走位差異可能是機制造成，不一定是錯誤。推進時間不同（例如轉場提早）造成的只有一邊的機制不列出。',
+    '紫色左條：你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）。',
   ].join('\n')
 }
 
@@ -33,12 +34,17 @@ export function Mechanics({
   main,
   abilityName,
   onJump,
+  isFocused,
+  refToMine,
 }: {
   differences: MechanicDifference[]
   /** 只比較主要機制（有 cactbot 資料的 Boss） */
   main: boolean
   abilityName: (id: number) => string
   onJump: (t: number) => void
+  /** 關注的機制時間點（技能 ID、我的時間；見 focusedMechanics.ts），對到的列高光；沒有選擇時為 null */
+  isFocused?: ((abilityId: number, mineT: number) => boolean) | null
+  refToMine: (t: number) => number
 }) {
   const scope = main ? '主要機制' : '機制（低頻技能）'
   if (differences.length === 0) {
@@ -70,7 +76,10 @@ export function Mechanics({
         <tbody>
           {rows.map((d) => {
             return (
-              <tr key={d.t}>
+              <tr
+                key={d.t}
+                className={isFocused && [...d.mine, ...d.ref].some((id) => isFocused(id, refToMine(d.t))) ? 'focused' : undefined}
+              >
                 <th>
                   <button type="button" onClick={() => onJump(d.t)}>
                     {formatFightTime(d.t)}

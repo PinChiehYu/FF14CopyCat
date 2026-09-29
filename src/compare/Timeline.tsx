@@ -62,6 +62,7 @@ export function Timeline({
   highlights = [],
   windows = [],
   weaveMarks = [],
+  isFocused = null,
   pushes = [],
   focus = null,
   cursor,
@@ -81,6 +82,8 @@ export function Timeline({
   windows?: (TimelineWindow & { side: 'mine' | 'ref' })[]
   /** 穿插過多（各側自己的戰鬥時間）：前一個 GCD 到被延後的 GCD */
   weaveMarks?: WeaveMark[]
+  /** 關注的機制時間點（技能 ID、我的時間；見 focusedMechanics.ts），Boss 列高光；沒有選擇時為 null */
+  isFocused?: ((abilityId: number, mineT: number) => boolean) | null
   /** 推進差距（例如轉場）：兩邊各自照實際長度排開，較快的一方補上空白 */
   pushes?: PushDifference[]
   /** 要捲動到的參考時間；每次傳入新物件就會捲動一次 */
@@ -154,6 +157,7 @@ export function Timeline({
             reference && '一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。',
             '灰底為 Boss 無法選中。滑鼠停在圖示上可看技能與原始時間。',
             '能力技列頂部的紅線：穿插過多，下一個 GCD 被延後（從前一個 GCD 到被延後的 GCD）。',
+            'Boss 列較粗的紫色標記：你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）。',
             '金黃框：止損技（近戰與坦克離開 Boss 時用的遠程 GCD，例如投盾、飛刀）；用得多代表離 Boss 太遠或走位不順。開場起手（開打前與第一個 GCD）與有強化效果時（貫穿尖、勾刃、燕飛效果提高）不標。',
           ]
             .filter(Boolean)
@@ -164,7 +168,8 @@ export function Timeline({
       <div className="timeline-body">
         <div className="timeline-labels">
           <div className="lane-label ruler-label">時間</div>
-          <div className="lane-label">{reference ? 'Boss（參考）' : 'Boss'}</div>
+          {/* 與「參考 GCD」等列名同格式（手機的列名欄窄，「Boss（參考）」會超出） */}
+          <div className="lane-label">{reference ? '參考 Boss' : 'Boss'}</div>
           {allLanes.map((lane) => (
             <div key={lane.label} className={`lane-label ${lane.side}`}>
               {lane.label}
@@ -191,6 +196,7 @@ export function Timeline({
               highlights={highlights}
               windows={windows}
               weaveMarks={weaveMarks}
+              isFocused={isFocused}
               pxPerSec={pxPerSec}
               totalMs={totalMs}
               onSeek={onSeek}
@@ -214,6 +220,7 @@ function TimelineLanesImpl({
   highlights,
   windows,
   weaveMarks,
+  isFocused,
   pxPerSec,
   totalMs,
   onSeek,
@@ -229,6 +236,7 @@ function TimelineLanesImpl({
   highlights: { start: number; end: number }[]
   windows: (TimelineWindow & { side: 'mine' | 'ref' })[]
   weaveMarks: WeaveMark[]
+  isFocused: ((abilityId: number, mineT: number) => boolean) | null
   pxPerSec: number
   totalMs: number
   onSeek?: (t: number) => void
@@ -281,14 +289,18 @@ function TimelineLanesImpl({
             <div className="lane boss">
               {untargetable('ref')}
               {gaps('ref')}
-              {dedupeBoss(ref.bossCasts).map((c, i) => (
-                <span
-                  key={i}
-                  className={anchorRefTimes.has(c.t) ? 'boss-cast anchor' : 'boss-cast'}
-                  style={{ left: x(axis.ref(c.t)) }}
-                  title={`${name(c.abilityId)} ${formatFightTime(c.t)}${anchorRefTimes.has(c.t) ? '（對齊錨點）' : ''}`}
-                />
-              ))}
+              {dedupeBoss(ref.bossCasts).map((c, i) => {
+                // 關注的機制時間點：參考的施放換成我的時間判斷
+                const focused = !!isFocused?.(c.abilityId, alignment.refToMine(c.t))
+                return (
+                  <span
+                    key={i}
+                    className={['boss-cast', anchorRefTimes.has(c.t) && 'anchor', focused && 'focused'].filter(Boolean).join(' ')}
+                    style={{ left: x(axis.ref(c.t)) }}
+                    title={`${name(c.abilityId)} ${formatFightTime(c.t)}${anchorRefTimes.has(c.t) ? '（對齊錨點）' : ''}`}
+                  />
+                )
+              })}
               {/* 推進差距：從推進開始到兩邊都推進完成 */}
               {axis.gaps.map((g) => (
                 <span

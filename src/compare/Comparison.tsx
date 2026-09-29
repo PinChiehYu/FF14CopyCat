@@ -9,7 +9,7 @@ import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
 import { buildAlignment, pushDifferences, pushTitle, type Alignment } from '../analysis/alignment'
 import { generateAdvice, generateSoloAdvice } from '../analysis/advice'
-import { mainMechanicDifferences, mainMechanicGroups } from '../analysis/mainMechanics'
+import { mainMechanicDifferences, mainMechanicGroups, mechanicOccurrences } from '../analysis/mainMechanics'
 import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, idleWindows, lostGcdWindows } from '../analysis/metrics'
 import { attachControl, controlStatuses, controlWindows } from '../analysis/control'
@@ -36,6 +36,7 @@ import {
 import { AdviceList } from './AdviceList'
 import { HelpTip } from './HelpTip'
 import { Mechanics, MechanicsHeading } from './Mechanics'
+import { focusChecker, useIgnoredOccurrences } from './focusedMechanics'
 import { Dots, DotsHeading } from './Dots'
 import { Fillers } from './Fillers'
 import { Weaving } from './Weaving'
@@ -676,6 +677,18 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       ]),
     [windows, abilityName],
   )
+  // 在「搜尋前輩日誌」中關注的機制時間點（我這場的第 N 次）：有取消勾選時，比較結果中對到的地方高光
+  const encounter = mine.selection.fight.encounterID
+  const [ignoredOccurrences] = useIgnoredOccurrences(encounter)
+  const occurrences = useMemo(() => mechanicOccurrences(encounter, mineLoaded.bossCasts), [encounter, mineLoaded])
+  const isFocused = useMemo(
+    () =>
+      focusChecker(encounter, occurrences, ignoredOccurrences, (id) => {
+        const a = abilities.get(id)
+        return a?.englishName ?? a?.name
+      }),
+    [encounter, occurrences, ignoredOccurrences, abilities],
+  )
   const weaveMarks = useMemo(() => {
     const marks = (list: BadWeave[] | null | undefined, side: 'mine' | 'ref') =>
       (list ?? []).map((w) => ({
@@ -719,6 +732,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
               main={mainMechanicGroups(mine.selection.fight.encounterID) !== null}
               abilityName={abilityName}
               onJump={jumpTo}
+              isFocused={isFocused}
+              refToMine={alignment.refToMine}
             />
           </>
         )}
@@ -754,7 +769,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         />
       </>
     ),
-    [solo, advice, jumpTo, windows, dots, fillers, fillerId, weaving, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
+    [solo, advice, jumpTo, windows, dots, fillers, fillerId, weaving, isFocused, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
   )
 
   return (
@@ -826,12 +841,15 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         cursor={cursor}
         onSeek={setCursor}
         onJump={jumpTo}
+        isFocused={isFocused}
+        refToMine={alignment.refToMine}
         status={
           <StatusPanel
             mine={mine}
             reference={shownRef}
             cursor={cursor}
             refToMine={alignment.refToMine}
+            isFocused={isFocused}
             control={control}
             namedStatus={namedStatus}
             abilities={abilities}
@@ -850,6 +868,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         highlights={timelineHighlights}
         windows={timelineWindows}
         weaveMarks={weaveMarks}
+        isFocused={isFocused}
         pushes={pushes}
         focus={focus}
         cursor={cursor}

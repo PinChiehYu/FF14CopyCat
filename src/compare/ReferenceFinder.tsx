@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TimedCast } from '../analysis/alignment'
-import { mainMechanicGroups, mechanicIds, variantPoints } from '../analysis/mainMechanics'
+import {
+  mainMechanicGroups,
+  mechanicIds,
+  mechanicOccurrences,
+  occurrenceOf,
+  variantPoints,
+  type MechanicOccurrence,
+} from '../analysis/mainMechanics'
 import { formatFightTime } from '../analysis/timeline'
 import { fetchAbilityNames, fetchTcRankings, type TcRanking } from '../fflogs/client'
 import { reportUrl } from '../fflogs/url'
 import { jobName } from '../jobs/names'
 import { Dropdown, type DropdownOption } from '../ui/Dropdown'
+import { JobBadge } from '../ui/JobBadge'
+import { useIgnoredOccurrences } from './focusedMechanics'
 import { loadBossCasts, type Selection } from './load'
 import { defaultPrRange, useSideDamage } from './sideDamage'
 import { HelpTip } from './HelpTip'
@@ -15,8 +24,11 @@ const MECHANIC_CONCURRENCY = 3
 // 最多列出（並比對機制）的筆數：同一人常有多場，列多一點才找得到機制相同的
 const MAX_LISTED = 40
 
-// done：各機制（主要機制的鍵）隨機變化不同的次數
-type MechanicState = { status: 'loading' } | { status: 'done'; points: { t: number; keys: number[] }[] } | { status: 'error' }
+// done：與我隨機機制不同的時間點（t 為該筆紀錄的時間、mineT 為我的時間）與涉及的機制（主要機制的鍵）
+type MechanicState =
+  | { status: 'loading' }
+  | { status: 'done'; points: { t: number; mineT: number; keys: number[] }[] }
+  | { status: 'error' }
 
 /**
  * 從繁中服排名找參考日誌：依 PR 範圍列出同 Boss、同職業的紀錄（由高到低），
@@ -91,15 +103,34 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
     }
   }
 
+  // 我的 Boss 施放：打開面板就載入（算出我這場的隨機機制時間點，搜尋前就能先勾選要關注的）
+  const bossCastsOf = (s: Selection) => {
+    const key = `${s.report.code}/${s.fight.id}`
+    if (mineBoss.current?.key !== key) mineBoss.current = { key, casts: loadBossCasts(s.report.code, s.fight) }
+    return mineBoss.current.casts
+  }
+  const encounter = mine?.fight.encounterID ?? 0
+  const [occurrences, setOccurrences] = useState<{ key: string; list: MechanicOccurrence[] } | null>(null)
+  const fightKey = mine ? `${mine.report.code}/${mine.fight.id}` : null
+  useEffect(() => {
+    if (!open || !mine || occurrences?.key === fightKey) return
+    let active = true
+    bossCastsOf(mine)
+      .then((casts) => active && setOccurrences({ key: fightKey!, list: mechanicOccurrences(mine.fight.encounterID, casts) }))
+      .catch(() => active && setOccurrences({ key: fightKey!, list: [] }))
+    return () => {
+      active = false
+    }
+    // mine 會隨名稱翻譯換物件；以戰鬥的鍵決定是否重算
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, fightKey])
+  const myOccurrences = occurrences?.key === fightKey ? occurrences.list : null
+
   // 勾選「只顯示隨機機制相同」時，逐筆抓 Boss 施放與我的比對（結果保留，取消勾選再勾不重抓）
   useEffect(() => {
     if (!sameMechanics || result.status !== 'ready' || !mine) return
     const controller = new AbortController()
-    const key = `${mine.report.code}/${mine.fight.id}`
-    if (mineBoss.current?.key !== key) {
-      mineBoss.current = { key, casts: loadBossCasts(mine.report.code, mine.fight) }
-    }
-    const mineCasts = mineBoss.current.casts
+    const mineCasts = bossCastsOf(mine)
     const mineDuration = mine.fight.endTime - mine.fight.startTime
     const pending = result.rows.filter((r) => !mechanics.has(rowKey(r)))
     if (pending.length === 0) return
@@ -128,21 +159,18 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [sameMechanics, result, mine])
 
-  // 不列入比對的機制（使用者取消勾選的），依 Boss 記住
-  const encounter = mine?.fight.encounterID ?? 0
-  const [ignored, setIgnored] = useState<{ encounter: number; keys: Set<number> }>({ encounter: 0, keys: new Set() })
-  const ignoredKeys = ignored.encounter === encounter ? ignored.keys : loadIgnored(encounter)
-  const toggleMechanic = (toggled: number[], checked: boolean) => {
-    const keys = new Set(ignoredKeys)
-    for (const key of toggled) {
-      if (checked) keys.delete(key)
-      else keys.add(key)
+  // 不關注（取消勾選）的時間點，依 Boss 記住；比較結果依此高光（focusedMechanics.ts）
+  const [ignored, setIgnored] = useIgnoredOccurrences(encounter)
+  const toggleOccurrences = (ids: string[], checked: boolean) => {
+    const next = new Set(ignored)
+    for (const id of ids) {
+      if (checked) next.delete(id)
+      else next.add(id)
     }
-    setIgnored({ encounter, keys })
-    saveIgnored(encounter, keys)
+    setIgnored(next)
   }
 
-  // 比對結果中出現過不同的機制
+  // 比對結果中出現過不同的機制（沒有 cactbot 資料的 Boss 用來查名稱）
   const differing = useMemo(() => {
     const keys = new Set<number>()
     for (const m of mechanics.values()) if (m.status === 'done') for (const p of m.points) for (const key of p.keys) keys.add(key)
@@ -176,14 +204,39 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
     if (list.length === 0) return `#${key}`
     return list.length > 3 ? `${list.slice(0, 3).join('／')}…` : list.join('／')
   }
-  // 勾選清單：繁中名稱相同的機制（例如圓形與扇形的群狼劍）合併成一項
-  const byLabel = new Map<string, number[]>()
-  for (const key of differing) byLabel.set(mechanicName(key), [...(byLabel.get(mechanicName(key)) ?? []), key])
-  const checklist = [...byLabel].map(([label, keys]) => ({
-    label,
-    keys,
-    records: [...mechanics.values()].filter((m) => m.status === 'done' && m.points.some((p) => p.keys.some((k) => keys.includes(k)))).length,
-  }))
+  const versionName = (ids: number[]) => [...new Set(ids.map((id) => names.get(id)).filter((n) => !!n))].join('／')
+  // 每筆比對完的紀錄與我不同的時間點（我這場的時間點 id）
+  const differingOccurrences = (m: MechanicState | undefined): Set<string> => {
+    const ids = new Set<string>()
+    if (m?.status !== 'done' || !myOccurrences) return ids
+    for (const p of m.points) {
+      for (const key of p.keys) {
+        const id = occurrenceOf(myOccurrences, key, p.mineT)
+        if (id) ids.add(id)
+      }
+    }
+    return ids
+  }
+  const differingByRow = new Map([...mechanics].map(([k, m]) => [k, differingOccurrences(m)] as const))
+  // 關注清單：我這場的隨機機制時間點，依繁中名稱分組（同名的圓形與扇形群狼劍合併），組內依時間
+  const checklist = (() => {
+    const byLabel = new Map<string, MechanicOccurrence[]>()
+    for (const o of myOccurrences ?? []) byLabel.set(mechanicName(o.key), [...(byLabel.get(mechanicName(o.key)) ?? []), o])
+    return [...byLabel].map(([label, list]) => ({
+      label,
+      occurrences: list
+        .sort((a, b) => a.t - b.t)
+        .map((o, i) => ({
+          ...o,
+          // 同名合併後重新編號（第 N 次指這個名稱的第 N 次）
+          label: `${i + 1} · ${formatFightTime(o.t).replace(/\.\d$/, '')}`,
+          version: versionName(o.ids),
+          records: [...differingByRow.values()].filter((ids) => ids.has(o.id)).length,
+        })),
+    }))
+  })()
+  const totalOccurrences = checklist.reduce((sum, g) => sum + g.occurrences.length, 0)
+  const focusedCount = checklist.reduce((sum, g) => sum + g.occurrences.filter((o) => !ignored.has(o.id)).length, 0)
 
   if (!mine) {
     return (
@@ -195,12 +248,19 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       </div>
     )
   }
-  // 與我不同的時間點（同一時間多個機制不同算一處），只數涉及勾選機制的；每處為「時間 機制名稱」
+  // 與我不同的時間點（同一時間多個機制不同算一處），只算關注的時間點（對不到我這場時間點的也不算：不是使用者選的）；
+  // 沒有時間點清單（沒有 cactbot 資料的 Boss）時全部都算。每處為「時間 機制名稱」
+  const hasChecklist = !!myOccurrences && myOccurrences.length > 0
   const differencesOf = (r: TcRanking) => {
     const m = mechanics.get(rowKey(r))
     if (m?.status !== 'done') return undefined
     return m.points.flatMap((p) => {
-      const names = [...new Set(p.keys.filter((k) => !ignoredKeys.has(k)).map(mechanicName))]
+      const focused = p.keys.filter((k) => {
+        if (!hasChecklist) return true
+        const id = occurrenceOf(myOccurrences!, k, p.mineT)
+        return id !== null && !ignored.has(id)
+      })
+      const names = [...new Set(focused.map(mechanicName))]
       return names.length === 0 ? [] : [`${formatFightTime(p.t).replace(/\.\d$/, '')} ${names.join('、')}`]
     })
   }
@@ -234,9 +294,11 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       </button>
       {open && (
         <div className="finder-panel" role="dialog" aria-label="從繁中服排名找參考日誌">
+          {/* 第一行：職業徽章＋PR 範圍（靠左）、搜尋（靠右） */}
           <div className="finder-controls">
-            <label>
-              {jobName(mine.player.subType)} PR
+            <span className="finder-range">
+              <JobBadge subType={mine.player.subType} />
+              <span>PR</span>
               <PrInput value={minPr} min={0} max={maxPr} disabled={busy} onChange={setMinPr} />
               ～
               <PrInput value={maxPr} min={minPr} max={100} disabled={busy} onChange={setMaxPr} />
@@ -247,38 +309,62 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
                     : `預設為比你這場的 PR（${myPr}）高一段：${defaultPrRange(myPr).min}～${defaultPrRange(myPr).max}（高 1～20，上限 100），找輸出與打法比你好一些、較好模仿的前輩。`
                 }`}
               />
-            </label>
-            <label className="finder-check" title="逐筆比對 Boss 的隨機機制，只列出與我的戰鬥相同的紀錄">
-              <input
-                type="checkbox"
-                checked={sameMechanics}
-                disabled={busy}
-                onChange={(e) => setSameMechanics(e.target.checked)}
-              />
-              機制相同
-            </label>
+            </span>
             <button type="button" className="finder-search" onClick={search} disabled={busy}>
               搜尋
             </button>
           </div>
-          {sameMechanics && !busy && checklist.length > 0 && (
-            <details className="finder-mechanics">
-              <summary title="只比對勾選的機制；取消勾選不在意的機制（依 Boss 記住）">
-                比對的機制（{checklist.filter((c) => !c.keys.every((k) => ignoredKeys.has(k))).length}／{checklist.length}）
-              </summary>
-              <div className="finder-mechanic-list">
-                {checklist.map((c) => (
-                  <label key={c.label} className="finder-check" title={`${c.records} 筆紀錄與我不同`}>
-                    <input
-                      type="checkbox"
-                      checked={!c.keys.every((k) => ignoredKeys.has(k))}
-                      onChange={(e) => toggleMechanic(c.keys, e.target.checked)}
-                    />
-                    {c.label}
-                  </label>
-                ))}
-              </div>
-            </details>
+          {/* 第二行：只看機制與我相同＋關注的時間點數 */}
+          <div className="finder-same">
+            <label className="finder-check">
+              <input type="checkbox" checked={sameMechanics} disabled={busy} onChange={(e) => setSameMechanics(e.target.checked)} />
+              只看機制與我相同
+            </label>
+            <HelpTip
+              text={[
+                '逐筆比對 Boss 的隨機機制，只列出與我的戰鬥相同的紀錄；沒有完全相同時依不同處由少到多排序。',
+                '下方為你這場中每一次會隨機的機制（cactbot 時間軸中有多個版本的機制），時間與版本取自你這場的 Boss 施放；只比對勾選的時間點，比較結果也會標出這些時間點。依 Boss 記住。',
+              ].join('\n')}
+            />
+            {sameMechanics && totalOccurrences > 0 && (
+              <span className="finder-focus-count">
+                關注 {focusedCount}／{totalOccurrences} 個時間點
+              </span>
+            )}
+          </div>
+          {sameMechanics && myOccurrences === null && <p className="hint">讀取你這場的 Boss 機制…</p>}
+          {sameMechanics && checklist.length > 0 && (
+            <div className="finder-occurrences">
+              {checklist.map((g) => {
+                const ids = g.occurrences.map((o) => o.id)
+                const on = ids.filter((id) => !ignored.has(id)).length
+                return (
+                  <div key={g.label} className="finder-occurrence-group">
+                    <label className="finder-check">
+                      <input
+                        type="checkbox"
+                        checked={on === ids.length}
+                        ref={(el) => {
+                          if (el) el.indeterminate = on > 0 && on < ids.length
+                        }}
+                        onChange={(e) => toggleOccurrences(ids, e.target.checked)}
+                      />
+                      {g.label}
+                    </label>
+                    <div className="finder-occurrence-list">
+                      {g.occurrences.map((o) => (
+                        <label key={o.id} className={`finder-occurrence${ignored.has(o.id) ? '' : ' on'}`}>
+                          <input type="checkbox" checked={!ignored.has(o.id)} onChange={(e) => toggleOccurrences([o.id], e.target.checked)} />
+                          {o.label}
+                          {o.version && o.version !== g.label && <span>{o.version}</span>}
+                          {o.records > 0 && <small>{o.records} 筆不同</small>}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           )}
           <div className={busy || result.status === 'ready' ? 'finder-result filled' : 'finder-result'} aria-busy={busy}>
           {busy && (
@@ -372,25 +458,6 @@ function rankingOption(r: TcRanking, mech: MechanicState | undefined, difference
         )}
       </span>
     ),
-  }
-}
-
-const IGNORED_KEY = 'finder-ignored-mechanics:'
-
-function loadIgnored(encounter: number): Set<number> {
-  try {
-    const raw = localStorage.getItem(IGNORED_KEY + encounter)
-    return new Set(raw ? (JSON.parse(raw) as number[]) : [])
-  } catch {
-    return new Set()
-  }
-}
-
-function saveIgnored(encounter: number, keys: Set<number>) {
-  try {
-    localStorage.setItem(IGNORED_KEY + encounter, JSON.stringify([...keys]))
-  } catch {
-    // 無法儲存（私密瀏覽等）時只在這次有效
   }
 }
 

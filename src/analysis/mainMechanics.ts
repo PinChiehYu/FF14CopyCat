@@ -69,7 +69,7 @@ export function variantPoints(
   other: TimedCast[],
   mineDuration: number,
   otherDuration: number,
-): { t: number; keys: number[] }[] {
+): { t: number; mineT: number; keys: number[] }[] {
   const groups = mainMechanicGroups(encounterID)
   const alignment = buildAlignment(mine, other, { knownGroups: groups ?? undefined })
   const differences = mainMechanicDifferences(
@@ -85,6 +85,73 @@ export function variantPoints(
     .filter((d) => d.kind === 'variant')
     .map((d) => {
       const ids = [...d.mine, ...d.ref]
-      return { t: d.t, keys: groups ? [...new Set(ids.map((id) => groups.get(id) ?? id))] : [Math.min(...ids)] }
+      return {
+        t: d.t,
+        // 我的時間：對到我的機制時間點（見 mechanicOccurrences）
+        mineT: alignment.refToMine(d.t),
+        keys: groups ? [...new Set(ids.map((id) => groups.get(id) ?? id))] : [Math.min(...ids)],
+      }
     })
+}
+
+/** 我的戰鬥中一次會隨機的主要機制：`id` 為「組鍵#第幾次」，換了我的其他場次仍能對應 */
+export interface MechanicOccurrence {
+  id: string
+  /** 機制（主要機制的組鍵） */
+  key: number
+  /** 這個機制的第幾次（1 起） */
+  n: number
+  /** 我的戰鬥時間 */
+  t: number
+  /** 我這次遇到的技能（版本） */
+  ids: number[]
+}
+
+// 同一個機制這段時間內的連續施放算一次（同 mergeRepeats 的預設）
+const OCCURRENCE_GAP_MS = 6000
+// 差異的時間點與我的某次機制相差這麼近以內，視為同一次
+const OCCURRENCE_MATCH_MS = 10_000
+
+/**
+ * 我的戰鬥中每一次主要機制（cactbot 同一條目的施放，6 秒內的連續施放算一次），依機制各自編號。
+ * 只列會隨機的：該機制有 2 個以上的技能版本，而且這次沒有把所有版本同時施放（同時全放的是同一招的多個判定）。
+ * 編號包含所有次數（不隨機的那幾次也佔一個號碼），第 N 次在不同場次中指的是同一次。沒有資料的 Boss 回傳空清單。
+ */
+export function mechanicOccurrences(encounterID: number, mineCasts: TimedCast[]): MechanicOccurrence[] {
+  const groups = mainMechanicGroups(encounterID)
+  if (!groups) return []
+  const runs = new Map<number, { start: number; last: number; ids: Set<number> }[]>()
+  for (const c of [...mineCasts].sort((a, b) => a.t - b.t)) {
+    const key = groups.get(c.abilityId)
+    if (key === undefined) continue
+    const list = runs.get(key) ?? []
+    const run = list.at(-1)
+    if (run && c.t - run.last <= OCCURRENCE_GAP_MS) {
+      run.last = c.t
+      run.ids.add(c.abilityId)
+    } else {
+      list.push({ start: c.t, last: c.t, ids: new Set([c.abilityId]) })
+    }
+    runs.set(key, list)
+  }
+  const found: MechanicOccurrence[] = []
+  for (const [key, list] of runs) {
+    const versions = mechanicIds(encounterID, key)
+    if (versions.length < 2) continue
+    list.forEach((run, i) => {
+      if (run.ids.size >= versions.length) return
+      found.push({ id: `${key}#${i + 1}`, key, n: i + 1, t: run.start, ids: [...run.ids].sort((a, b) => a - b) })
+    })
+  }
+  return found.sort((a, b) => a.t - b.t)
+}
+
+/** 差異時間點的某個機制（組鍵、我的時間）對到我的哪一次：同一機制、時間最近且 10 秒內；沒有時 null */
+export function occurrenceOf(occurrences: MechanicOccurrence[], key: number, mineT: number): string | null {
+  let best: MechanicOccurrence | null = null
+  for (const o of occurrences) {
+    if (o.key !== key || Math.abs(o.t - mineT) > OCCURRENCE_MATCH_MS) continue
+    if (!best || Math.abs(o.t - mineT) < Math.abs(best.t - mineT)) best = o
+  }
+  return best?.id ?? null
 }

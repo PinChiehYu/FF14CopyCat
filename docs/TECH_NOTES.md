@@ -134,7 +134,7 @@
 - 站位差異（`positions.ts` 的 `attachVariants()`）：區段期間或開始前 10 秒內的 `variant` 附在 `Divergence.variant`，卡片標「機制不同」、不列入站位建議。
 - 建議（`advice.ts` 的 `mechanicNote()`）：停手時段前 10 秒內到結束之間的 `variant` 附註在停手建議中。
 - 「只有一邊」的主要機制，若另一邊同一時間（1.5 秒內）有非主要機制的施放就不列：那是同一招的另一個版本、只是 cactbot 沒列（實例：M5S 三連指向最後一下 #42808 在 cactbot 自成一條，二連指向同一時間的 #42799 不在 cactbot，原本列成「只有我」）。真正被跳過的機制（M8S 第二次空間斬）另一邊同一時間沒有施放，仍列出。
-- 前輩日誌搜尋的「機制相同」（`mainMechanics.ts` 的 `variantPoints()`）：`buildAlignment()`（同樣傳入已知分組）後以 `mainMechanicDifferences()` 比較，`mergeRepeats()` 合併連續結算後，回傳每個 `variant` 時間點與涉及的主要機制（技能 ID 對應到該組最小的 ID）。差異數是時間點數（使用者要求：看同一時間點有幾處不同，而不是幾組機制不同），只算涉及勾選機制的時間點。cactbot 沒有「衍生技能」的資料（例：M8S 群狼劍在時間軸是獨立條目，`r8s.ts` 觸發器只處理掃擊／旋擊群狼劍 A911～A914，兩者都有讀條），無法確定是否為前一招的後續，因此各自算一處（使用者要求：不能確定就保留，不當特例處理）。畫面依繁中名稱合併同名機制（M8S 的圓形／扇形群狼劍是 cactbot 的兩組、繁中名稱都是「群狼劍」），只數勾選的機制；取消勾選的機制鍵存在 `localStorage` 的 `finder-ignored-mechanics:<encounterID>`。機制名稱在勾選「機制相同」時就一次查完該 Boss 所有主要 ID（`fetchAbilityNames()`，約 60～100 個 ID 一個請求）：實測比對開始後才查名稱時曾查不到（推測碰到 Worker 每分鐘次數限制），失敗會 5 秒後重試。尚未套用 `withSharedCasters()`（`loadBossCasts()` 沒有角色資料）。
+- 前輩日誌搜尋的「機制相同」（`mainMechanics.ts` 的 `variantPoints()`）：`buildAlignment()`（同樣傳入已知分組）後以 `mainMechanicDifferences()` 比較，`mergeRepeats()` 合併連續結算後，回傳每個 `variant` 時間點與涉及的主要機制（技能 ID 對應到該組最小的 ID）。差異數是時間點數（使用者要求：看同一時間點有幾處不同，而不是幾組機制不同），只算涉及勾選機制的時間點。cactbot 沒有「衍生技能」的資料（例：M8S 群狼劍在時間軸是獨立條目，`r8s.ts` 觸發器只處理掃擊／旋擊群狼劍 A911～A914，兩者都有讀條），無法確定是否為前一招的後續，因此各自算一處（使用者要求：不能確定就保留，不當特例處理）。每個時間點另回傳我的時間 `mineT`（`alignment.refToMine()`）。關注的時間點（2026-09-30 起）：`mechanicOccurrences()` 從我的 Boss 施放找出每一次主要機制（同一組 6 秒內算一次，依組各自編號，`id`＝`組鍵#第幾次`），只留該組有 2 個以上版本、且這次沒有同時施放所有版本的；`occurrenceOf()` 把差異時間點的機制對到我同組、10 秒內最近的一次。只算勾選的時間點（對不到的也不算）；不關注的 `id` 存在 `localStorage` 的 `finder-ignored-occurrences:<encounterID>`（`compare/focusedMechanics.ts` 的 `useIgnoredOccurrences()`，改了會發出同頁的 `focused-mechanics-change` 事件，比較結果隨之更新；舊的 `finder-ignored-mechanics:` 不再使用）。比較結果的高光由 `focusChecker()` 判斷：有取消勾選時才有；cactbot 沒列的技能以英文名稱對到同名的主要機制（M8S 掃擊群狼劍 #43282 之後 0.2 秒的 #43297 同名 Eminent Reign，當下狀態與站位差異卡片列的是後者）；同名的組有多個時任一個符合就算。畫面依繁中名稱合併同名機制（M8S 的圓形／扇形群狼劍是 cactbot 的兩組、繁中名稱都是「群狼劍」）。機制名稱在勾選「機制相同」時就一次查完該 Boss 所有主要 ID（`fetchAbilityNames()`，約 60～100 個 ID 一個請求）：實測比對開始後才查名稱時曾查不到（推測碰到 Worker 每分鐘次數限制），失敗會 5 秒後重試。尚未套用 `withSharedCasters()`（`loadBossCasts()` 沒有角色資料）。
 
 #### 主要機制資料（`scripts/gen-mechanics.mjs` → `src/analysis/mechanicData.generated.ts`）
 
@@ -506,6 +506,10 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-30 關注的機制時間點
+- `mainMechanics.ts` 新增 `mechanicOccurrences()`、`occurrenceOf()`，`variantPoints()` 多回傳 `mineT`；新增 `compare/focusedMechanics.ts`（`useIgnoredOccurrences()`、`focusChecker()`）與共用的 `ui/JobBadge.tsx`；`ReferenceFinder` 打開面板就載入我的 Boss 施放算出時間點；`Mechanics`、`Positions`（卡片）、`Timeline`（Boss 列）、`StatusPanel`（Boss 列）接受 `isFocused`。
+- 實測：M8S 武士基準我這場 14 個時間點（風之／土之魔技 2、掃擊／旋擊群狼劍 3、群狼劍 6、摧枯拉朽 2、迴天動地 1）；只關注「旋擊群狼劍 2:40」時 14 筆中 4 筆相同。M5S（`BF76r8yKh4wGaYkm` #1）25 個時間點，最長的機制名稱「二連指向、定格＆播放／三連…／四連…」在 375 px 自成兩行、標籤不溢出。
 
 ### 2026-09-30 FFLogs 權杖跨 isolate 共用
 - `handler.ts` 的 `getToken()`：記憶體 → `caches.default` → FFLogs 權杖端點，新換的權杖寫回快取（`max-age`＝有效期；不能標 `private`，Cache API 不存）。測試以 Map 模擬快取，確認新 isolate 沿用快取中的權杖、快取失敗時照常取得。

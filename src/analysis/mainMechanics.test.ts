@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TimedCast } from './alignment'
-import { mainMechanicDifferences, mainMechanicGroups, variantPoints } from './mainMechanics'
+import { mainMechanicDifferences, mainMechanicGroups, mechanicIds, mechanicOccurrences, occurrenceOf, variantPoints } from './mainMechanics'
 
 const cast = (seconds: number, abilityId: number): TimedCast => ({ t: seconds * 1000, abilityId })
 // M8S（Howling Blade）：Stonefang／Windfang 的四個版本是同一機制；41906～41909 各自是單獨的機制
@@ -28,7 +28,7 @@ describe('main mechanics', () => {
     const mine = [...common, cast(40, 41885)]
     const ref = [...common, cast(40, 41889)]
     const key = mainMechanicGroups(M8S)!.get(41885)!
-    expect(variantPoints(M8S, mine, ref, 70_000, 70_000)).toEqual([{ t: 40_000, keys: [key] }])
+    expect(variantPoints(M8S, mine, ref, 70_000, 70_000)).toEqual([{ t: 40_000, mineT: 40_000, keys: [key] }])
     expect(variantPoints(M8S, mine, mine, 70_000, 70_000)).toEqual([])
   })
 
@@ -66,7 +66,7 @@ describe('main mechanics', () => {
     const mine = [...common, cast(40, 41885), cast(42, 41885), cast(44, 41885), cast(50, 41910)]
     const ref = [...common, cast(40, 41889), cast(42, 41889), cast(44, 41889)]
     const key = mainMechanicGroups(M8S)!.get(41885)!
-    expect(variantPoints(M8S, mine, ref, 70_000, 70_000)).toEqual([{ t: 40_000, keys: [key] }])
+    expect(variantPoints(M8S, mine, ref, 70_000, 70_000)).toEqual([{ t: 40_000, mineT: 40_000, keys: [key] }])
   })
 
   it('falls back to all infrequent abilities for bosses without data', () => {
@@ -77,6 +77,34 @@ describe('main mechanics', () => {
       { t: 40_000, mine: [10], ref: [11], kind: 'variant' },
     ])
     // 沒有資料時以各處最小的技能 ID 為鍵
-    expect(variantPoints(1, mine, ref, 60_000, 60_000)).toEqual([{ t: 40_000, keys: [10] }])
+    expect(variantPoints(1, mine, ref, 60_000, 60_000)).toEqual([{ t: 40_000, mineT: 40_000, keys: [10] }])
+  })
+})
+
+describe('mechanicOccurrences', () => {
+  const key = mainMechanicGroups(M8S)!.get(41885)!
+
+  it('numbers each occurrence of a random mechanic in my fight', () => {
+    // 同一招 6 秒內的連續施放算一次；41906 只有一個版本，不會隨機，不列
+    const mine = [cast(10, 41906), cast(40, 41885), cast(42, 41885), cast(100, 41889)]
+    expect(mechanicOccurrences(M8S, mine)).toEqual([
+      { id: `${key}#1`, key, n: 1, t: 40_000, ids: [41885] },
+      { id: `${key}#2`, key, n: 2, t: 100_000, ids: [41889] },
+    ])
+    expect(mechanicOccurrences(1, mine)).toEqual([])
+  })
+
+  it('skips an occurrence that casts every version at once', () => {
+    // 所有版本同時施放：同一招的多個判定，不是隨機選一個；但仍佔一個編號
+    const all = mechanicIds(M8S, key).map((id) => cast(40, id))
+    const occurrences = mechanicOccurrences(M8S, [...all, cast(100, 41889)])
+    expect(occurrences.map((o) => o.id)).toEqual([`${key}#2`])
+  })
+
+  it('matches a difference to the nearest occurrence of the same mechanic', () => {
+    const occurrences = mechanicOccurrences(M8S, [cast(40, 41885), cast(100, 41889)])
+    expect(occurrenceOf(occurrences, key, 97_000)).toBe(`${key}#2`)
+    expect(occurrenceOf(occurrences, key, 70_000)).toBeNull()
+    expect(occurrenceOf(occurrences, key + 1, 40_000)).toBeNull()
   })
 })

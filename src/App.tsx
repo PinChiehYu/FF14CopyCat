@@ -3,7 +3,8 @@ import { formatFightTime } from './analysis/timeline'
 import { resolveSelection, type Overrides, type Preference } from './compare/autoSelect'
 import { fetchAutoAttacksTaken, fetchFightNames, fetchReport, translateReport } from './fflogs/client'
 import { playersInFight } from './fflogs/report'
-import { isStandardParty, jobName, jobRole, sortByPartySlot } from './jobs/names'
+import { isStandardParty, sortByPartySlot } from './jobs/names'
+import { JobBadge } from './ui/JobBadge'
 import { Comparison } from './compare/Comparison'
 import { ReferenceFinder } from './compare/ReferenceFinder'
 import { ShareLink } from './compare/ShareLink'
@@ -95,7 +96,7 @@ function playerOption(player: Actor, slot: string | null): DropdownOption<number
           {player.name}
           {player.server && <span className="option-server"> @ {player.server}</span>}
         </span>
-        <span className={`badge job ${jobRole(player.subType)}`}>{jobName(player.subType)}</span>
+        <JobBadge subType={player.subType} />
       </span>
     ),
   }
