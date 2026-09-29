@@ -489,9 +489,14 @@ button:disabled {
   font-weight: normal;
 }
 
-.help-tip-button {
+/* 以 .help-tip .help-tip-button 提高優先順序：放在按鈕群組裡（例如俯視圖視角的 .arena-modes button）時不被外框、內距覆蓋 */
+.help-tip .help-tip-button {
+  flex: none;
+  box-sizing: border-box;
   width: 1.15em;
   height: 1.15em;
+  min-width: 0;
+  margin: 0;
   padding: 0;
   border: 1px solid var(--text-muted);
   border-radius: 50%;
@@ -501,8 +506,8 @@ button:disabled {
   cursor: help;
 }
 
-.help-tip-button:hover,
-.help-tip-button[aria-expanded='true'] {
+.help-tip .help-tip-button:hover,
+.help-tip .help-tip-button[aria-expanded='true'] {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1102,8 +1107,11 @@ button:disabled {
   vertical-align: middle;
 }
 
+/* 等寬：以最長的「mm:ss」為準（實測 12.8px 字 46.6px ≈ 3.64em），短的時間不會比較窄，每列對齊（同手機的等寬格線） */
 .window-chip {
+  min-width: 3.7em;
   padding: 0 6px;
+  text-align: center;
   font: inherit;
   font-size: 0.8em;
   font-variant-numeric: tabular-nums;
@@ -2391,6 +2399,17 @@ h3 {
 
 /* ---- 手機（窄螢幕）版面：放在檔案最後，才能覆寫前面同權重的規則 ---- */
 @media (max-width: 560px) {
+  /* 穿插過多：圖示縮小、欄距縮短，四個能力技也放得進一行 */
+  .lost-list.weave-list li {
+    grid-template-columns: 4.2em auto auto 1fr;
+    gap: 6px;
+  }
+
+  .weave-icons .usage-icon {
+    width: 16px;
+    height: 16px;
+  }
+
   /* 頁尾：每組一行，小標籤對齊成一欄 */
   .footer-credits {
     display: grid;
@@ -2572,6 +2591,8 @@ h3 {
   }
 
   .window-chip {
+    /* 寬度由格線決定 */
+    min-width: 0;
     padding: 0 2px;
     font-size: 0.72em;
     text-align: center;

@@ -228,8 +228,8 @@ function SummaryTable({
     },
     {
       // 這場的 rDPS 在繁中服排名（Worker 掃描的公開日誌）中的百分位；未擊殺或沒有資料時「—」
-      label: '繁中服 PR',
-      help: `這場的 rDPS 與本站收錄的繁中服${prCount ? ` ${prCount} 位` : ''}同職業玩家各自最好的一場比較（自己已在排名中時不和自己比），同「搜尋前輩日誌」的 PR。未擊殺或沒有這個職業的排名資料時為「—」。`,
+      label: 'PR',
+      help: `繁中服 PR：這場的 rDPS 與本站收錄的繁中服${prCount ? ` ${prCount} 位` : ''}同職業玩家各自最好的一場比較（自己已在排名中時不和自己比），同「搜尋前輩日誌」的 PR。未擊殺或沒有這個職業的排名資料時為「—」。`,
       cell: (s) => {
         const side = damageOf(s)
         if (side === undefined) return <span className="hint-inline">…</span>
@@ -248,8 +248,8 @@ function SummaryTable({
       },
     },
     ...(reference === null ? [] : [{
-      label: '比較範圍',
-      help: '兩場都在進行的時段才列入統計，一定從 0:00 開始。較長的一方只比到另一方結束，「−N.Ns」為之後不列入統計的秒數；沒被裁切的一方為「全場」。',
+      label: '範圍',
+      help: '比較範圍：兩場都在進行的時段才列入統計，一定從 0:00 開始。較長的一方只比到另一方結束，「−N.Ns」為之後不列入統計的秒數；沒被裁切的一方為「全場」。',
       // 一定從 0:00 開始，只顯示結束點；沒被裁切的一方（戰鬥長度已在選單上）只標「全場」
       cell: (s: SideData, end: number) =>
         s.duration - end >= 1000 ? (
