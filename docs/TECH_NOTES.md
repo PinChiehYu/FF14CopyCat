@@ -34,7 +34,7 @@
 | `GET /tc-rankings?encounter&difficulty&job&minPr&maxPr[&rdps][&player]` | 繁中服排名（D1）中 PR 在範圍內的紀錄 `{ count, rankings }`，最多 100 筆（見「繁中服排名」）。有 `rdps`（整數）時另回 `position: { pr, better }`：任一 rDPS 在排名中的 PR（和其他玩家各自最好的一場比較；`player`＝`名稱@伺服器` 已在排名中時扣掉自己，總人數不重複計算）與資料庫中 rDPS 更高的擊殺數（重複上傳只算一次） | 5 分鐘 |
 
 - 保護：`ALLOWED_ORIGINS`（`wrangler.toml`）檢查 Origin 並回 CORS 標頭；Cloudflare Rate Limiting 綁定 `RATE_LIMITER`（每 IP 60 次／分）；成功回應以不含 Origin 的網址為鍵放入 `caches.default`。
-- client credentials 權杖在同一 isolate 內快取重用。所有訪客共用一組 FFLogs API 配額。
+- client credentials 權杖先存在 isolate 記憶體，並存進 `caches.default`（鍵 `https://fflogs-token.internal/<client ID>`，同一個資料中心的 isolate 共用，到期前 1 分鐘換新；`index.ts` 在 fetch 與 scheduled 呼叫 `setTokenStore()`），快取讀寫失敗時照常向 FFLogs 換權杖。所有訪客共用一組 FFLogs API 配額。
 - `handler.ts` 不依賴 Workers 型別，快取與 ctx 以參數注入，可在 Node 的 Vitest 中測試。
 
 ## 前端資料處理
@@ -492,7 +492,7 @@
 - **瀏覽器平滑捲動**：同時對頁面（`scrollIntoView` smooth）與內層容器（`scrollTo` smooth）平滑捲動時，瀏覽器會中斷內層捲動；內層改為立即設定 `scrollLeft`。
 - **React 19 `ref` prop**：元件 prop 命名為 `ref` 會被當成保留 prop（lint 報 Cannot access refs during render），改名為 `reference`。
 - **瀏覽器快取**：推送後正式站可能仍顯示舊版，加查詢字串（例如 `?v=<commit>`）或重新整理即可。
-- **FFLogs 權杖端點 429**（2026-09-26）：短時間內多次部署 Worker 並測試後，`/oauth/token` 回 429，所有報告查詢失敗約數分鐘後自行恢復。權杖只快取在 isolate 記憶體，每次部署或新 isolate 都會重新取權杖。Worker 現在把權杖的 429 轉成 503，前端對 429／503 顯示「請求過多…請稍候一分鐘再試」。若再發生頻繁，可考慮把權杖放進 `caches.default` 或 KV 跨 isolate 共用。
+- **FFLogs 權杖端點 429**（2026-09-26）：短時間內多次部署 Worker 並測試後，`/oauth/token` 回 429，所有報告查詢失敗約數分鐘後自行恢復。權杖只快取在 isolate 記憶體，每次部署或新 isolate 都會重新取權杖。Worker 現在把權杖的 429 轉成 503，前端對 429／503 顯示「請求過多…請稍候一分鐘再試」。2026-09-30 起權杖也存進 `caches.default` 跨 isolate 共用（見「Worker API」），重新部署後新的 isolate 會先用快取中的權杖。實測 workers.dev 上 Cache API 有作用（同一請求第二次 `cf-cache-status: HIT`、2.4 秒 → 0.16 秒）；Cache API 以資料中心為範圍，不同地區的第一個請求仍會各換一次權杖。
 - **摘要顯示的名稱**：`useSide()` 只依 ID 載入事件（並快取），`SideData.selection` 是載入當時的選擇（Boss 名稱可能還是英文）；`Comparison` 會把目前的選擇合併回 `SideData` 再交給 `Loaded`。
 - **技能名稱查詢延遲**：`/abilities` 快取未命中時約 8 秒；在瀏覽器驗證繁中名稱時要等比較載入後再多等幾秒。
 - **CSS 手機規則的位置**（2026-09-27）：`@media (max-width: 560px)` 區塊原本在 `index.css` 中段，之後才定義的元件樣式（狀態面板、圖示等）以相同權重蓋掉了手機規則，使部分手機調整沒有生效；手機區塊移到檔案最後。新增元件樣式要放在該區塊之前。
@@ -506,6 +506,10 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-30 FFLogs 權杖跨 isolate 共用
+- `handler.ts` 的 `getToken()`：記憶體 → `caches.default` → FFLogs 權杖端點，新換的權杖寫回快取（`max-age`＝有效期；不能標 `private`，Cache API 不存）。測試以 Map 模擬快取，確認新 isolate 沿用快取中的權杖、快取失敗時照常取得。
+- 原因：短時間多次部署 Worker 後，每個新 isolate 都去換權杖，曾被權杖端點 429 數分鐘（見「部署與開發踩過的坑」）。
 
 ### 2026-09-29 穿插過多（Weaving）
 - `scripts/gen-job-data.mjs` 多抓 Action 的 `Cast100ms`、`Recast100ms`，產生 `GCD_TIMING`（與一般 GCD〔瞬發、2.5 秒〕不同的 GCD：[基本詠唱, 基本復唱]）；GCD 集合不變。

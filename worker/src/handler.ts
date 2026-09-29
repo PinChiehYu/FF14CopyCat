@@ -57,15 +57,41 @@ class HttpError extends Error {
   }
 }
 
-// client credentials 權杖在同一個 isolate 內重複使用，避免每個請求都去換權杖。
+// client credentials 權杖：先看同一個 isolate 的記憶體，再看 Cloudflare 快取（同一個資料中心的 isolate 共用），
+// 都沒有才向 FFLogs 換新的。只存在記憶體時，重新部署後每個新 isolate 都要換一次，短時間多次部署會被權杖端點限流。
 let cachedToken: { value: string; expiresAt: number } | null = null
+let tokenStore: CacheLike | null = null
+// 快取鍵：不對外的網址（不會與代理的路徑相同），含 client ID，換帳號時不沿用
+const tokenKey = (env: Env) => new Request(`https://fflogs-token.internal/${encodeURIComponent(env.FFLOGS_CLIENT_ID)}`)
+// 到期前這麼久就換新的
+const TOKEN_REFRESH_MARGIN_MS = 60_000
 
 export function resetTokenCache(): void {
   cachedToken = null
+  tokenStore = null
 }
 
+/** 設定跨 isolate 共用權杖的快取（Workers 的 caches.default；測試可注入） */
+export function setTokenStore(store: CacheLike | null): void {
+  tokenStore = store
+}
+
+const fresh = (token: { expiresAt: number } | null): boolean => !!token && token.expiresAt > Date.now() + TOKEN_REFRESH_MARGIN_MS
+
 async function getToken(env: Env): Promise<string> {
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value
+  if (cachedToken && fresh(cachedToken)) return cachedToken.value
+
+  // 快取失敗時照常向 FFLogs 換權杖
+  try {
+    const stored = await tokenStore?.match(tokenKey(env))
+    const token = stored ? ((await stored.json()) as { value: string; expiresAt: number }) : null
+    if (token && fresh(token)) {
+      cachedToken = token
+      return token.value
+    }
+  } catch (err) {
+    console.warn('token cache read failed', err)
+  }
 
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
@@ -81,6 +107,18 @@ async function getToken(env: Env): Promise<string> {
 
   const body = (await res.json()) as { access_token: string; expires_in: number }
   cachedToken = { value: body.access_token, expiresAt: Date.now() + body.expires_in * 1000 }
+  try {
+    // 到期前一分鐘就不再使用（fresh 的判斷），max-age 只是讓快取自行清掉。
+    // 不能標 private（Cache API 不存 private 的回應）；快取只有本 Worker 讀得到，也沒有路徑會回傳這個鍵
+    await tokenStore?.put(
+      tokenKey(env),
+      new Response(JSON.stringify(cachedToken), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${body.expires_in}` },
+      }),
+    )
+  } catch (err) {
+    console.warn('token cache write failed', err)
+  }
   return cachedToken.value
 }
 

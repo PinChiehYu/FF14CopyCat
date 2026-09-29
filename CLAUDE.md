@@ -53,7 +53,7 @@ node scripts/gen-mechanics.mjs       # 從 cactbot 零式時間軸重新產生 s
   - 瀏覽器面板在視窗被遮住時截圖會失敗；改用 `javascript_tool` 讀 DOM 驗證，輸入連結用 `form_input`。
   - 在正式站驗證時瀏覽器可能用到快取的舊 `index.html`，網址加 `?v=<commit>` 強制載入新版。
   - deploy 步驟若因 GitHub Pages 502 失敗（建置正常），推一個空 commit 重新觸發即可；失敗原因用 `/actions/runs/<id>/jobs` 與 `/check-runs/<job id>/annotations` 查。
-  - 短時間多次部署 Worker 可能讓 FFLogs 權杖端點回 429（數分鐘後恢復），部署後驗證若遇到先等一下。
+  - 短時間多次部署 Worker 曾讓 FFLogs 權杖端點回 429（數分鐘後恢復）；2026-09-30 起權杖存在 Cloudflare 快取跨 isolate 共用，應該少見，部署後驗證若仍遇到先等一下。
   - GitHub CLI（`gh`）沒有安裝；查 workflow 狀態用公開 API：`https://api.github.com/repos/PinChiehYu/FF14CopyCat/actions/runs`。
   - `wrangler` 已在舊電腦以使用者的 Cloudflare 帳號登入（新電腦需重新 `npx wrangler login`）；Worker Secrets 由使用者在 Cloudflare 儀表板設定，不要要求使用者把 secret 貼到對話中。
 - `tsc -b` 同時檢查前端（`tsconfig.app.json`）與 Worker（`worker/tsconfig.json`，WebWorker lib，不含 DOM）；Vitest 會一併執行 `worker/` 下的測試。

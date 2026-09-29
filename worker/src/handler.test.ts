@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StatementLike } from './crawler'
-import { handleRequest, resetTokenCache, type Env } from './handler'
+import { handleRequest, resetTokenCache, setTokenStore, type Env } from './handler'
 
 const ORIGIN = 'https://pinchiehyu.github.io'
 const env: Env = {
@@ -53,6 +53,41 @@ describe('handleRequest', () => {
     await handleRequest(get('/reports/abc'), env, ctx, null)
     const tokenCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/oauth/token'))
     expect(tokenCalls).toHaveLength(1)
+  })
+
+  it('shares the token across isolates through the cache', async () => {
+    const fetchMock = mockFflogs({ data: { reportData: { report: { code: 'abc', fights: [] } } } })
+    // 以 Map 模擬 Cloudflare 快取（同一個資料中心共用）
+    const stored = new Map<string, Response>()
+    const store = {
+      match: async (req: Request) => stored.get(req.url)?.clone(),
+      put: async (req: Request, res: Response) => void stored.set(req.url, res),
+    }
+    setTokenStore(store)
+    await handleRequest(get('/reports/abc'), env, ctx, null)
+    // 新的 isolate：記憶體中沒有權杖，但快取裡有
+    resetTokenCache()
+    setTokenStore(store)
+    await handleRequest(get('/reports/abc'), env, ctx, null)
+    const tokenCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/oauth/token'))
+    expect(tokenCalls).toHaveLength(1)
+    expect([...stored.keys()]).toEqual(['https://fflogs-token.internal/id'])
+  })
+
+  it('still fetches a token when the cache fails', async () => {
+    mockFflogs({ data: { reportData: { report: { code: 'abc', fights: [] } } } })
+    setTokenStore({
+      match: async () => {
+        throw new Error('cache down')
+      },
+      put: async () => {
+        throw new Error('cache down')
+      },
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const res = await handleRequest(get('/reports/abc'), env, ctx, null)
+    expect(res.status).toBe(200)
+    warn.mockRestore()
   })
 
   it('passes validated event parameters to the GraphQL query', async () => {

@@ -1,5 +1,5 @@
 import { crawl, CRAWL_ZONES, pruneGoneReports } from './crawler'
-import { graphqlFor, handleRequest, type CacheLike, type Context, type Env } from './handler'
+import { graphqlFor, handleRequest, setTokenStore, type CacheLike, type Context, type Env } from './handler'
 
 // Workers 執行環境提供的快取
 declare const caches: { default: CacheLike }
@@ -9,6 +9,8 @@ const PRUNE_CRON = '37 * * * *'
 
 export default {
   fetch(request: Request, env: Env, ctx: Context): Promise<Response> {
+    // FFLogs 權杖存在 Cloudflare 快取，同一個資料中心的 isolate 共用（重新部署後不必每個 isolate 都換權杖）
+    setTokenStore(caches.default)
     return handleRequest(request, env, ctx, caches.default)
   },
 
@@ -16,6 +18,7 @@ export default {
   // 確認已收錄的報告是否仍公開放在另一個觸發（每次執行各自有對外請求的上限）
   async scheduled(controller: { cron?: string }, env: Env, ctx: Context): Promise<void> {
     if (!env.DB) return
+    setTokenStore(caches.default)
     const db = env.DB
     ctx.waitUntil(
       (async () => {
