@@ -875,18 +875,22 @@ function DivergenceCards({
   shownKey?: string
 }) {
   const strip = useRef<HTMLOListElement>(null)
-  const active = divergences.findIndex((d) => cursor >= d.start && cursor <= d.end)
+  // 游標在某段內（前後放寬 MECHANIC_ACTIVE_MS：機制常在差異開始前一點結算）時高亮該卡片
+  const active = divergences.findIndex((d) => cursor >= d.start - MECHANIC_ACTIVE_MS && cursor <= d.end + MECHANIC_ACTIVE_MS)
+  // 卡片列跟著游標：在某段內捲到該卡片；不在任何一段時捲到接下來的一段（最後一段之後停在最後一張）
+  const upcoming = divergences.findIndex((d) => d.start > cursor)
+  const follow = active >= 0 ? active : upcoming >= 0 ? upcoming : divergences.length - 1
 
-  // 進入新的一段時把卡片捲到中間；只捲卡片列本身（立即設定），不動整頁，也不與時間軸的捲動互相中斷
+  // 換到另一張卡片時把它捲到中間；只捲卡片列本身（立即設定），不動整頁，也不與時間軸的捲動互相中斷
   useEffect(() => {
     const el = strip.current
-    const card = el?.children[active] as HTMLElement | undefined
+    const card = el?.children[follow] as HTMLElement | undefined
     if (!el || !card || el.clientWidth === 0) return
     // 以畫面上的位置計算卡片在列中的位置：offsetLeft 是相對於 offsetParent（頁面），
     // 頁面內容置中、左邊有空白（寬螢幕）時會多算這段距離，卡片被捲到左邊只剩右半
     const cardLeft = el.scrollLeft + card.getBoundingClientRect().left - el.getBoundingClientRect().left
     el.scrollLeft = Math.max(0, cardLeft - (el.clientWidth - card.offsetWidth) / 2)
-  }, [active, shownKey])
+  }, [follow, shownKey])
 
   if (divergences.length === 0) return null
   return (
