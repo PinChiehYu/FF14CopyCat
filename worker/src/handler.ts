@@ -1,7 +1,7 @@
 import { abilityNames, gameRow } from './abilityNames'
 import { tcRankings, type DbLike, type Graphql } from './crawler'
 import { npcNames } from './npcNames'
-import { storedTimelines } from './timelines'
+import { averageSamples, storedTimelines, TIERS, type Tier } from './timelines'
 import { AUTO_ATTACKS_TAKEN_QUERY, DAMAGE_DONE_QUERY, EVENTS_QUERY, REPORT_QUERY, TARGETABILITY_QUERY } from './queries'
 
 export interface Env {
@@ -257,7 +257,30 @@ async function pullTimelinesRoute(params: URLSearchParams, env: Env): Promise<Re
   return storedTimelines(env.DB, pulls)
 }
 
+/**
+ * `GET /average-samples?encounter&difficulty&job&tier=top|upper|mid[&slot=MT|ST]`：前輩平均的樣本（timelines.ts 的 averageSamples()）。
+ */
+async function averageSamplesRoute(params: URLSearchParams, env: Env): Promise<unknown> {
+  if (!env.DB) throw new HttpError(503, 'Rankings database unavailable')
+  const job = params.get('job') ?? ''
+  if (!JOB_NAME.test(job)) throw new HttpError(400, 'Invalid job')
+  const tier = params.get('tier') ?? ''
+  if (!(tier in TIERS)) throw new HttpError(400, 'Invalid tier')
+  const slot = params.get('slot') ?? ''
+  if (slot !== '' && slot !== 'MT' && slot !== 'ST') throw new HttpError(400, 'Invalid slot')
+  return averageSamples(env.DB, {
+    encounter: requiredInt(params, 'encounter'),
+    difficulty: requiredInt(params, 'difficulty'),
+    job,
+    slot,
+    tier: tier as Tier,
+  })
+}
+
 async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds: number }> {
+  if (url.pathname.replace(/\/$/, '') === '/average-samples') {
+    return { data: await averageSamplesRoute(url.searchParams, env), cacheSeconds: CACHE_SECONDS }
+  }
   if (url.pathname.replace(/\/$/, '') === '/tc-rankings') {
     return { data: await tcRankingsRoute(url.searchParams, env), cacheSeconds: TC_RANKINGS_CACHE_SECONDS }
   }

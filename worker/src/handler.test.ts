@@ -360,6 +360,33 @@ describe('handleRequest', () => {
     }
   })
 
+  it('serves the average samples of a PR tier and validates the parameters', async () => {
+    const bound: unknown[][] = []
+    const statement: StatementLike = {
+      bind: (...args: unknown[]) => {
+        bound.push(args)
+        return statement
+      },
+      all: async <T,>() => ({ results: [{ name: 'p1', pr: 97 } as T] }),
+      first: async <T,>() => ({ candidates: 42, updated_at: 123 }) as T,
+      run: async () => ({}),
+    }
+    const withDb: Env = { ...env, DB: { prepare: () => statement, batch: async () => [] } }
+    const res = await handleRequest(get('/average-samples?encounter=100&difficulty=101&job=Paladin&tier=top&slot=MT'), withDb, ctx, null)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ count: 42, updatedAt: 123, samples: [{ name: 'p1', pr: 97 }] })
+    expect(bound[0]).toEqual([100, 101, 'Paladin', 'MT', 'top'])
+    for (const path of [
+      '/average-samples?encounter=100&difficulty=101&job=Paladin',
+      '/average-samples?encounter=100&difficulty=101&job=Paladin&tier=best',
+      '/average-samples?encounter=100&difficulty=101&job=Paladin&tier=top&slot=OT',
+      '/average-samples?encounter=x&difficulty=101&job=Paladin&tier=top',
+      '/average-samples?encounter=100&difficulty=101&job=P%20L&tier=top',
+    ]) {
+      expect((await handleRequest(get(path), withDb, ctx, null)).status, path).toBe(400)
+    }
+  })
+
   it('validates npc names', async () => {
     const fetchMock = mockFflogs({})
     for (const path of ['/npc-names', '/npc-names?name=a%22%20OR%201', `/npc-names?${'name=x&'.repeat(1)}${Array.from({ length: 21 }, (_, i) => `name=n${i}`).join('&')}`]) {

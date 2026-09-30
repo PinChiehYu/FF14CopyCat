@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS crawl_state (
 );
 
 -- 預處理：每場（報告＋戰鬥，最多 8 位已收錄玩家共用）的 Boss 施放（src/analysis/castCodec.ts 的編碼，
--- 同一技能 1 秒內只留一次）。搜尋前輩日誌比對機制、前輩的爆發點位對齊用（worker/src/timelines.ts）
+-- 同一技能 1 秒內只留一次）。搜尋前輩日誌比對機制、前輩平均對齊用（worker/src/timelines.ts）
 CREATE TABLE IF NOT EXISTS pull_timelines (
   report TEXT NOT NULL,
   fight INTEGER NOT NULL,
@@ -46,13 +46,59 @@ CREATE TABLE IF NOT EXISTS pull_timelines (
   PRIMARY KEY (report, fight)
 );
 
--- 預處理：每位已收錄玩家的全部能力技（非 GCD）與道具施放（同上的編碼）；分類在讀取時才套用。
--- slot：坦克的 MT／ST（承受 Boss 普通攻擊較多者為 MT），其他職業為空字串
-CREATE TABLE IF NOT EXISTS parse_actions (
+-- 預處理：已收錄坦克在該場的 MT／ST（承受 Boss 普通攻擊較多者為 MT），前輩平均依此分開選樣本
+CREATE TABLE IF NOT EXISTS tank_slots (
   report TEXT NOT NULL,
   fight INTEGER NOT NULL,
   actor INTEGER NOT NULL,
   slot TEXT NOT NULL,
-  actions TEXT NOT NULL,
+  PRIMARY KEY (report, fight, actor)
+);
+
+-- 前輩平均的樣本：每個 Boss×職業（坦克再分 MT／ST）×PR 區間（top 95+／upper 75–94／mid 50–74）最多 30 筆，
+-- 由 timelines.ts 的 refreshSamples() 定時選取（穩定選取：仍在區間 ±3 內的保留）
+CREATE TABLE IF NOT EXISTS average_samples (
+  encounter INTEGER NOT NULL,
+  difficulty INTEGER NOT NULL,
+  job TEXT NOT NULL,
+  slot TEXT NOT NULL,
+  tier TEXT NOT NULL,
+  report TEXT NOT NULL,
+  fight INTEGER NOT NULL,
+  actor INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  server TEXT NOT NULL,
+  rdps REAL NOT NULL,
+  pr INTEGER NOT NULL,
+  -- 繁中服版本（src/jobs/patch.ts）
+  patch TEXT NOT NULL,
+  selected_at INTEGER NOT NULL,
+  PRIMARY KEY (encounter, difficulty, job, slot, tier, report, fight, actor)
+);
+
+-- 各區間的候選人數（區間內的擊殺數）與最近一次選樣本的時間
+CREATE TABLE IF NOT EXISTS sample_tiers (
+  encounter INTEGER NOT NULL,
+  difficulty INTEGER NOT NULL,
+  job TEXT NOT NULL,
+  slot TEXT NOT NULL,
+  tier TEXT NOT NULL,
+  candidates INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (encounter, difficulty, job, slot, tier)
+);
+
+-- 預處理：樣本玩家的全部施放（含 GCD，不含普通攻擊）、自身效果與施加在敵人身上的效果時段、對敵人施加效果的每一次
+-- （src/analysis/castCodec.ts 的編碼）。deaths：死亡次數，> 0 的樣本排除（保留這一列當作記號，不再選；內容清空）；
+-- -1 為報告已不公開
+CREATE TABLE IF NOT EXISTS sample_data (
+  report TEXT NOT NULL,
+  fight INTEGER NOT NULL,
+  actor INTEGER NOT NULL,
+  casts TEXT NOT NULL,
+  buffs TEXT NOT NULL,
+  applications TEXT NOT NULL,
+  deaths INTEGER NOT NULL,
+  processed_at INTEGER NOT NULL,
   PRIMARY KEY (report, fight, actor)
 );

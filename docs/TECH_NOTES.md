@@ -231,16 +231,29 @@
 - 前端：`compare/ReferenceFinder.tsx`；`loadBossCasts()`（`load.ts`）只需戰鬥的 ID 與開始／結束，直接用資料庫存的時間抓 Boss 施放；`analysis/mainMechanics.ts` 的 `variantPoints()` 以時間軸對齊後主要機制「不同變化」的時間點判斷機制是否相同。比對同時最多 3 個請求（Worker 每 IP 每分鐘 60 次）。
 
 ### 預處理（`worker/src/timelines.ts`，2026-09-30 起）
-- 目的：前端不必逐筆向 FFLogs 抓已收錄擊殺的施放。第一階段用於搜尋前輩日誌的「機制相同的排前面」（原名「只看機制與我相同」）（改前每筆候選各抓一次 Boss 施放，最多 40 多個請求），第二階段用於「前輩的爆發點位」。
-- 定時觸發 `2-59/10 * * * *`（每 10 分鐘；`index.ts` 的 `TIMELINE_CRON`）：先以 `rateLimitData` 查這小時的點數（超過 2,000 點跳過）；取尚未處理的場次（「報告＋戰鬥」，最近的報告優先），每場 `hostility=Enemies&dataType=Casts`、`hostility=Friendlies&dataType=Casts`（各最多 2 頁），有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST（承受普通攻擊全隊最多者為 MT）；每次最多約 9 場（每場預留 5 個請求、每次執行 46 個以內），寫入用一個 `db.batch`。
-- 資料表（`schema.sql`）：`pull_timelines`（每場 Boss 施放：同一技能 1 秒內只留一次，與前端 `buildAlignment()`／`mechanicDifferences()` 的 1 秒去重相同，比對結果不變）、`parse_actions`（每位已收錄玩家的全部能力技〔非 GCD、非普通攻擊〕與道具施放，`slot` 為坦克的 MT／ST；分類在讀取時才套用，改分類不必重抓）。編碼為 `src/analysis/castCodec.ts`：依時間排序，每筆「36 進位技能 ID.時間差」，時間以 10 毫秒為單位。
-- 失敗處理：報告已私人化或刪除（`GONE_REPORT`）時記錄 `boss = ''`、不再重試；其他錯誤（額度、網路）下次再試。`pruneGoneReports()` 移除報告時一併刪除兩張表的資料。
+- 目的：前端不必逐筆向 FFLogs 抓已收錄擊殺的施放。Boss 施放用於搜尋前輩日誌的「機制相同的排前面」（原名「只看機制與我相同」）（改前每筆候選各抓一次 Boss 施放，最多 40 多個請求）與前輩平均的對齊；**前輩平均的樣本**另存完整資料（見下方「前輩平均的樣本」）。
+- **2026-10-01 改版**：原本每位已收錄玩家都存能力技（parse_actions），改為只為前輩平均選到的樣本存全部施放（含 GCD）、效果與死亡——全部玩家含 GCD 約 110 MB，只存樣本約 25 MB，而且樣本以外的資料沒有用途。parse_actions 刪除（其中坦克的 MT／ST 先搬到 	ank_slots）。
+- 定時觸發 `2-59/10 * * * *`（每 10 分鐘；`index.ts` 的 `TIMELINE_CRON`）：先以 `rateLimitData` 查這小時的點數（超過 2,000 點跳過），然後依序：
+  1. `refreshSamples()`：輪替重新選 4 組 Boss×職業的樣本（只讀 D1）。
+  2. 樣本：每次最多 8 位，`sourceID=樣本&dataType=All`（最多 3 頁）一次取得施放、自身效果、對敵人施加的效果與死亡。
+  3. 新場次：剩下的請求處理尚未有 Boss 施放的場次（**含樣本的場次優先**，其次最近的報告），每場 `hostility=Enemies&dataType=Casts`（最多 2 頁），有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST（承受普通攻擊全隊最多者為 MT）→ `tank_slots`。
+  每次執行的對外請求在 46 個以內，寫入用一個 `db.batch`。
+- 資料表（`schema.sql`）：`pull_timelines`（每場 Boss 施放：同一技能 1 秒內只留一次，與前端 `buildAlignment()`／`mechanicDifferences()` 的 1 秒去重相同，比對結果不變）、`tank_slots`（坦克的 MT／ST）、`average_samples`／`sample_tiers`／`sample_data`（前輩平均，見下）。編碼為 `src/analysis/castCodec.ts`：依時間排序，每筆「36 進位技能 ID.時間差」，時間以 10 毫秒為單位；效果時段另加持續時間與旗標（開打前已有／到結束未移除），施加效果另加目標 ID。
+- 失敗處理：報告已私人化或刪除（`GONE_REPORT`）時記錄 `boss = ''`（樣本記 `deaths = -1`）、不再重試；其他錯誤（額度、網路）下次再試。`pruneGoneReports()` 移除報告時一併刪除預處理與樣本的資料（下次選樣本時補上）。
 - `GET /pull-timelines?pulls=報告:戰鬥,…`（最多 40，`storedTimelines()`）：只回已預處理且報告仍公開的場次；前端 `fetchPullTimelines()`，`ReferenceFinder` 先用它，沒有的再 `loadBossCasts()`。
 - 本機驗證（`wrangler d1 execute --local` 套用 schema＋`wrangler dev --local`）：D1 支援 `(report, fight) IN (VALUES (?, ?), …)`；沒有 `worker/.dev.vars`（FFLogs 密鑰只存在 Cloudflare）時無法在本機跑定時工作，流程以 `timelines.node.test.ts`（node:sqlite）測試。
 - 實測（2026-09-30 第一次執行）：9 場、72 位玩家、0 失敗，**28 點**（每場約 3 點），wall time 8 秒、CPU 134 毫秒。編碼後每場 Boss 施放平均 1.5 KB、每位玩家能力技平均 0.85 KB；收錄共 4,071 場、32,431 筆擊殺，全部預處理完約 35 MB（D1 原本 5.5 MB，免費上限 500 MB）。每次的結果（含 `points`）記在 log（`wrangler tail`）。
 - 一致性驗證：以已預處理的 M5S 3 場、M7S 4 場，分別用預處理資料與向 FFLogs 抓的原始 Boss 施放跑 `variantPoints()`（我的日誌為 M5S `BF76r8yKh4wGaYkm` #1、M7S `dbN4HXY3QPzMRvDw` #4）：7 場的差異處數、涉及的機制完全相同，時間只差 10 毫秒內的取整（Boss 施放由約 400 筆去重成約 200～300 筆）。
 - 搜尋面板的機制比對原本依賴 `mine` 物件：Boss 繁中名稱晚到會換掉物件（資料相同），比對被中止，中止的列停在「比對中」、下次又被當成已處理而永遠不會完成（預處理後打開面板就讀取我的 Boss 施放，較容易遇到）。改為依戰鬥的鍵重跑，中止時清掉還在比對中的列。
 - 頻率：點數很少，由每 20 分鐘改為每 10 分鐘（每小時約 54 場、170 點；排名掃描每小時約 300 點；2,000 點的上限留給訪客），約 3 天處理完現有場次，之後每天新增的擊殺隨掃描陸續處理。
+
+### 前輩平均的樣本（`worker/src/timelines.ts`，2026-10-01 起）
+- 區間固定三組：`top` PR 95+、`upper` 75–94、`mid` 50–74；每個 Boss×職業（坦克再分 MT／ST，還沒判斷 MT／ST 的場次不選）×區間最多 30 筆（`SAMPLES_PER_TIER`），**每位玩家最多一筆**。PR 以 `tcRankings()` 計算（與排名表相同）。
+- `selectTier()`：之前選過、PR 仍在區間 ±3 內的保留（避免邊界的擊殺每次進出，減少重抓）；不足的從區間內其他玩家補，依 rDPS **平均分布**（涵蓋整個區間）。目前版本（`patchAt(now)`）的擊殺 ≥ 10 位時只用目前版本，否則舊版本一起用。
+- `refreshSamples()`：依 `crawl_state.samples_cursor` 輪替，每次 4 組（D1 讀取：每組約數百列的 `parses`；全部約 100 組，約 4 小時輪完一次）；每組刪除後重寫 `average_samples` 與 `sample_tiers`（區間內擊殺數、選取時間）。之後刪除不再是樣本的 `sample_data`（`deaths = 0` 者；有死亡的保留當作記號）。
+- `sample_data`：施放（含 GCD，不含普通攻擊，`cast` 事件）、效果時段（`selfBuffWindows()`＋`enemyDebuffWindows()`，與前端 `SideData.buffs` 相同）、施加效果（`enemyDebuffApplications()`，DoT 提早續上用）、死亡次數。**有死亡的樣本排除**（只存死亡次數，內容清空），下次選樣本時跳過、以其他擊殺補上。
+- `GET /average-samples?encounter&difficulty&job&tier=top|upper|mid[&slot=MT|ST]`（`averageSamples()`）：已預處理、沒有死亡、該場有 Boss 施放的樣本（依 rDPS），附名字、伺服器、報告與角色（樣本清單用）、PR、rDPS、版本、戰鬥長度與四種編碼資料；`count` 為區間內擊殺數、`updatedAt` 為最近一次選樣本的時間。快取 10 分鐘。
+- 前端的平均計算（第二階段）尚未實作；第一階段只累積樣本，介面不出現前輩平均。
 
 ## MT／ST 判斷（`AUTO_ATTACKS_TAKEN_QUERY`）
 
@@ -534,6 +547,9 @@
 ### 2026-09-30 重點摘要、受到的傷害與死亡回顧
 - `SideData.damageTaken`（`damageTaken()`，`clipSide()` 一併裁切）；新檔 `analysis/damageTaken.ts`（`damageRows`、`deathRecap`）、`compare/DamageTaken.tsx`、`compare/KeyTakeaways.tsx`；`Advice.kind` 與 `keyTakeaways()`；`roleActions.ts` 的 `allMitigationIds()`。細節見「受到的傷害」。
 - 開發時 Vite 的 CSS HMR 曾停在舊版（手機規則沒更新），重啟開發伺服器後正常。
+
+### 2026-10-01 前輩平均的樣本（第一階段：資料）
+- Worker：`refreshSamples()`（選樣本）、只為樣本存完整施放／效果／死亡（`sample_data`）、`tank_slots`、`GET /average-samples`；`parse_actions` 刪除。`castCodec` 新增效果時段與施加效果的編碼。細節見「前輩平均的樣本」。
 
 ### 2026-09-30 預處理已收錄擊殺（前輩的爆發點位第一階段）
 - 新增 `worker/src/timelines.ts`（定時預處理、`storedTimelines()`）、`/pull-timelines` 端點、兩張 D1 表、`src/analysis/castCodec.ts`；`ReferenceFinder` 的機制比對先用預處理資料。`tsconfig.node.json` 改為 bundler 解析（Node 測試引用 Worker 與前端共用、不帶副檔名 import 的原始碼）。詳見「繁中服排名／預處理」。

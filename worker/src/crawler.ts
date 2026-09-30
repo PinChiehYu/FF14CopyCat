@@ -273,7 +273,10 @@ export async function pruneGoneReports(db: DbLike, graphql: Graphql, now = Date.
       writes.push(db.prepare('DELETE FROM parses WHERE report = ?').bind(code))
       // 預處理的資料一併刪除（timelines.ts）
       writes.push(db.prepare('DELETE FROM pull_timelines WHERE report = ?').bind(code))
-      writes.push(db.prepare('DELETE FROM parse_actions WHERE report = ?').bind(code))
+      writes.push(db.prepare('DELETE FROM tank_slots WHERE report = ?').bind(code))
+      // 前輩平均的樣本：下次選樣本時以其他擊殺補上
+      writes.push(db.prepare('DELETE FROM average_samples WHERE report = ?').bind(code))
+      writes.push(db.prepare('DELETE FROM sample_data WHERE report = ?').bind(code))
     }
     writes.push(db.prepare('UPDATE scanned_reports SET checked_at = ? WHERE code = ?').bind(now, code))
   }
