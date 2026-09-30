@@ -1,4 +1,4 @@
-import type { Advice, Severity } from '../analysis/advice'
+import { groupAdvice, type Advice, type AdviceGroup, type Severity } from '../analysis/advice'
 import { Tabs } from '../ui/Tabs'
 
 const GROUPS: { severity: Severity; label: string }[] = [
@@ -24,22 +24,42 @@ function AdviceItem({ advice, onJump }: { advice: Advice; onJump: (t: number) =>
   )
 }
 
+/** 一組相關的建議：類別名稱（多於一則時附則數）＋各則 */
+function Group({ group, onJump }: { group: AdviceGroup; onJump: (t: number) => void }) {
+  return (
+    <li className="advice-group">
+      {group.label && (
+        <div className="advice-group-label">
+          {group.label}
+          {group.items.length > 1 && <span className="advice-group-count">{group.items.length}</span>}
+        </div>
+      )}
+      <ol className="advice-list">
+        {group.items.map((a, i) => (
+          <AdviceItem key={i} advice={a} onJump={onJump} />
+        ))}
+      </ol>
+    </li>
+  )
+}
+
 export function AdviceList({ advice, onJump }: { advice: Advice[]; onJump: (t: number) => void }) {
   if (advice.length === 0) {
     return <p className="hint">沒有明顯需要改進的地方，你的表現與參考玩家相近。</p>
   }
-  // 依優先級分頁，預設顯示最高的一級，避免頁面過長
-  const tabs = GROUPS.map(({ severity, label }) => ({ severity, label, items: advice.filter((a) => a.severity === severity) }))
-    .filter((g) => g.items.length > 0)
-    .map(({ severity, label, items }) => ({
+  // 相關的建議成組一起列出，整組放在組內最高等級的分頁；預設顯示最高的一級，避免頁面過長
+  const groups = groupAdvice(advice)
+  const tabs = GROUPS.map(({ severity, label }) => ({ severity, label, groups: groups.filter((g) => g.severity === severity) }))
+    .filter((t) => t.groups.length > 0)
+    .map(({ severity, label, groups: inTab }) => ({
       key: severity,
       label,
-      count: items.length,
+      count: inTab.reduce((sum, g) => sum + g.items.length, 0),
       variant: severity,
       content: (
-        <ol className="advice-list">
-          {items.map((a, i) => (
-            <AdviceItem key={i} advice={a} onJump={onJump} />
+        <ol className="advice-groups">
+          {inTab.map((g) => (
+            <Group key={g.key} group={g} onJump={onJump} />
           ))}
         </ol>
       ),

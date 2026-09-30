@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
-import { generateAdvice, generateSoloAdvice, keyTakeaways, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
+import { generateAdvice, generateSoloAdvice, groupAdvice, keyTakeaways, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
 import type { DamageRow } from './damageTaken'
 import { DOT_RULES } from '../jobs/dotRules'
 import type { WindowRule } from '../jobs/windows'
@@ -506,7 +506,7 @@ describe('damage taken advice', () => {
 describe('keyTakeaways', () => {
   const a = (severity: Advice['severity'], kind: Advice['kind'], title: string): Advice => ({ severity, kind, title, detail: '' })
 
-  it('takes at most one high or medium item per kind', () => {
+  it('takes the top item of each group, most important first', () => {
     const advice = [
       a('high', 'death', 'death'),
       a('high', 'gcd', 'gcd summary'),
@@ -515,7 +515,8 @@ describe('keyTakeaways', () => {
       a('medium', 'damage', 'damage'),
       a('low', 'position', 'position'),
     ]
-    expect(keyTakeaways(advice).map((x) => x.title)).toEqual(['death', 'gcd summary', 'cooldown'])
+    // 同為「建議」時受到的傷害比冷卻技重要
+    expect(keyTakeaways(advice).map((x) => x.title)).toEqual(['death', 'gcd summary', 'damage'])
     expect(keyTakeaways([a('low', 'position', 'position')])).toEqual([])
   })
 
@@ -528,5 +529,31 @@ describe('keyTakeaways', () => {
     )
     expect(advice.length).toBeGreaterThan(0)
     expect(advice.every((x) => x.kind !== undefined)).toBe(true)
+  })
+})
+describe('groupAdvice', () => {
+  const a = (severity: Advice['severity'], kind: Advice['kind'], title: string): Advice => ({ severity, kind, title, detail: '' })
+
+  it('keeps related advice together in the tab of its most severe item', () => {
+    const groups = groupAdvice([
+      a('medium', 'gcd', 'stop 1'),
+      a('high', 'gcd', 'stop summary'),
+      a('low', 'position', 'route'),
+      a('medium', 'penalty', 'damage down'),
+      a('high', 'damage', 'extra hits'),
+      a('medium', 'cooldown', 'cooldown'),
+      a('high', 'potion', 'potion'),
+    ])
+    expect(groups.map((g) => [g.key, g.severity, g.items.map((x) => x.title)])).toEqual([
+      ['gcd', 'high', ['stop summary', 'stop 1']],
+      ['damage', 'high', ['extra hits', 'damage down']],
+      ['usage', 'high', ['potion', 'cooldown']],
+      ['position', 'low', ['route']],
+    ])
+  })
+
+  it('orders groups of the same severity by importance', () => {
+    const groups = groupAdvice([a('medium', 'position', 'p'), a('medium', 'dot', 'd'), a('medium', 'window', 'w')])
+    expect(groups.map((g) => g.key)).toEqual(['window', 'dot', 'position'])
   })
 })

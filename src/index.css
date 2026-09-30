@@ -1590,6 +1590,33 @@ h3 {
   border-color: color-mix(in srgb, var(--tab-color) 40%, var(--border));
 }
 
+/* 建議分組：相關的建議一起列出，組名為小字標題 */
+.advice-groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.advice-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.advice-group-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.85em;
+  font-weight: normal;
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+}
+
 .advice {
   padding: 10px 12px;
   border: 1px solid var(--border);

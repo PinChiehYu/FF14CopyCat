@@ -58,20 +58,62 @@ export interface Advice {
 const tag = (kind: AdviceKind, items: Advice[]): Advice[] => items.map((a) => (a.kind ? a : { ...a, kind }))
 
 /**
- * 重點摘要：從已排序的建議取「優先」與「建議」，每類最多一項（避免三項都是同一類），最多 count 項。
+ * 建議的分組：相關的類別放在同一組一起列出（例如停手的總結與各段、受到的傷害與傷害降低），
+ * 依陣列順序為同等級時的重要性。
+ */
+export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[] = [
+  { key: 'death', label: '死亡', kinds: ['death'] },
+  { key: 'gcd', label: '停手與 GCD', kinds: ['gcd'] },
+  { key: 'push', label: '推進', kinds: ['push'] },
+  { key: 'damage', label: '受到的傷害', kinds: ['damage', 'penalty'] },
+  { key: 'window', label: '技能窗口', kinds: ['window'] },
+  { key: 'usage', label: '技能與強化藥', kinds: ['cooldown', 'potion', 'usage'] },
+  { key: 'dot', label: 'DoT', kinds: ['dot'] },
+  { key: 'weave', label: '穿插過多', kinds: ['weave'] },
+  { key: 'filler', label: '止損技', kinds: ['filler'] },
+  { key: 'mitigation', label: '減傷與移動', kinds: ['mitigation'] },
+  { key: 'prepull', label: '開打前', kinds: ['prepull'] },
+  { key: 'position', label: '站位', kinds: ['position'] },
+]
+
+const GROUP_INDEX = new Map(ADVICE_GROUPS.flatMap((g, i) => g.kinds.map((k) => [k, i] as const)))
+
+export interface AdviceGroup {
+  key: string
+  label: string
+  /** 組內最高的等級：整組列在這一級的分頁 */
+  severity: Severity
+  items: Advice[]
+}
+
+/** 沒有類別的建議各自成一組（排在有類別的之後） */
+const groupKey = (a: Advice) => (a.kind ? ADVICE_GROUPS[GROUP_INDEX.get(a.kind)!].key : `title:${a.title}`)
+
+/**
+ * 依組整理建議：同一組的一起列出，整組放在組內最高等級的分頁（例如停手總結為優先、各段為建議時整組在「優先」）；
+ * 組的順序依最高等級、再依 ADVICE_GROUPS 的重要性；組內依等級，同等級維持產生順序（總結在前）。
+ */
+export function groupAdvice(advice: Advice[]): AdviceGroup[] {
+  const groups = new Map<string, Advice[]>()
+  for (const a of advice) groups.set(groupKey(a), [...(groups.get(groupKey(a)) ?? []), a])
+  return [...groups.entries()]
+    .map(([key, items]) => {
+      const def = ADVICE_GROUPS.find((g) => g.key === key)
+      const sorted = sortAdvice(items)
+      return { key, label: def?.label ?? '', severity: sorted[0].severity, items: sorted, order: def ? ADVICE_GROUPS.indexOf(def) : ADVICE_GROUPS.length }
+    })
+    .sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || a.order - b.order)
+    .map(({ order: _order, ...g }) => g)
+}
+
+/**
+ * 重點摘要：依分組的順序（等級、重要性），每組取組內最重要的一項（只取「優先」與「建議」），最多 count 項。
  */
 export function keyTakeaways(advice: Advice[], count = 3): Advice[] {
-  const seen = new Set<string>()
-  const picked: Advice[] = []
-  for (const a of advice) {
-    if (a.severity === 'low') continue
-    const key = a.kind ?? a.title
-    if (seen.has(key)) continue
-    seen.add(key)
-    picked.push(a)
-    if (picked.length === count) break
-  }
-  return picked
+  return groupAdvice(advice)
+    .map((g) => g.items[0])
+    .filter((a) => a.severity !== 'low')
+    .slice(0, count)
 }
 
 export interface AdviceInput {
