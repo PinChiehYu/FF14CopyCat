@@ -4,13 +4,14 @@
   --bg: #fff;
   --surface: #f6f5f8;
   --border: #e0dee4;
-  --accent: #7a3bd6;
+  /* 主色：靛藍，與「參考」的天藍（--ref）色相區隔 */
+  --accent: #3b5bdb;
   --error: #c62828;
   /* 懲罰效果（傷害降低等）；金黃色，與「我」的橘色區隔 */
   --warning: #a67c00;
   --ref: #2b7bd6;
   --mine: #d9731a;
-  --anchor: #7a3bd6;
+  --anchor: #3b5bdb;
   --kill: #2e7d32;
   --wipe: #c62828;
   --tank: #2f6fd1;
@@ -30,12 +31,12 @@
     --bg: #16171d;
     --surface: #1f2028;
     --border: #2e303a;
-    --accent: #c084fc;
+    --accent: #91a7ff;
     --error: #ef9a9a;
     --warning: #f2c94c;
     --ref: #6aa8f0;
     --mine: #f0a35e;
-    --anchor: #c084fc;
+    --anchor: #91a7ff;
     --kill: #6fcf8e;
     --wipe: #ef9a9a;
     --tank: #7aa7f5;
@@ -792,7 +793,7 @@ button:disabled {
   background: var(--anchor);
 }
 
-/* 關注的機制時間點（搜尋前輩日誌中勾選的）：較粗的紫色＋淡紫光暈，與對齊錨點（細紫線）區分 */
+/* 關注的機制時間點（搜尋前輩日誌中勾選的）：較粗的主色＋淡色光暈，與對齊錨點（細線）區分 */
 .boss-cast.focused {
   z-index: 1;
   top: 2px;
@@ -804,7 +805,7 @@ button:disabled {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
-/* 關注的機制時間點：紫色左條＋淡紫底（機制差異表的列、站位差異卡片與其中的機制、當下狀態的 Boss 列） */
+/* 關注的機制時間點：主色左條＋淡色底（機制差異表的列、站位差異卡片與其中的機制、當下狀態的 Boss 列） */
 .mechanics tr.focused > *:first-child,
 .card-mechanic.focused,
 .boss-now.focused {
@@ -1439,7 +1440,7 @@ h3 {
   color: var(--error);
 }
 
-/* Boss 控場造成的停手：不是操作問題，以強調色（紫）區分，不用錯誤的紅色 */
+/* Boss 控場造成的停手：不是操作問題，以主色區分，不用錯誤的紅色 */
 .lost-list li.controlled {
   border-left-color: var(--accent);
 }
@@ -2450,7 +2451,7 @@ h3 {
   border-top-color: var(--error);
 }
 
-/* 兩邊隨機機制不同：站位不同多半是機制造成，以紫色（強調色）區分，不用錯誤的紅色 */
+/* 兩邊隨機機制不同：站位不同多半是機制造成，以主色區分，不用錯誤的紅色 */
 .divergence-card.by-variant > button {
   border-top-color: var(--accent);
 }
