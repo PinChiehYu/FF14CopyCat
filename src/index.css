@@ -2717,6 +2717,17 @@ h3 {
     padding: 6px;
   }
 
+  /* 名稱欄窄：圖示、名稱、「目標 N%」各一行，4 字的名稱（櫻花繚亂）不被圖示擠成兩行 */
+  .dots-table tbody th .status-icon {
+    display: block;
+    margin: 0 0 2px;
+  }
+
+  .dots-table tbody th .rule-duration {
+    display: block;
+    margin-left: 0;
+  }
+
   .dot-cell {
     display: flex;
     flex-direction: column;
