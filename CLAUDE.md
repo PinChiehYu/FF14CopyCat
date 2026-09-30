@@ -39,6 +39,8 @@ npm run worker:deploy                # 部署 Worker 到 Cloudflare（需先 npx
 npx wrangler deploy -c worker/wrangler.toml --dry-run --outdir <tmp>   # 不登入即可驗證 Worker 設定
 node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的冒煙測試（CI 部署後自動執行）
 node scripts/gen-job-data.mjs        # 從遊戲資料重新產生 src/jobs/generated.ts（GCD 集合、各職業技能分類；約 100 個請求）
+node scripts/random-logs.mjs         # 從繁中服排名隨機挑同 Boss、同職業的兩筆擊殺，印出比較與只有我的日誌的正式站網址（隨機測試用）
+# scripts/ui-audit.js：在瀏覽器面板以 javascript_tool 執行，回傳版面檢查 JSON（橫向捲動、超出畫面、裁切、「?」大小、區塊標題）；桌面與 375 px 各跑一次比對
 node scripts/gen-mechanics.mjs       # 從 cactbot 零式時間軸重新產生 src/analysis/mechanicData.generated.ts（各 Boss 的主要機制；換季時更新腳本的 ENCOUNTERS）
 ```
 
