@@ -94,7 +94,7 @@ const groupKey = (a: Advice) => (a.kind ? ADVICE_GROUPS[GROUP_INDEX.get(a.kind)!
 
 /**
  * 依組整理建議：同一組的一起列出；組的順序依最高等級、再依 ADVICE_GROUPS 的重要性。
- * 組內依等級、再依組內類別的順序（例如團隊減傷 → 自身減傷 → 移動），同類別維持產生順序（總結在前）。
+ * 組內依等級、再依組內類別的順序（例如團隊減傷 → 自身減傷 → 移動），同類別依時間點排序（沒有時間點的總結在前）。
  * 建議區先依各則的等級分頁，再對每個分頁的建議分組。
  */
 export function groupAdvice(advice: Advice[]): AdviceGroup[] {
@@ -104,9 +104,10 @@ export function groupAdvice(advice: Advice[]): AdviceGroup[] {
     .map(([key, items]) => {
       const def = ADVICE_GROUPS.find((g) => g.key === key)
       const kindOrder = (a: Advice) => (def && a.kind ? def.kinds.indexOf(a.kind) : 0)
+      const time = (a: Advice) => a.at ?? -Infinity
       const sorted = items
         .map((a, i) => ({ a, i }))
-        .sort((x, y) => ORDER[x.a.severity] - ORDER[y.a.severity] || kindOrder(x.a) - kindOrder(y.a) || x.i - y.i)
+        .sort((x, y) => ORDER[x.a.severity] - ORDER[y.a.severity] || kindOrder(x.a) - kindOrder(y.a) || time(x.a) - time(y.a) || x.i - y.i)
         .map((x) => x.a)
       return { key, label: def?.label ?? '', severity: sorted[0].severity, items: sorted, order: def ? ADVICE_GROUPS.indexOf(def) : ADVICE_GROUPS.length }
     })
@@ -183,6 +184,9 @@ const MAX_MECHANIC_POSITIONS = 5
 
 const seconds = (ms: number) => (ms / 1000).toFixed(1)
 
+/** 建議中列出的時間點一律依時間排序 */
+const byTime = <T,>(items: T[], time: (item: T) => number): T[] => [...items].sort((a, b) => time(a) - time(b))
+
 /**
  * 停手（少打 GCD）：只列一則總結，「查看」捲到下方「少打 GCD 的時段」清單；各段的時間、長度與參考的 GCD 數在清單中，不逐段列成建議。
  */
@@ -198,7 +202,7 @@ function lostGcdAdvice(input: AdviceInput): Advice[] {
             severity: 'low',
             title: `${controlled.length} 段停手是 Boss 控場造成`,
             detail:
-              `${controlled.map((w) => `${formatFightTime(w.mineStart)}（${controlNames(w.control!, input.abilityName)}）`).join('、')}：` +
+              `${byTime(controlled, (w) => w.mineStart).map((w) => `${formatFightTime(w.mineStart)}（${controlNames(w.control!, input.abilityName)}）`).join('、')}：` +
               '你身上有 Boss 施加、期間無法施放的效果，參考在同一段仍在施放（例如隨機點名的時間不同），不是操作問題。',
             at: controlled[0].refStart,
           },
@@ -282,7 +286,7 @@ const COOLDOWN_NOTES: Record<CooldownKind, string> = {
 function mitigationAdvice(u: AbilityUsage, name: string, kind: CooldownKind): Advice | null {
   const label = CATEGORY_LABELS[kind]
   const fewer = u.ref - u.mine
-  const missed = u.unmatchedRef
+  const missed = [...u.unmatchedRef].sort((a, b) => a - b)
   if (missed.length > 0 || fewer > 0) {
     const listed = missed.slice(0, MAX_LISTED_TIMES).map(formatFightTime).join('、')
     const more = missed.length > MAX_LISTED_TIMES ? ` 等 ${missed.length} 次` : ''
@@ -413,6 +417,8 @@ function positionAdvice(input: AdviceInput): Advice[] {
   const atMechanic = ofKind('mechanic')
     .sort((a, b) => Number(overlapsLost(b)) - Number(overlapsLost(a)) || b.maxDistance - a.maxDistance)
     .slice(0, MAX_MECHANIC_POSITIONS)
+    // 依重要性挑出後，依機制的時間排列
+    .sort((a, b) => positionMechanics(a)[0].t - positionMechanics(b)[0].t)
   const items: Advice[] = atMechanic.map((d) => {
     const mechanics = positionMechanics(d)
     const names = [...new Set(mechanics.map((m) => abilityName(m.abilityId)))].slice(0, 2).join('、')
@@ -432,6 +438,7 @@ function positionAdvice(input: AdviceInput): Advice[] {
     .filter((d) => d.end - d.start >= LONG_DIVERGENCE_MS)
     .sort((a, b) => b.end - b.start - (a.end - a.start))
     .slice(0, MAX_ITEMS)
+    .sort((a, b) => a.start - b.start)
   for (const d of elsewhere) {
     items.push({
       severity: 'low',
@@ -443,24 +450,24 @@ function positionAdvice(input: AdviceInput): Advice[] {
 
   if (byVariant.length > 0) {
     const names = (ids: number[], others: number[]) => mechanicLabel(ids, others, abilityName)
-    const listed = byVariant
+    const listed = byTime(byVariant, (d) => d.start)
       .slice(0, MAX_LISTED_TIMES)
       .map((d) => `${formatFightTime(d.start)}（你：${names(d.variant!.mine, d.variant!.ref)}；參考：${names(d.variant!.ref, d.variant!.mine)}）`)
     items.push({
       severity: 'low',
       title: `${byVariant.length} 段站位差異發生在 Boss 隨機機制不同時`,
       detail: `${listed.join('、')}${byVariant.length > listed.length ? ' 等' : ''}。兩邊的機制不同，站位不同多半是機制造成，不是站錯。`,
-      at: byVariant[0].start,
+      at: Math.min(...byVariant.map((d) => d.start)),
     })
   }
 
   if (untargetable.length > 0) {
-    const listed = untargetable.slice(0, MAX_LISTED_TIMES).map((d) => formatFightTime(d.start))
+    const listed = byTime(untargetable, (d) => d.start).slice(0, MAX_LISTED_TIMES).map((d) => formatFightTime(d.start))
     items.push({
       severity: 'low',
       title: `${untargetable.length} 段站位差異發生在 Boss 無法選中時`,
       detail: `${listed.join('、')}${untargetable.length > listed.length ? ' 等' : ''}。轉場等 Boss 無法選中的期間，玩家常被強制移動或無法移動，站位不同不一定是站錯。`,
-      at: untargetable[0].start,
+      at: Math.min(...untargetable.map((d) => d.start)),
     })
   }
 
@@ -650,7 +657,8 @@ function fillerAdvice(input: {
   if (!f || f.mine.length === 0) return []
   const name = input.fillerId !== undefined ? input.abilityName(input.fillerId) : '止損技'
   const list = (times: number[]) =>
-    times
+    [...times]
+      .sort((a, b) => a - b)
       .slice(0, MAX_FILLERS_LISTED)
       .map((t) => formatFightTime(t))
       .join('、') + (times.length > MAX_FILLERS_LISTED ? ' 等' : '')
@@ -661,10 +669,12 @@ function fillerAdvice(input: {
         severity: 'high',
         title: `${name}（止損技）用了 ${f.mine.length} 次`,
         detail: `${list(mineRef)}。止損技威力低，代表那時離 Boss 太遠；檢查是否能提早移動、貼近 Boss 或改用較強的遠程技能。選了參考日誌後可以看前輩在同一段是否也需要。`,
-        at: mineRef[0],
+        at: Math.min(...mineRef),
       },
     ]
   }
+  // 用得比參考少就不提：已經比前輩少靠止損技
+  if (f.mine.length < f.ref.length) return []
   const { shared, onlyMine } = compareFillers(mineRef, f.ref)
   if (onlyMine.length === 0) return []
   return [
@@ -674,7 +684,7 @@ function fillerAdvice(input: {
       detail:
         `參考在同一段（前後 5 秒）沒有用止損技：${list(onlyMine)}。止損技威力低，對照這些時間的站位，看參考怎麼留在 Boss 身邊。` +
         (shared.length > 0 ? `另外 ${shared.length} 次參考也用了，多半是機制造成。` : ''),
-      at: onlyMine[0],
+      at: Math.min(...onlyMine),
     },
   ]
 }
@@ -706,8 +716,8 @@ function penaltyAdvice(input: Pick<AdviceInput, 'penalties' | 'mineToRef'>): Adv
       // 懲罰效果與死亡同為機制失誤的直接結果，列為優先
       severity: 'high',
       title: `被施加傷害降低 ${p.mine.length} 次，共 ${seconds(total)} 秒（參考 ${p.ref.length} 次）`,
-      detail: `${p.mine.map((x) => formatFightTime(input.mineToRef(x.start))).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
-      at: input.mineToRef(p.mine[0].start),
+      detail: `${byTime(p.mine, (x) => x.start).map((x) => formatFightTime(input.mineToRef(x.start))).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
+      at: input.mineToRef(Math.min(...p.mine.map((x) => x.start))),
     },
   ]
 }
@@ -756,7 +766,7 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
   const items: Advice[] = []
 
   if (input.deaths.length > 0) {
-    const list = input.deaths.map((d) => `${formatFightTime(d.t)}${d.abilityId !== null ? `（${abilityName(d.abilityId)}）` : ''}`).join('、')
+    const list = byTime(input.deaths, (d) => d.t).map((d) => `${formatFightTime(d.t)}${d.abilityId !== null ? `（${abilityName(d.abilityId)}）` : ''}`).join('、')
     const unable = input.deaths.reduce((sum, d) => sum + ((d.revivedAt ?? input.durationMs) - d.t), 0)
     items.push({
       kind: 'death',
@@ -790,7 +800,7 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
       kind: 'gcd',
       severity: 'low',
       title: `${controlled.length} 段停手是 Boss 控場造成`,
-      detail: `${controlled.map((w) => `${formatFightTime(w.mineStart)}（${controlNames(w.control!, abilityName)}）`).join('、')}：你身上有 Boss 施加、期間無法施放的效果，不是操作問題。`,
+      detail: `${byTime(controlled, (w) => w.mineStart).map((w) => `${formatFightTime(w.mineStart)}（${controlNames(w.control!, abilityName)}）`).join('、')}：你身上有 Boss 施加、期間無法施放的效果，不是操作問題。`,
       at: controlled[0].mineStart,
     })
   }
@@ -841,8 +851,8 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
       kind: 'penalty',
       severity: 'high',
       title: `被施加傷害降低 ${input.penalties.length} 次，共 ${seconds(total)} 秒`,
-      detail: `${input.penalties.map((p) => formatFightTime(p.start)).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
-      at: input.penalties[0].start,
+      detail: `${byTime(input.penalties, (p) => p.start).map((p) => formatFightTime(p.start)).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
+      at: Math.min(...input.penalties.map((p) => p.start)),
     })
   }
 

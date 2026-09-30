@@ -326,6 +326,13 @@ describe('ranged filler advice', () => {
     expect(groupAdvice([filler!]).map((g) => g.key)).toEqual(['usage'])
     // 參考在同一段都用了：機制造成，不提
     expect(generateAdvice(input({ fillers: { mine: [60_000], ref: [58_000] }, fillerId: 7486 })).some((a) => a.title.includes('（止損技）'))).toBe(false)
+    // 用得比參考少：不提
+    expect(generateAdvice(input({ fillers: { mine: [60_000], ref: [20_000, 200_000] }, fillerId: 7486 })).some((a) => a.title.includes('（止損技）'))).toBe(false)
+  })
+
+  it('lists filler times in chronological order', () => {
+    const advice = generateAdvice(input({ fillers: { mine: [120_000, 60_000], ref: [] }, fillerId: 7486 }))
+    expect(advice.find((a) => a.title.includes('（止損技）'))?.detail).toContain('1:00.0、2:00.0')
   })
 
   it('reports my fillers without a reference', () => {
@@ -488,6 +495,13 @@ describe('groupAdvice', () => {
       a('medium', 'mitigation', 'rampart'),
     ])
     expect(mitigation.items.map((x) => x.title)).toEqual(['veil', 'reprisal', 'rampart', 'sprint'])
+    // 同類依時間點排序，沒有時間點的總結在前
+    const [usage] = groupAdvice([
+      { ...a('medium', 'cooldown', 'late'), at: 300_000 },
+      { ...a('medium', 'cooldown', 'early'), at: 30_000 },
+      a('medium', 'cooldown', 'summary'),
+    ])
+    expect(usage.items.map((x) => x.title)).toEqual(['summary', 'early', 'late'])
     // 懲罰效果緊接在死亡之後
     expect(groupAdvice([a('high', 'gcd', 'g'), a('high', 'penalty', 'p'), a('high', 'death', 'd')]).map((g) => g.key)).toEqual([
       'death',
