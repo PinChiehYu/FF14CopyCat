@@ -279,14 +279,9 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   const variantsOf = (r: TcRanking) => differencesOf(r)?.length
   const all = result.status === 'ready' ? result.rows : []
   const compared = all.every((r) => variantsOf(r) !== undefined || mechanics.get(rowKey(r))?.status === 'error')
-  const same = all.filter((r) => variantsOf(r) === undefined || variantsOf(r) === 0)
-  // 隨機機制多的 Boss 很難有完全相同的：比對完仍沒有時，改依差異由少到多列出
-  const noneSame = sameMechanics && compared && all.length > 0 && same.every((r) => variantsOf(r) === undefined)
-  const rows = !sameMechanics
-    ? all
-    : noneSame
-      ? [...all].sort((a, b) => (variantsOf(a) ?? Infinity) - (variantsOf(b) ?? Infinity))
-      : same
+  // 比對機制時列出全部，依不同處由少到多排序（機制相同的在最前面；同樣多時維持 rDPS 順序），不隱藏不同的
+  const exact = all.filter((r) => variantsOf(r) === 0).length
+  const rows = sameMechanics ? [...all].sort((a, b) => (variantsOf(a) ?? Infinity) - (variantsOf(b) ?? Infinity)) : all
   // 處理中（搜尋、或勾選機制相同後逐筆比對）：只顯示轉圈，完成後才顯示結果並允許操作，避免筆數跟著比對進度跳動
   const comparing = sameMechanics && result.status === 'ready' && !compared
   const busy = loading || comparing
@@ -326,15 +321,15 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
               搜尋
             </button>
           </div>
-          {/* 第二行：只看機制與我相同＋關注的時間點數 */}
+          {/* 第二行：機制相同的排前面＋關注的時間點數 */}
           <div className="finder-same">
             <label className="finder-check">
               <input type="checkbox" checked={sameMechanics} disabled={busy} onChange={(e) => setSameMechanics(e.target.checked)} />
-              只看機制與我相同
+              機制相同的排前面
             </label>
             <HelpTip
               text={[
-                '逐筆比對 Boss 的隨機機制，只列出與我的戰鬥相同的紀錄；沒有完全相同時依不同處由少到多排序。',
+                '逐筆比對 Boss 的隨機機制，依與我的戰鬥不同處由少到多排序（機制相同的在最前面，其他紀錄照常列出）；每筆標示「機制相同」或「N 處不同」。',
                 '下方為你這場中每一次會隨機的機制（cactbot 時間軸中有多個版本的機制），時間與版本取自你這場的 Boss 施放；只比對勾選的時間點，比較結果也會標出這些時間點。依 Boss 記住。',
               ].join('\n')}
             />
@@ -400,7 +395,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
                     >
                       共 {result.count} 人，列出 {result.rows.length} 筆
                     </span>
-                    {noneSame && <span title="沒有隨機機制完全相同的紀錄，改依不同處由少到多排序">・無完全相同，依差異排序</span>}
+                    {sameMechanics && <span>・機制相同 {exact} 筆</span>}
                   </span>
                 }
                 placeholder={`選擇要參考的紀錄（${rows.length} 筆）`}

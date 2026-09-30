@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { mainMechanicGroups, occurrenceOf, type MechanicOccurrence } from '../analysis/mainMechanics'
 
 // 使用者取消勾選（不關注）的機制時間點（MechanicOccurrence.id），依 Boss 記在瀏覽器；
-// 搜尋前輩日誌的「只看機制與我相同」只比對關注的時間點，比較結果依此高光
+// 搜尋前輩日誌的「機制相同的排前面」只比對關注的時間點，比較結果依此高光
 const STORAGE_KEY = 'finder-ignored-occurrences:'
 // 同一頁的其他元件（搜尋面板改了 → 比較結果更新）
 const CHANGE_EVENT = 'focused-mechanics-change'

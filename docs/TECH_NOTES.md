@@ -232,7 +232,7 @@
 - 前端：`compare/ReferenceFinder.tsx`；`loadBossCasts()`（`load.ts`）只需戰鬥的 ID 與開始／結束，直接用資料庫存的時間抓 Boss 施放；`analysis/mainMechanics.ts` 的 `variantPoints()` 以時間軸對齊後主要機制「不同變化」的時間點判斷機制是否相同。比對同時最多 3 個請求（Worker 每 IP 每分鐘 60 次）。
 
 ### 預處理（`worker/src/timelines.ts`，2026-09-30 起）
-- 目的：前端不必逐筆向 FFLogs 抓已收錄擊殺的施放。第一階段用於搜尋前輩日誌的「只看機制與我相同」（改前每筆候選各抓一次 Boss 施放，最多 40 多個請求），第二階段用於「前輩的爆發點位」。
+- 目的：前端不必逐筆向 FFLogs 抓已收錄擊殺的施放。第一階段用於搜尋前輩日誌的「機制相同的排前面」（原名「只看機制與我相同」）（改前每筆候選各抓一次 Boss 施放，最多 40 多個請求），第二階段用於「前輩的爆發點位」。
 - 定時觸發 `2-59/10 * * * *`（每 10 分鐘；`index.ts` 的 `TIMELINE_CRON`）：先以 `rateLimitData` 查這小時的點數（超過 2,000 點跳過）；取尚未處理的場次（「報告＋戰鬥」，最近的報告優先），每場 `hostility=Enemies&dataType=Casts`、`hostility=Friendlies&dataType=Casts`（各最多 2 頁），有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST（承受普通攻擊全隊最多者為 MT）；每次最多約 9 場（每場預留 5 個請求、每次執行 46 個以內），寫入用一個 `db.batch`。
 - 資料表（`schema.sql`）：`pull_timelines`（每場 Boss 施放：同一技能 1 秒內只留一次，與前端 `buildAlignment()`／`mechanicDifferences()` 的 1 秒去重相同，比對結果不變）、`parse_actions`（每位已收錄玩家的全部能力技〔非 GCD、非普通攻擊〕與道具施放，`slot` 為坦克的 MT／ST；分類在讀取時才套用，改分類不必重抓）。編碼為 `src/analysis/castCodec.ts`：依時間排序，每筆「36 進位技能 ID.時間差」，時間以 10 毫秒為單位。
 - 失敗處理：報告已私人化或刪除（`GONE_REPORT`）時記錄 `boss = ''`、不再重試；其他錯誤（額度、網路）下次再試。`pruneGoneReports()` 移除報告時一併刪除兩張表的資料。

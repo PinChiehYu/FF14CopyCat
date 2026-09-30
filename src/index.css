@@ -961,7 +961,7 @@ button:disabled {
   flex: none;
 }
 
-/* 第二行：只看機制與我相同＋關注的時間點數 */
+/* 第二行：機制相同的排前面＋關注的時間點數 */
 .finder-same {
   display: flex;
   flex-wrap: wrap;
