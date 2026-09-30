@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
-import { generateAdvice, generateSoloAdvice, groupAdvice, keyTakeaways, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
-import type { DamageRow } from './damageTaken'
+import { generateAdvice, generateSoloAdvice, groupAdvice, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
 import { DOT_RULES } from '../jobs/dotRules'
 import type { WindowRule } from '../jobs/windows'
 import type { AbilityUsage } from './metrics'
@@ -440,39 +439,7 @@ describe('generateSoloAdvice', () => {
   })
 })
 
-describe('damage taken advice', () => {
-  const row = (over: Partial<DamageRow>): DamageRow => ({
-    abilityId: 1,
-    mine: { count: 2, total: 60_000, mitigation: 0.1 },
-    ref: { count: 0, total: 0, mitigation: null },
-    flagged: [],
-    mitigationGap: false,
-    firstHit: 10_000,
-    ...over,
-  })
-
-  it('lists hits the reference avoided, most first', () => {
-    const advice = generateAdvice(
-      input({
-        damage: [
-          row({ abilityId: 2, flagged: [{ t: 30_000, abilityId: 2, amount: 1, penalized: false }] }),
-          row({ flagged: [10_000, 50_000].map((t) => ({ t, abilityId: 1, amount: 1, penalized: false })) }),
-        ],
-      }),
-    )
-    expect(advice.filter((a) => a.kind === 'damage').map((a) => [a.severity, a.title, a.at])).toEqual([
-      ['high', '多吃了「Ikishoten」2 次（參考沒有被打中）', 10_000],
-      ['medium', '多吃了「Enpi」1 次（參考沒有被打中）', 30_000],
-    ])
-  })
-
-  it('suggests mitigating big hits better than the reference', () => {
-    const advice = generateAdvice(
-      input({ damage: [row({ mine: { count: 2, total: 1, mitigation: 0.1 }, ref: { count: 2, total: 1, mitigation: 0.35 }, mitigationGap: true })] }),
-    )
-    expect(advice.map((a) => a.title)).toContain('「Ikishoten」的減傷比參考少 25%')
-  })
-
+describe('death recap and penalty advice', () => {
   it('adds a death recap to the death advice', () => {
     const [death] = generateAdvice(
       input({
@@ -503,23 +470,7 @@ describe('damage taken advice', () => {
   })
 })
 
-describe('keyTakeaways', () => {
-  const a = (severity: Advice['severity'], kind: Advice['kind'], title: string): Advice => ({ severity, kind, title, detail: '' })
-
-  it('takes the top item of each group, most important first', () => {
-    const advice = [
-      a('high', 'death', 'death'),
-      a('high', 'gcd', 'gcd summary'),
-      a('high', 'gcd', 'gcd window'),
-      a('medium', 'cooldown', 'cooldown'),
-      a('medium', 'damage', 'damage'),
-      a('low', 'position', 'position'),
-    ]
-    // 同為「建議」時受到的傷害比冷卻技重要
-    expect(keyTakeaways(advice).map((x) => x.title)).toEqual(['death', 'gcd summary', 'damage'])
-    expect(keyTakeaways([a('low', 'position', 'position')])).toEqual([])
-  })
-
+describe('advice kinds', () => {
   it('tags every generated advice with a kind', () => {
     const advice = generateAdvice(
       input({
@@ -540,14 +491,13 @@ describe('groupAdvice', () => {
       a('high', 'gcd', 'stop summary'),
       a('low', 'position', 'route'),
       a('medium', 'penalty', 'damage down'),
-      a('high', 'damage', 'extra hits'),
       a('medium', 'cooldown', 'cooldown'),
       a('high', 'potion', 'potion'),
     ])
     expect(groups.map((g) => [g.key, g.severity, g.items.map((x) => x.title)])).toEqual([
       ['gcd', 'high', ['stop summary', 'stop 1']],
-      ['damage', 'high', ['extra hits', 'damage down']],
       ['usage', 'high', ['potion', 'cooldown']],
+      ['penalty', 'medium', ['damage down']],
       ['position', 'low', ['route']],
     ])
   })

@@ -22,11 +22,11 @@ import { clipSeverity, type DotSummary } from './dots'
 import { fflogsStatusId } from '../jobs/dotRules'
 import { compareFillers, isRangedFiller } from '../jobs/rangedFillers'
 import { weavingSeverity, type BadWeave } from './weaving'
-import type { DamageRow, DeathRecap } from './damageTaken'
+import type { DeathRecap } from './damageTaken'
 
 export type Severity = 'high' | 'medium' | 'low'
 
-/** 建議的類別：重點摘要每類最多取一項 */
+/** 建議的類別：建議區依類別分組（見 ADVICE_GROUPS） */
 export type AdviceKind =
   | 'death'
   | 'gcd'
@@ -42,7 +42,6 @@ export type AdviceKind =
   | 'filler'
   | 'position'
   | 'penalty'
-  | 'damage'
 
 export interface Advice {
   severity: Severity
@@ -58,14 +57,14 @@ export interface Advice {
 const tag = (kind: AdviceKind, items: Advice[]): Advice[] => items.map((a) => (a.kind ? a : { ...a, kind }))
 
 /**
- * 建議的分組：相關的類別放在同一組一起列出（例如停手的總結與各段、受到的傷害與傷害降低），
+ * 建議的分組：相關的類別放在同一組一起列出（例如停手的總結與各段、冷卻技與強化藥），
  * 依陣列順序為同等級時的重要性。
  */
 export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[] = [
   { key: 'death', label: '死亡', kinds: ['death'] },
   { key: 'gcd', label: '停手與 GCD', kinds: ['gcd'] },
   { key: 'push', label: '推進', kinds: ['push'] },
-  { key: 'damage', label: '受到的傷害', kinds: ['damage', 'penalty'] },
+  { key: 'penalty', label: '懲罰效果', kinds: ['penalty'] },
   { key: 'window', label: '技能窗口', kinds: ['window'] },
   { key: 'usage', label: '技能與強化藥', kinds: ['cooldown', 'potion', 'usage'] },
   { key: 'dot', label: 'DoT', kinds: ['dot'] },
@@ -106,15 +105,6 @@ export function groupAdvice(advice: Advice[]): AdviceGroup[] {
     .map(({ order: _order, ...g }) => g)
 }
 
-/**
- * 重點摘要：依分組的順序（等級、重要性），每組取組內最重要的一項（只取「優先」與「建議」），最多 count 項。
- */
-export function keyTakeaways(advice: Advice[], count = 3): Advice[] {
-  return groupAdvice(advice)
-    .map((g) => g.items[0])
-    .filter((a) => a.severity !== 'low')
-    .slice(0, count)
-}
 
 export interface AdviceInput {
   /** 戰鬥長度（參考時間，毫秒） */
@@ -159,8 +149,6 @@ export interface AdviceInput {
   weaving?: { mine: BadWeave[]; ref: BadWeave[] }
   /** 職業（FFLogs subType；穿插過多的分級用） */
   subType?: string
-  /** 受到的傷害（見 analysis/damageTaken.ts 的 damageRows） */
-  damage?: DamageRow[]
   /** 我每次死亡的死亡回顧 */
   deathRecaps?: DeathRecap[]
   /** 傷害降低（各自的時間）：我比參考多時提出 */
@@ -737,70 +725,7 @@ function fillerAdvice(input: {
   ]
 }
 
-// 多吃的技能、減傷差距最多各列出幾項
-const MAX_DAMAGE_ROWS = 3
-const MAX_MITIGATION_ROWS = 2
-
 const percent = (v: number) => `${Math.round(v * 100)}%`
-
-/**
- * 受到的傷害（見 analysis/damageTaken.ts）：
- * - 有參考：參考沒有被打中的一擊（多吃）依技能列出；減傷比參考少的大傷害。
- * - 沒有參考：造成受傷加重／傷害降低的一擊。
- * 時間：我的戰鬥時間以 mineToRef 換成參考時間。
- */
-function damageAdvice(input: {
-  damage?: DamageRow[]
-  solo: boolean
-  abilityName: (id: number) => string
-  mineToRef: (t: number) => number
-}): Advice[] {
-  const rows = input.damage ?? []
-  const items: Advice[] = []
-  const flagged = rows.filter((r) => r.flagged.length > 0).sort((a, b) => b.flagged.length - a.flagged.length)
-  for (const r of flagged.slice(0, MAX_DAMAGE_ROWS)) {
-    const name = input.abilityName(r.abilityId)
-    const penalized = r.flagged.filter((h) => h.penalized).length
-    const times = r.flagged
-      .slice(0, MAX_LISTED_TIMES)
-      .map((h) => formatFightTime(input.mineToRef(h.t)))
-      .join('、')
-    const more = r.flagged.length > MAX_LISTED_TIMES ? ' 等' : ''
-    items.push(
-      input.solo
-        ? {
-            severity: r.flagged.length >= 2 ? 'high' : 'medium',
-            title: `被「${name}」打中並受到懲罰 ${r.flagged.length} 次`,
-            detail: `${times}${more}：被打中時被施加受傷加重或傷害降低，通常是機制處理失誤。對照站位與時間軸確認怎麼避開；選了參考日誌後可以看前輩在同一段的站位。`,
-            at: input.mineToRef(r.flagged[0].t),
-          }
-        : {
-            severity: r.flagged.length >= 2 || penalized > 0 ? 'high' : 'medium',
-            title: `多吃了「${name}」${r.flagged.length} 次（參考沒有被打中）`,
-            detail:
-              `${times}${more}：參考在同一時間（前後 5 秒）沒有被這招打中，多半可以避開。` +
-              (penalized > 0 ? `其中 ${penalized} 次被施加受傷加重或傷害降低，之後受到的傷害或輸出都會受影響。` : '') +
-              '對照站位與俯視圖看參考怎麼處理這個機制；若是攻略分配不同（例如分攤、點名的對象不同）可忽略。',
-            at: input.mineToRef(r.flagged[0].t),
-          },
-    )
-  }
-  const gaps = rows
-    .filter((r) => r.mitigationGap && r.ref?.mitigation != null && r.mine.mitigation !== null)
-    .sort((a, b) => b.ref!.mitigation! - b.mine.mitigation! - (a.ref!.mitigation! - a.mine.mitigation!))
-  for (const r of gaps.slice(0, MAX_MITIGATION_ROWS)) {
-    const name = input.abilityName(r.abilityId)
-    items.push({
-      severity: 'medium',
-      title: `「${name}」的減傷比參考少 ${percent(r.ref!.mitigation! - r.mine.mitigation!)}`,
-      detail:
-        `你平均減傷 ${percent(r.mine.mitigation!)}（${r.mine.count} 次）、參考 ${percent(r.ref!.mitigation!)}（${r.ref!.count} 次）。` +
-        '這招是大傷害，對照時間軸看參考在這之前用了哪些減傷（自身或團隊）。',
-      at: r.firstHit !== null ? input.mineToRef(r.firstHit) : undefined,
-    })
-  }
-  return items
-}
 
 /** 死亡回顧的摘要文字（死亡建議的細節用） */
 function recapText(recap: DeathRecap | undefined, abilityName: (id: number) => string): string {
@@ -863,8 +788,6 @@ export interface SoloAdviceInput {
   weaving?: BadWeave[]
   /** 職業（FFLogs subType；穿插過多的分級用） */
   subType?: string
-  /** 受到的傷害（ref 為 null；flagged 為造成懲罰的一擊） */
-  damage?: DamageRow[]
   /** 我每次死亡的死亡回顧 */
   deathRecaps?: DeathRecap[]
 }
@@ -928,7 +851,6 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
 
   items.push(...tag('cooldown', cooldownAdvice({ cooldowns: input.cooldowns, abilityName, mineToRef: (t) => t })))
   items.push(...tag('dot', dotAdvice({ dots: input.dots, abilityName, mineToRef: (t) => t })))
-  items.push(...tag('damage', damageAdvice({ damage: input.damage, solo: true, abilityName, mineToRef: (t) => t })))
   items.push(
     ...tag('weave', weavingAdvice({
       weaving: input.weaving && { mine: input.weaving, ref: null },
@@ -997,7 +919,6 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...tag('gcd', lostGcdAdvice(input)),
     ...tag('gcd', gcdSpeedAdvice(input)),
     ...tag('push', pushAdvice(input)),
-    ...tag('damage', damageAdvice({ ...input, solo: false })),
     ...tag('cooldown', cooldownAdvice(input)),
     ...tag('dot', dotAdvice(input)),
     ...tag('window', windowAdvice(input)),
@@ -1008,6 +929,6 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...tag('filler', fillerAdvice(input)),
     ...tag('position', positionAdvice(input)),
   ]
-  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 受到的傷害 → 冷卻技 → DoT → 技能窗口 → 開打前 → 技能 → 站位）
+  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 冷卻技 → DoT → 技能窗口 → 開打前 → 技能 → 站位）
   return sortAdvice(items)
 }

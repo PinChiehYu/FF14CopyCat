@@ -151,14 +151,13 @@
 - 時間軸標示：`DotSummary.gaps`＝（整場 − Boss 無法選中）− 覆蓋時段，只留 ≥ `GAP_MIN_MS`（1 秒）的；`Comparison.tsx` 轉成 `DotMark`（gap／clip，各自的時間），`Timeline.tsx` 畫在每側第一列（GCD 列）頂部（`.dot-gap`、`.dot-clip-mark`）；提早續上只標 ≥ `DOT_CLIP_MARK_MIN_MS`（3 秒）的。
 - 狀態 ID 以 `/abilities` 查繁中名稱確認（彼岸花、櫻花繚亂、天輝、蠱毒法、焚灼、均衡注藥III、均衡失衡、烈毒咬箭、狂風蝕箭、高階雷電、高階中雷電、死亡烙印）。
 
-### 受到的傷害（`src/compare/load.ts` 的 `damageTaken()`、`src/analysis/damageTaken.ts`）
+### 受到的傷害資料與死亡回顧（`src/compare/load.ts` 的 `damageTaken()`、`src/analysis/damageTaken.ts`）
 - 資料：玩家事件（`source`＝玩家、`dataType=All`）也包含以玩家為目標的敵方事件，不需要額外請求。`damage` 事件欄位：`amount`（實際扣血）、`absorbed`（護盾吸收；本站的「傷害」＝兩者相加）、`unmitigatedAmount`（減傷前；有時缺，退回 amount）、`multiplier`（承受倍率＝減傷與受傷加重的乘積，例如 0.59；受傷加重時 > 1）、`tick`（DoT 跳傷）、`targetResources.hitPoints／maxHitPoints`（這一擊後的血量）。效果 ID（≥ 1,000,000）的傷害是 DoT 跳傷；**abilityGameID 500000** 是 FFLogs 另記一份來源不明的跳傷，與效果 ID 的跳傷金額完全相同，排除（M7S 賢者：41 筆 500000 與 1004449 重複）。排除來源為玩家、寵物的傷害。
 - **時間差**：受傷加重（Vulnerability Up）等懲罰在命中判定（`calculateddamage`）時施加，實際扣血的 `damage` 事件晚約 1.4 秒（M7S 大水花：266.55 施加、267.98 扣血）；判斷「這一擊造成懲罰」用傷害前 2.5 秒到後 1 秒。懲罰以英文名稱判斷（`Vulnerability Up`、`Damage Down`；`Magic Vulnerability Up` 等是機制本身會給的，不算）；`isPenaltyStatusName()`（當下狀態面板）刻意不含受傷加重，未改。
-- `damageRows()`：依鍵（Comparison 傳英文名稱，同名不同 ID 合併）分組直接傷害；同一技能與前一擊相距 ≤ 1 秒算同一次（連續幾擊）。**多吃**＝我的次數比參考多時，對齊後 ±5 秒內參考沒被同一技能打中的次，最多列次數差（受到懲罰的優先）；次數相同只是時間不同（隨機點名、推進前後對齊誤差）不算（M8S 騎士基準改前誤判 10 列，改後 4 列，都有受傷加重）。Boss 普通攻擊（英文名 `Attack` 或 Action 7）不判斷。**減傷差距**＝平均減傷（倍率 ≤ 1 的擊）參考 − 我 ≥ 10 個百分點，且每次未減傷合計平均 ≥ 最大血量 15%（八連光彈每擊約 3%，整次合計才算大傷害）。沒有參考時 flagged＝受到懲罰的一擊。
-- `deathRecap()`：死前 10 秒內最後 5 擊（含跳傷）；HP 前＝這一擊後的血量＋傷害；參考比對致命一擊（最後一次直接傷害）在對齊後 ±5 秒內同技能最近的一擊，並看參考 2 秒內是否死亡。身上的減傷：`auras` 中非 debuff、英文名稱與任一職業減傷技能（`allMitigationIds()`：職能＋`JOB_CATEGORIES` 的 mitigation／partyMitigation）相同的效果（效果名稱多半與技能相同；不同名的會漏）。這些技能 ID 一併加入名稱查詢。
+- `deathRecap()`：死前 10 秒內最後 5 擊（含跳傷）；HP 前＝這一擊後的血量＋傷害；參考比對致命一擊（最後一次直接傷害）在對齊後 ±5 秒內同技能最近的一擊，並看參考 2 秒內是否死亡。只用於死亡建議的說明（2026-10-01 移除「受到的傷害」區塊與多吃、減傷差距的判斷）。
 
 ### 建議（`src/analysis/advice.ts`）
-- 每則建議有 `kind`（類別）：`generateAdvice`／`generateSoloAdvice` 以 `tag()` 依來源函式標上，`usageAdvice` 內的減傷、強化藥自行標。`keyTakeaways()`（比較結果最上方的「重點」）從排序後的建議取 high／medium、每類一項、最多 3 項。
+- 每則建議有 `kind`（類別）：`generateAdvice`／`generateSoloAdvice` 以 `tag()` 依來源函式標上，`usageAdvice` 內的減傷、強化藥自行標。
 - 輸入各分析結果、`abilityName`（顯示名稱，可能是繁中）、`englishName`（依名稱判斷的規則使用，例如藥水 `/Gemdraught|Tincture|Draught|Potion/`）、`category`（技能分類）。
 - 減傷／移動建議使用 `AbilityUsage.unmatchedRef` 列出參考有用而我沒有對應使用的時間（最多 5 個）。
 - 與機制差異整合：`mechanicNear()` 找時段開始前 10 秒內到結束之間的 `variant`。
@@ -528,6 +527,9 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-10-01 移除受到的傷害區塊
+- 刪除 `compare/KeyTakeaways.tsx` 與 `keyTakeaways()`（「重點」）。刪除 `compare/DamageTaken.tsx`、`damageRows()`／`notableRows()`、`allMitigationIds()` 與多吃、減傷差距的建議；`damageTaken()` 與 `deathRecap()` 保留給死亡建議。名稱查詢只加入死前 10 秒受到的技能。
 
 ### 2026-09-30 重點摘要、受到的傷害與死亡回顧
 - `SideData.damageTaken`（`damageTaken()`，`clipSide()` 一併裁切）；新檔 `analysis/damageTaken.ts`（`damageRows`、`deathRecap`）、`compare/DamageTaken.tsx`、`compare/KeyTakeaways.tsx`；`Advice.kind` 與 `keyTakeaways()`；`roleActions.ts` 的 `allMitigationIds()`。細節見「受到的傷害」。
