@@ -64,8 +64,9 @@ const tag = (kind: AdviceKind, items: Advice[]): Advice[] => items.map((a) => (a
  */
 export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[] = [
   { key: 'death', label: '死亡', kinds: ['death'] },
-  { key: 'gcd', label: '停手與 GCD', kinds: ['gcd'] },
+  // 懲罰效果（傷害降低）與死亡同為機制失誤的直接結果，緊接在死亡之後
   { key: 'penalty', label: '懲罰效果', kinds: ['penalty'] },
+  { key: 'gcd', label: '停手與 GCD', kinds: ['gcd'] },
   { key: 'window', label: '技能窗口', kinds: ['window'] },
   { key: 'usage', label: '技能與強化藥', kinds: ['cooldown', 'potion', 'usage'] },
   { key: 'dot', label: 'DoT', kinds: ['dot'] },
@@ -696,7 +697,8 @@ function penaltyAdvice(input: Pick<AdviceInput, 'penalties' | 'mineToRef'>): Adv
   const total = p.mine.reduce((sum, x) => sum + (x.end - x.start), 0)
   return [
     {
-      severity: 'medium',
+      // 懲罰效果與死亡同為機制失誤的直接結果，列為優先
+      severity: 'high',
       title: `被施加傷害降低 ${p.mine.length} 次，共 ${seconds(total)} 秒（參考 ${p.ref.length} 次）`,
       detail: `${p.mine.map((x) => formatFightTime(input.mineToRef(x.start))).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
       at: input.mineToRef(p.mine[0].start),
@@ -831,7 +833,7 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
     const total = input.penalties.reduce((sum, p) => sum + (p.end - p.start), 0)
     items.push({
       kind: 'penalty',
-      severity: 'medium',
+      severity: 'high',
       title: `被施加傷害降低 ${input.penalties.length} 次，共 ${seconds(total)} 秒`,
       detail: `${input.penalties.map((p) => formatFightTime(p.start)).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
       at: input.penalties[0].start,

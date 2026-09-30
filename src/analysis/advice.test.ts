@@ -399,8 +399,9 @@ describe('generateSoloAdvice', () => {
     expect(advice.map((a) => [a.severity, a.title])).toEqual([
       ['high', '你死亡了 1 次：避免死亡是最優先的改進'],
       ['high', '有 1 段停手，約少打 3 個 GCD'],
+      // 懲罰效果與死亡同列為優先
+      ['high', '被施加傷害降低 1 次，共 30.0 秒'],
       ['medium', 'Meikyo Shisui：2 次中 1 次合格'],
-      ['medium', '被施加傷害降低 1 次，共 30.0 秒'],
       ['medium', '整場沒有使用強化藥'],
       ['low', '1 段停手是 Boss 控場造成'],
     ])
@@ -476,6 +477,12 @@ describe('groupAdvice', () => {
   it('orders groups of the same severity by importance', () => {
     const groups = groupAdvice([a('medium', 'position', 'p'), a('medium', 'dot', 'd'), a('medium', 'window', 'w')])
     expect(groups.map((g) => g.key)).toEqual(['window', 'dot', 'position'])
+    // 懲罰效果緊接在死亡之後
+    expect(groupAdvice([a('high', 'gcd', 'g'), a('high', 'penalty', 'p'), a('high', 'death', 'd')]).map((g) => g.key)).toEqual([
+      'death',
+      'penalty',
+      'gcd',
+    ])
   })
 })
 describe('cooldown advice', () => {
