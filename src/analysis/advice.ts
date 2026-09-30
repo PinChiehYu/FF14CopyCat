@@ -81,7 +81,7 @@ const GROUP_INDEX = new Map(ADVICE_GROUPS.flatMap((g, i) => g.kinds.map((k) => [
 export interface AdviceGroup {
   key: string
   label: string
-  /** 組內最高的等級：整組列在這一級的分頁 */
+  /** 組內最高的等級（建議區依各則等級分頁後在每個分頁內分組，同一分頁內各組等級相同） */
   severity: Severity
   items: Advice[]
 }
@@ -90,8 +90,8 @@ export interface AdviceGroup {
 const groupKey = (a: Advice) => (a.kind ? ADVICE_GROUPS[GROUP_INDEX.get(a.kind)!].key : `title:${a.title}`)
 
 /**
- * 依組整理建議：同一組的一起列出，整組放在組內最高等級的分頁（例如停手總結為優先、各段為建議時整組在「優先」）；
- * 組的順序依最高等級、再依 ADVICE_GROUPS 的重要性；組內依等級，同等級維持產生順序（總結在前）。
+ * 依組整理建議：同一組的一起列出；組的順序依最高等級、再依 ADVICE_GROUPS 的重要性；組內依等級，同等級維持產生順序（總結在前）。
+ * 建議區先依各則的等級分頁，再對每個分頁的建議分組。
  */
 export function groupAdvice(advice: Advice[]): AdviceGroup[] {
   const groups = new Map<string, Advice[]>()

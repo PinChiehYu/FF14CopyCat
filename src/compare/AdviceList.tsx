@@ -54,9 +54,8 @@ export function AdviceList({ advice, onJump }: { advice: Advice[]; onJump: (t: n
   if (advice.length === 0) {
     return <p className="hint">沒有明顯需要改進的地方，你的表現與參考玩家相近。</p>
   }
-  // 相關的建議成組一起列出，整組放在組內最高等級的分頁；預設顯示最高的一級，避免頁面過長
-  const groups = groupAdvice(advice)
-  const tabs = GROUPS.map(({ severity, label }) => ({ severity, label, groups: groups.filter((g) => g.severity === severity) }))
+  // 依各則的等級分頁（預設顯示最高的一級，避免頁面過長）；同一分頁內相關的建議成組一起列出，組依重要性排序
+  const tabs = GROUPS.map(({ severity, label }) => ({ severity, label, groups: groupAdvice(advice.filter((a) => a.severity === severity)) }))
     .filter((t) => t.groups.length > 0)
     .map(({ severity, label, groups: inTab }) => ({
       key: severity,
