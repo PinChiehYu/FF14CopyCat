@@ -1277,6 +1277,11 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* 以「／」連接的多個名稱：只在名稱之間換行 */
+.name-part {
+  white-space: nowrap;
+}
+
 .prepull-only {
   color: var(--mine);
 }

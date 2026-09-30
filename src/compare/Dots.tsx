@@ -79,7 +79,13 @@ export function Dots({
             <tr key={mine.rule.key}>
               <th>
                 {icon && <img className="usage-icon status-icon" src={abilityIconUrl(icon.icon)} alt="" loading="lazy" />}
-                {ids.map(abilityName).join('／')}
+                {/* 多個名稱只在「／」處換行，不把單一名稱拆開 */}
+                {ids.map((id, i) => (
+                  <span key={id} className="name-part">
+                    {abilityName(id)}
+                    {i < ids.length - 1 && '／'}
+                  </span>
+                ))}
                 <span className="rule-duration">目標 {mine.rule.uptimeTarget}%</span>
               </th>
               <td>
