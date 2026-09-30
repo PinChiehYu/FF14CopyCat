@@ -70,10 +70,10 @@ export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[
   { key: 'penalty', label: '懲罰效果', kinds: ['penalty'] },
   { key: 'gcd', label: '停手與 GCD', kinds: ['gcd'] },
   { key: 'window', label: '技能窗口', kinds: ['window'] },
-  { key: 'usage', label: '技能與強化藥', kinds: ['potion', 'cooldown', 'usage'] },
+  // 止損技（威力低的遠程 GCD）直接少了輸出，與技能使用放在同一組
+  { key: 'usage', label: '技能與強化藥', kinds: ['potion', 'cooldown', 'filler', 'usage'] },
   { key: 'dot', label: 'DoT', kinds: ['dot'] },
   { key: 'weave', label: '穿插過多', kinds: ['weave'] },
-  { key: 'filler', label: '止損技', kinds: ['filler'] },
   { key: 'mitigation', label: '減傷與移動', kinds: ['partyMitigation', 'mitigation', 'movement'] },
   { key: 'prepull', label: '開打前', kinds: ['prepull'] },
   { key: 'position', label: '站位', kinds: ['position'] },
@@ -632,9 +632,8 @@ function weavingAdvice(input: {
   ]
 }
 
-// 止損技最多列出幾次、幾次以上列為建議（否則參考）
+// 止損技最多列出幾次（止損技威力低、直接少了輸出，一律列為優先）
 const MAX_FILLERS_LISTED = 5
-const FILLER_MEDIUM_COUNT = 3
 
 /**
  * 止損技（近戰與坦克的遠程 GCD，見 jobs/rangedFillers.ts）：
@@ -659,7 +658,7 @@ function fillerAdvice(input: {
   if (f.ref === null) {
     return [
       {
-        severity: f.mine.length >= FILLER_MEDIUM_COUNT ? 'medium' : 'low',
+        severity: 'high',
         title: `${name}（止損技）用了 ${f.mine.length} 次`,
         detail: `${list(mineRef)}。止損技威力低，代表那時離 Boss 太遠；檢查是否能提早移動、貼近 Boss 或改用較強的遠程技能。選了參考日誌後可以看前輩在同一段是否也需要。`,
         at: mineRef[0],
@@ -670,7 +669,7 @@ function fillerAdvice(input: {
   if (onlyMine.length === 0) return []
   return [
     {
-      severity: onlyMine.length >= FILLER_MEDIUM_COUNT ? 'medium' : 'low',
+      severity: 'high',
       title: `${name}（止損技）用了 ${f.mine.length} 次（參考 ${f.ref.length} 次），其中 ${onlyMine.length} 次參考沒有用`,
       detail:
         `參考在同一段（前後 5 秒）沒有用止損技：${list(onlyMine)}。止損技威力低，對照這些時間的站位，看參考怎麼留在 Boss 身邊。` +

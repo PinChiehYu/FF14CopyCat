@@ -321,6 +321,9 @@ describe('ranged filler advice', () => {
     const filler = advice.find((a) => a.title.includes('（止損技）'))
     expect(filler?.title).toBe('#7486（止損技）用了 2 次（參考 1 次），其中 1 次參考沒有用')
     expect(filler?.at).toBe(120_000)
+    // 止損技直接少了輸出：列為優先，放在技能與強化藥這組
+    expect(filler?.severity).toBe('high')
+    expect(groupAdvice([filler!]).map((g) => g.key)).toEqual(['usage'])
     // 參考在同一段都用了：機制造成，不提
     expect(generateAdvice(input({ fillers: { mine: [60_000], ref: [58_000] }, fillerId: 7486 })).some((a) => a.title.includes('（止損技）'))).toBe(false)
   })
@@ -338,7 +341,7 @@ describe('ranged filler advice', () => {
       fillers: [30_000, 90_000, 150_000],
       fillerId: 2247,
     })
-    expect(advice.map((a) => [a.severity, a.title])).toEqual([['medium', '#2247（止損技）用了 3 次']])
+    expect(advice.map((a) => [a.severity, a.title])).toEqual([['high', '#2247（止損技）用了 3 次']])
   })
 })
 
