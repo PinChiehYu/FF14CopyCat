@@ -273,8 +273,19 @@ function SummaryTable({
         .filter(Boolean)
         .join('\n'),
       cell: (s) => {
+        // 只在名稱之間換行（「自生II」不拆成兩行）
+        const names = (ids: number[], className: string) => (
+          <span>
+            {ids.map((id, i) => (
+              <span key={id}>
+                {i > 0 && '、'}
+                <span className={className}>{abilityName(id)}</span>
+              </span>
+            ))}
+          </span>
+        )
         if (s.prepull.length === 0) return <span className="hint-inline">—</span>
-        if (!reference) return s.prepull.map(abilityName).join('、')
+        if (!reference) return names(s.prepull, 'prepull-name')
         const other = s === mine ? reference : mine
         const only = s.prepull.filter((id) => !other.prepull.includes(id))
         if (only.length === 0) {
@@ -282,16 +293,7 @@ function SummaryTable({
           const same = other.prepull.every((id) => s.prepull.includes(id))
           return <span className="hint-inline">{same ? '相同' : '—'}</span>
         }
-        return (
-          <span>
-            {only.map((id, i) => (
-              <span key={id}>
-                {i > 0 && '、'}
-                <span className="prepull-only">{abilityName(id)}</span>
-              </span>
-            ))}
-          </span>
-        )
+        return names(only, 'prepull-name prepull-only')
       },
     },
   ]

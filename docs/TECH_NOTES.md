@@ -506,6 +506,7 @@
 - **React 19 `ref` prop**：元件 prop 命名為 `ref` 會被當成保留 prop（lint 報 Cannot access refs during render），改名為 `reference`。
 - **瀏覽器快取**：推送後正式站可能仍顯示舊版，加查詢字串（例如 `?v=<commit>`）或重新整理即可。
 - **FFLogs 權杖端點 429**（2026-09-26）：短時間內多次部署 Worker 並測試後，`/oauth/token` 回 429，所有報告查詢失敗約數分鐘後自行恢復。權杖只快取在 isolate 記憶體，每次部署或新 isolate 都會重新取權杖。Worker 現在把權杖的 429 轉成 503，前端對 429／503 顯示「請求過多…請稍候一分鐘再試」。2026-09-30 起權杖也存進 `caches.default` 跨 isolate 共用（見「Worker API」），重新部署後新的 isolate 會先用快取中的權杖。實測 workers.dev 上 Cache API 有作用（同一請求第二次 `cf-cache-status: HIT`、2.4 秒 → 0.16 秒）；Cache API 以資料中心為範圍，不同地區的第一個請求仍會各換一次權杖。
+- **請求沒有回應、一直停在「載入報告中…」**（2026-09-30，隨機日誌測試發現）：我的日誌的 `/reports/<code>` 請求沒有回應（參考日誌正常），重新整理後就好。原本前後端都沒有逾時。現在 Worker 對 FFLogs 的請求（`fflogsFetch()`）20 秒逾時回 504；前端 `fflogs/client.ts` 的 `get()` 每次請求 45 秒逾時，逾時或 504 重試一次，仍失敗就顯示「伺服器沒有回應，請重新整理再試」。
 - **摘要顯示的名稱**：`useSide()` 只依 ID 載入事件（並快取），`SideData.selection` 是載入當時的選擇（Boss 名稱可能還是英文）；`Comparison` 會把目前的選擇合併回 `SideData` 再交給 `Loaded`。
 - **技能名稱查詢延遲**：`/abilities` 快取未命中時約 8 秒；在瀏覽器驗證繁中名稱時要等比較載入後再多等幾秒。
 - **CSS 手機規則的位置**（2026-09-27）：`@media (max-width: 560px)` 區塊原本在 `index.css` 中段，之後才定義的元件樣式（狀態面板、圖示等）以相同權重蓋掉了手機規則，使部分手機調整沒有生效；手機區塊移到檔案最後。新增元件樣式要放在該區塊之前。

@@ -9,9 +9,35 @@ export class ApiError extends Error {
   }
 }
 
+// Worker 對 FFLogs 的逾時（20 秒）加上傳輸時間；請求偶爾沒有回應，逾時或 504 時重試一次，
+// 仍失敗就顯示錯誤，不讓畫面一直停在載入中
+const TIMEOUT_MS = 45_000
+const TIMEOUT_MESSAGE = '伺服器沒有回應，請重新整理再試'
+
+/** 帶逾時的 fetch；呼叫端取消時照常以 AbortError 結束，逾時則回傳 null。 */
+async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<Response | null> {
+  const controller = new AbortController()
+  const onAbort = () => controller.abort()
+  if (signal?.aborted) controller.abort()
+  signal?.addEventListener('abort', onAbort)
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } catch (err) {
+    if (controller.signal.aborted && !signal?.aborted) return null
+    throw err
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
+  }
+}
+
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { signal })
+  let res = await fetchWithTimeout(`${API_BASE}${path}`, signal)
+  if (res === null || res.status === 504) res = await fetchWithTimeout(`${API_BASE}${path}`, signal)
+  if (res === null) throw new ApiError(504, TIMEOUT_MESSAGE)
   if (!res.ok) {
+    if (res.status === 504) throw new ApiError(504, TIMEOUT_MESSAGE)
     // 429：本站的每 IP 限制；503：FFLogs 的請求上限
     if (res.status === 429 || res.status === 503) {
       throw new ApiError(res.status, '請求過多，暫時無法取得資料，請稍候一分鐘再試')

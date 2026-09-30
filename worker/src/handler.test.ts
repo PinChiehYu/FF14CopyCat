@@ -200,6 +200,18 @@ describe('handleRequest', () => {
     expect((await handleRequest(get('/reports/abc'), env, ctx, null)).status).toBe(404)
   })
 
+  it('answers 504 when FFLogs does not respond in time', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new DOMException('The operation timed out.', 'TimeoutError')
+      }),
+    )
+    const res = await handleRequest(get('/reports/abc'), env, ctx, null)
+    expect(res.status).toBe(504)
+    expect(await res.json()).toEqual({ error: 'FFLogs did not respond, try again later' })
+  })
+
   it('serves cached responses with CORS headers for the current origin', async () => {
     const fetchMock = mockFflogs({})
     const cache = {

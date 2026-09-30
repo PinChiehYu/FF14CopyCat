@@ -1248,6 +1248,10 @@ button:disabled {
 }
 
 /* 開打前：對方沒有的效果 */
+.prepull-name {
+  white-space: nowrap;
+}
+
 .prepull-only {
   color: var(--mine);
 }

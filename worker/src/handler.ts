@@ -24,6 +24,8 @@ export interface Context {
 
 const TOKEN_URL = 'https://www.fflogs.com/oauth/token'
 const API_URL = 'https://www.fflogs.com/api/v2/client'
+// FFLogs 偶爾不回應；逾時回 504，前端（fflogs/client.ts）會重試一次，不會一直停在載入中
+const FFLOGS_TIMEOUT_MS = 20_000
 const CACHE_SECONDS = 600
 // 技能名稱只隨遊戲版本改變，快取一天
 const NAME_CACHE_SECONDS = 86_400
@@ -94,7 +96,7 @@ async function getToken(env: Env): Promise<string> {
     console.warn('token cache read failed', err)
   }
 
-  const res = await fetch(TOKEN_URL, {
+  const res = await fflogsFetch(TOKEN_URL, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${btoa(`${env.FFLOGS_CLIENT_ID}:${env.FFLOGS_CLIENT_SECRET}`)}`,
@@ -123,8 +125,17 @@ async function getToken(env: Env): Promise<string> {
   return cachedToken.value
 }
 
+async function fflogsFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(FFLOGS_TIMEOUT_MS) })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') throw new HttpError(504, 'FFLogs did not respond, try again later')
+    throw err
+  }
+}
+
 async function queryGraphql<T>(env: Env, query: string, variables: Record<string, unknown>): Promise<T | undefined> {
-  const res = await fetch(API_URL, {
+  const res = await fflogsFetch(API_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${await getToken(env)}`,
