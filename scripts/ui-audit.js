@@ -1,6 +1,7 @@
 // 在瀏覽器中檢查比較結果頁的版面（以瀏覽器面板的 javascript_tool 或開發者工具執行整段，回傳 JSON）。
 // 桌面與手機（375 px）各跑一次，比較兩者的區塊是否一致。檢查項目：
 // - 頁面是否橫向捲動、元素是否超出畫面或被裁切（捲動區內的不算：時間軸、站位差異卡片列）
+// - 短文字是否被拆成兩行（split）
 // - 「?」圖示大小是否一致、錯誤訊息、主要區塊是否都有顯示
 ;(() => {
   const vw = document.documentElement.clientWidth
@@ -29,6 +30,23 @@
     }
   }
 
+  // 不自然的換行：8 字以內的短文字（技能名、標籤）被拆成兩行，例如「自生II」變成「自生／II」。
+  // 瀏覽器面板的手機截圖有時停在舊畫面，用這項取代目視
+  const split = []
+  if (section) {
+    const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT)
+    while (walker.nextNode()) {
+      const node = walker.currentNode
+      const text = node.textContent.trim()
+      const el = node.parentElement
+      if (!text || text.length > 8 || !el || !visible(el)) continue
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      const lines = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)))
+      if (lines.size > 1) split.push(label(el))
+    }
+  }
+
   const tips = [...document.querySelectorAll('.help-tip-button')].filter(visible).map((b) => {
     const r = b.getBoundingClientRect()
     return `${Math.round(r.width)}x${Math.round(r.height)}`
@@ -44,6 +62,7 @@
     horizontalScroll: document.documentElement.scrollWidth > vw + 1 ? document.documentElement.scrollWidth : false,
     offscreen: offscreen.slice(0, 15),
     clipped: clipped.slice(0, 15),
+    split: split.slice(0, 15),
     helpTipSizes: tipSizes,
     helpTips: tips.length,
     headings,
