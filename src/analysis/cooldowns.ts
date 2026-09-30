@@ -164,6 +164,8 @@ export const LATE_LISTED_MS = 5000
 export interface CooldownPair {
   mine: CooldownUsage | null
   ref: CooldownUsage | null
+  /** 不是輸出技能（治療、減傷、移動等）：只列在技能使用次數，不提「最多可用」的建議 */
+  nonOffensive?: boolean
 }
 
 export interface CooldownUsage {

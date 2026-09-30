@@ -3,6 +3,7 @@ import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
 import { generateAdvice, generateSoloAdvice, groupAdvice, LOST_GCD_SECTION, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
 import { DOT_RULES } from '../jobs/dotRules'
+import { COOLDOWN_RULES } from '../jobs/cooldownRules'
 import type { WindowRule } from '../jobs/windows'
 import type { AbilityUsage } from './metrics'
 
@@ -489,5 +490,32 @@ describe('groupAdvice', () => {
   it('orders groups of the same severity by importance', () => {
     const groups = groupAdvice([a('medium', 'position', 'p'), a('medium', 'dot', 'd'), a('medium', 'window', 'w')])
     expect(groups.map((g) => g.key)).toEqual(['window', 'dot', 'position'])
+  })
+})
+describe('cooldown advice', () => {
+  const [assize, presence, liturgy] = COOLDOWN_RULES.WhiteMage
+  const usageOf = (group: typeof assize, uses: number, max: number) => ({ group, uses, max, late: [] })
+  const solo = (cooldowns: SoloAdviceInput['cooldowns']): SoloAdviceInput => ({
+    abilityName: (id) => `#${id}`,
+    deaths: [],
+    durationMs: 600_000,
+    stops: [],
+    windows: [],
+    cooldowns,
+    penalties: [],
+    potionUses: 1,
+  })
+
+  it('only reviews damage cooldowns against the maximum uses', () => {
+    const advice = generateSoloAdvice(
+      solo([
+        { mine: usageOf(assize, 10, 14), ref: null },
+        // 治療技能（禮儀之鈴）：不以最多可用次數檢討
+        { mine: usageOf(liturgy, 2, 5), ref: null, nonOffensive: true },
+      ]),
+    )
+    expect(advice.map((a) => a.title)).toEqual(['#3571：最多可用 14 次，你用了 10 次'])
+    expect(presence.suggestionOnly).toBeUndefined()
+    expect(liturgy.suggestionOnly).toBe(true)
   })
 })

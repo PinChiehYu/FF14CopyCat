@@ -550,12 +550,12 @@ const MAX_LATE_LISTED = 3
 
 /**
  * 冷卻技沒有好了就用（xivanalysis 的 CooldownDowntime）：我比理論最多可用次數少、而且使用率比參考低時提出，
- * 列出晚了 5 秒以上的時間點。
+ * 列出晚了 5 秒以上的時間點。只檢討輸出技能：治療、減傷、移動等（nonOffensive）依機制使用，不以最多可用次數要求。
  */
 function cooldownAdvice(input: Pick<AdviceInput, 'cooldowns' | 'abilityName' | 'mineToRef'>): Advice[] {
   const items: Advice[] = []
-  for (const { mine, ref } of input.cooldowns ?? []) {
-    if (!mine || mine.max === 0) continue
+  for (const { mine, ref, nonOffensive } of input.cooldowns ?? []) {
+    if (!mine || mine.max === 0 || nonOffensive) continue
     const lost = mine.max - mine.uses
     if (lost <= 0) continue
     const mineRate = mine.uses / mine.max

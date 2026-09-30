@@ -104,6 +104,8 @@ function useSide(selection: Selection | null) {
 
 // 普通攻擊（Action 7，繁中「攻擊」）
 const AUTO_ATTACK = 7
+// 冷卻技中不是輸出技能的分類（見 jobs/roleActions.ts）
+const NON_OFFENSIVE_CATEGORIES = new Set(['mitigation', 'partyMitigation', 'movement', 'utility'])
 
 /** 查詢兩邊出現過的技能的繁中名稱；查詢失敗時沿用 FFLogs 的英文名稱。 */
 function useAbilityNames(mine: SideData, reference: SideData | null): Map<number, AbilityName> {
@@ -573,9 +575,13 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       const usedPrepull = (g: CooldownGroup) => g.ids.some((id) => prepullNames.has(english(id)))
       return cooldownUsage([group], side.playerCasts, side.duration, downtimeWindows(side.bossPositions, side.duration), usedPrepull)[0]
     }
+    // 不是輸出技能（xivanalysis 只在建議中提的治療技能，或分類為減傷、移動、輔助的）：照列在技能使用次數，但不提「最多可用」的建議
+    const nonOffensive = (g: CooldownGroup) =>
+      !!g.suggestionOnly || g.ids.some((id) => NON_OFFENSIVE_CATEGORIES.has(abilityCategory(id, job)))
     return pairRulesByPatch(COOLDOWN_RULES[job.subType] ?? [], patches.mine.rules, patches.ref.rules).map(({ mine: m, ref: r }) => ({
       mine: m ? evaluate(m, mineInRange) : null,
       ref: r && !solo ? evaluate(r, refInRange) : null,
+      nonOffensive: nonOffensive((m ?? r)!),
     }))
   }, [job, patches, mineInRange, refInRange, abilities, solo])
   // DoT 覆蓋率與提早續上：兩邊各自、只看比較範圍內
