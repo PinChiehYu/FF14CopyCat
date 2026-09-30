@@ -236,7 +236,7 @@ function BossNow({
   const hot = (c: TimedCast | undefined) => !!c && !!focused?.(c)
   return (
     <p
-      className={hot(recent) || hot(upcoming) ? 'boss-now focused' : 'boss-now'}
+      className="boss-now"
       title={[
         recent && `${abilityName(recent.abilityId)}（${((t - recent.t) / 1000).toFixed(1)} 秒前）`,
         upcoming && `接著：${abilityName(upcoming.abilityId)}（${((upcoming.t - t) / 1000).toFixed(1)} 秒後）`,

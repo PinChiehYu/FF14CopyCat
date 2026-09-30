@@ -805,16 +805,14 @@ button:disabled {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
-/* 關注的機制時間點：主色左條＋淡色底（機制差異表的列、站位差異卡片與其中的機制、當下狀態的 Boss 列） */
+/* 關注的機制時間點：主色左條＋淡色底（機制差異表的列、站位差異卡片與其中的機制） */
 .mechanics tr.focused > *:first-child,
-.card-mechanic.focused,
-.boss-now.focused {
+.card-mechanic.focused {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .mechanics tr.focused > *,
-.card-mechanic.focused,
-.boss-now.focused {
+.card-mechanic.focused {
   background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 
@@ -827,9 +825,15 @@ button:disabled {
   padding-left: 6px;
 }
 
-.boss-now-name.focused {
+/* 當下狀態的 Boss 列：只把關注的技能名稱標成主色外框的小標籤（與搜尋面板選取的時間點相同），不標整列 */
+.boss-now .boss-now-name.focused {
+  padding: 0 6px;
   color: var(--accent);
   font-weight: 600;
+  border-radius: 999px;
+  /* 以內陰影畫外框，不改變行高 */
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .cast {
