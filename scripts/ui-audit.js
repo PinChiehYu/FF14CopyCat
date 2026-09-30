@@ -5,6 +5,8 @@
 // - 「?」圖示大小是否一致、錯誤訊息、主要區塊是否都有顯示
 ;(() => {
   const vw = document.documentElement.clientWidth
+  // 瀏覽器面板剛開啟或隱藏時寬度可能是 0，結果全是誤報：先以 resize_window 設定固定尺寸（例如 1280×900）再跑
+  if (vw < 300) return JSON.stringify({ viewport: vw, invalid: '視窗寬度過小，請先設定固定尺寸再重新載入' })
   const section = document.querySelector('section.comparison')
   const scrollable = (el) => {
     for (let p = el; p; p = p.parentElement) {
