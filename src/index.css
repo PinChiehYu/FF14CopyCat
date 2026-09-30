@@ -2100,10 +2100,11 @@ h3 {
 }
 
 /* 固定一行高，放不下時截掉右邊（剩餘時間長的排在後面，見 SideStatus），播放時不換行跳動 */
+/* 高度比圖示多幾 px：圖示下緣的剩餘秒數不被裁掉 */
 .aura-row {
   display: flex;
   gap: 3px;
-  height: 32px;
+  height: 36px;
   align-items: center;
   overflow: hidden;
 }
@@ -2352,11 +2353,11 @@ h3 {
   line-height: 0;
 }
 
-/* 剩餘秒數，疊在圖示下緣 */
+/* 剩餘秒數，疊在圖示下緣內（不超出圖示，列的 overflow: hidden 不會裁掉） */
 .aura-time {
   position: absolute;
   right: 0;
-  bottom: -2px;
+  bottom: 0;
   left: 0;
   font-size: 0.65em;
   font-weight: 700;
@@ -2948,7 +2949,7 @@ h3 {
   }
 
   .aura-row {
-    height: 26px;
+    height: 28px;
   }
 
   /* 時間軸：縮窄左側標籤欄 */

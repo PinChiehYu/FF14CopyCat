@@ -13,10 +13,17 @@ function AdviceItem({ advice, onJump }: { advice: Advice; onJump: (t: number) =>
       {/* 「查看」與標題同一列，說明文字用滿整個寬度 */}
       <div className="advice-head">
         <strong>{advice.title}</strong>
-        {advice.at !== undefined && (
-          <button type="button" onClick={() => onJump(advice.at!)}>
+        {advice.section ? (
+          // 捲到頁面上的對應區塊（例如停手總結 → 少打 GCD 的時段）
+          <button type="button" onClick={() => document.getElementById(advice.section!)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
             查看
           </button>
+        ) : (
+          advice.at !== undefined && (
+            <button type="button" onClick={() => onJump(advice.at!)}>
+              查看
+            </button>
+          )
         )}
       </div>
       <p>{advice.detail}</p>

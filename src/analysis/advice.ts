@@ -9,7 +9,6 @@ import {
   divergenceKind,
   MIRROR_LABELS,
   positionMechanics,
-  VARIANT_LEAD_MS,
   type Divergence,
   type DivergenceKind,
   type TrackPoint,
@@ -49,9 +48,14 @@ export interface Advice {
   detail: string
   /** 可跳轉的參考時間 */
   at?: number
+  /** 「查看」改為捲到頁面上的這個區塊（元素 id），例如停手總結捲到「少打 GCD 的時段」 */
+  section?: string
   /** 產生時由 generateAdvice／generateSoloAdvice 依來源填入 */
   kind?: AdviceKind
 }
+
+/** 「少打 GCD 的時段」／「停手時段」區塊標題的 id */
+export const LOST_GCD_SECTION = 'lost-gcd-windows'
 
 /** 為一組建議標上類別（已有類別的不變，例如技能使用次數中的減傷與強化藥） */
 const tag = (kind: AdviceKind, items: Advice[]): Advice[] => items.map((a) => (a.kind ? a : { ...a, kind }))
@@ -161,43 +165,25 @@ export interface DotPair {
   ref: DotSummary | null
 }
 
-// 機制差異發生在時段開始前不久（VARIANT_LEAD_MS）也視為相關（機制通常先施放、後結算），與站位差異相同
-
-/** 與時段相關的 Boss 隨機變化（同時間施放不同技能）。 */
-function mechanicNear(mechanics: MechanicDifference[] | undefined, start: number, end: number) {
-  return mechanics?.find((m) => m.kind === 'variant' && m.t >= start - VARIANT_LEAD_MS && m.t <= end)
-}
-
-function mechanicNote(input: AdviceInput, start: number, end: number): string {
-  const m = mechanicNear(input.mechanics, start, end)
-  if (!m) return ''
-  const names = (ids: number[], others: number[]) => mechanicLabel(ids, others, input.abilityName)
-  return `這段之前 Boss 的隨機機制不同（你：${names(m.mine, m.ref)}；參考：${names(m.ref, m.mine)}），差異可能是機制造成。`
-}
 
 // 減傷／移動建議中最多列出幾個參考有用、我沒用的時間點
 const MAX_LISTED_TIMES = 5
 
-// 停手時段中，兩人平均距離超過此值（yalm）就提示可能是走位路線不同
-const MOVEMENT_DISTANCE_YALM = 5
 // 冷卻技平均晚超過此值（毫秒）才提示
 const LATE_COOLDOWN_MS = 5000
 // 站位差異持續超過此值（毫秒）才提示
 const LONG_DIVERGENCE_MS = 5000
-// 最多列出幾段停手／站位
+// 最多列出幾段站位
 const MAX_ITEMS = 3
 // 機制結算時的站位差異最多列出幾段
 const MAX_MECHANIC_POSITIONS = 5
 
 const seconds = (ms: number) => (ms / 1000).toFixed(1)
 
-function averageDistance(track: TrackPoint[], start: number, end: number): number | null {
-  const ds = track.filter((p) => p.t >= start && p.t <= end && p.distance !== null).map((p) => p.distance!)
-  return ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : null
-}
-
+/**
+ * 停手（少打 GCD）：只列一則總結，「查看」捲到下方「少打 GCD 的時段」清單；各段的時間、長度與參考的 GCD 數在清單中，不逐段列成建議。
+ */
 function lostGcdAdvice(input: AdviceInput): Advice[] {
-  const { track } = input
   // Boss 控場造成的停手不是操作問題：不列入停手建議，合併成一則參考
   const controlled = input.lost.filter((w) => w.control)
   const lost = input.lost.filter((w) => !w.control)
@@ -216,34 +202,22 @@ function lostGcdAdvice(input: AdviceInput): Advice[] {
         ]
   if (lost.length === 0) return controlItems
   const total = lost.reduce((sum, w) => sum + w.refGcds, 0)
-  const top = [...lost].sort((a, b) => b.refGcds - a.refGcds || b.mineEnd - b.mineStart - (a.mineEnd - a.mineStart))
-  const items: Advice[] = [
-    ...controlItems,
+  // 停手是因為死亡：根本原因是死亡（由死亡建議處理），不是手慢
+  const whileDead = lost.filter((w) =>
+    input.deaths?.mine.some((x) => x.t < w.mineEnd && (x.revivedAt === null || x.revivedAt > w.mineStart)),
+  ).length
+  return [
     {
-      // 與個別時段同等級時，排序會讓總結排在前面
       severity: total >= 3 ? 'high' : 'medium',
       title: `有 ${lost.length} 段你停手、參考仍在輸出，共少打 ${total} 個 GCD`,
-      detail: '這些時段參考在同一個機制仍持續施放 GCD。檢查是否能提早移動、在移動中穿插 GCD，或縮短走位距離。',
-      // 「查看」跳到少打最多的一段
-      at: top[0].refStart,
+      detail:
+        '這些時段參考在同一個機制仍持續施放 GCD。檢查是否能提早移動、在移動中穿插 GCD，或縮短走位距離。' +
+        (whileDead > 0 ? `其中 ${whileDead} 段你已死亡。` : '') +
+        '各段的時間、長度與參考打的 GCD 數見下方「少打 GCD 的時段」。',
+      section: LOST_GCD_SECTION,
     },
+    ...controlItems,
   ]
-  for (const w of top.slice(0, MAX_ITEMS)) {
-    const d = averageDistance(track, w.refStart, w.refEnd)
-    const movement =
-      d !== null && d > MOVEMENT_DISTANCE_YALM ? `這段期間你與參考平均相距 ${d.toFixed(1)} yalm，可能是走位路線不同。` : ''
-    // 停手是因為死亡：根本原因是死亡，不是手慢
-    const died = input.deaths?.mine.find((x) => x.t < w.mineEnd && (x.revivedAt === null || x.revivedAt > w.mineStart))
-    items.push({
-      severity: w.refGcds >= 3 ? 'high' : 'medium',
-      title: `${formatFightTime(w.mineStart)} 停手 ${seconds(w.mineEnd - w.mineStart)} 秒${died ? '（這段期間你已死亡）' : ''}`,
-      detail: died
-        ? `參考在同一段打了 ${w.refGcds} 個 GCD。你在 ${formatFightTime(died.t)} 死亡${died.abilityId !== null ? `（${input.abilityName(died.abilityId)}）` : ''}，死亡期間無法輸出：先學會避開這個機制，不要死亡。`
-        : `參考在同一段打了 ${w.refGcds} 個 GCD。${movement}${mechanicNote(input, w.refStart, w.refEnd)}`,
-      at: w.refStart,
-    })
-  }
-  return items
 }
 
 /** 死亡：最優先的改進。列出每次死亡的時間與致命技能，並與參考比較。 */
@@ -826,18 +800,9 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
       title: `有 ${stops.length} 段停手，約少打 ${total} 個 GCD`,
       detail:
         '依你的 GCD 間隔估計（Boss 無法選中與死亡的時間已扣除）。檢查是否能提早移動、在移動中穿插 GCD，或縮短走位距離；' +
-        '選了參考日誌後可以看前輩在同一段是否仍在輸出。',
-      at: [...stops].sort((a, b) => b.refGcds - a.refGcds)[0].mineStart,
+        '選了參考日誌後可以看前輩在同一段是否仍在輸出。各段的時間與長度見下方「停手時段」。',
+      section: LOST_GCD_SECTION,
     })
-    for (const w of [...stops].sort((a, b) => b.refGcds - a.refGcds).slice(0, MAX_ITEMS)) {
-      items.push({
-        kind: 'gcd',
-        severity: w.refGcds >= 3 ? 'high' : 'medium',
-        title: `${formatFightTime(w.mineStart)} 停手 ${seconds(w.mineEnd - w.mineStart)} 秒`,
-        detail: `這段約少打 ${w.refGcds} 個 GCD。`,
-        at: w.mineStart,
-      })
-    }
   }
   if (controlled.length > 0) {
     items.push({

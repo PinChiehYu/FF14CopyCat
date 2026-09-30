@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
-import { generateAdvice, generateSoloAdvice, groupAdvice, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
+import { generateAdvice, generateSoloAdvice, groupAdvice, LOST_GCD_SECTION, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
 import { DOT_RULES } from '../jobs/dotRules'
 import type { WindowRule } from '../jobs/windows'
 import type { AbilityUsage } from './metrics'
-import type { TrackPoint } from './positions'
 
 const paladin = getJob('Paladin')!
 
@@ -82,9 +81,9 @@ describe('generateAdvice', () => {
     expect(advice[0].detail).toContain('20.0 秒無法輸出')
     expect(advice[0].detail).toContain('參考在同一場沒有死亡')
     expect(advice[0].detail).toContain('不要死亡')
-    const lost = advice.find((a) => a.title.startsWith('2:01.0 停手'))
-    expect(lost?.title).toContain('（這段期間你已死亡）')
-    expect(lost?.detail).toContain('不要死亡')
+    // 停手總結註明其中幾段是死亡期間
+    const lost = advice.find((a) => a.title.includes('段你停手'))
+    expect(lost?.detail).toContain('其中 1 段你已死亡')
   })
 
   it('groups stops caused by boss control into one low item', () => {
@@ -102,34 +101,20 @@ describe('generateAdvice', () => {
     expect(advice[0].detail).toMatch('1:40.0（Ikishoten）、3:20.0（Ikishoten）')
   })
 
-  it('summarises lost GCD windows and notes movement differences', () => {
-    const track: TrackPoint[] = [10_000, 12_000, 14_000].map((t) => ({
-      t,
-      mine: null,
-      ref: null,
-      boss: null,
-      distance: 12,
-      arenaDistance: 12,
-      bossGap: null,
-      bossFrame: false,
-      mirroredDistance: null,
-      mirror: null,
-    }))
+  it('summarises lost GCD windows in one item that points to the list below', () => {
     const advice = generateAdvice(
       input({
         lost: [
           { mineStart: 10_000, mineEnd: 16_000, refStart: 10_000, refEnd: 16_000, refGcds: 3 },
           { mineStart: 60_000, mineEnd: 64_000, refStart: 60_000, refEnd: 64_000, refGcds: 1 },
         ],
-        track,
       }),
     )
-    expect(advice[0].title).toMatch('共少打 4 個 GCD')
-    // 總結的「查看」跳到少打最多的一段
-    expect(advice[0].at).toBe(10_000)
-    const worst = advice.find((a) => a.at === 10_000 && a.title.includes('停手 6.0 秒'))!
-    expect(worst.severity).toBe('high')
-    expect(worst.detail).toMatch('走位路線不同')
+    // 只有一則總結，不逐段列出；「查看」捲到「少打 GCD 的時段」
+    expect(advice).toHaveLength(1)
+    expect(advice[0]).toMatchObject({ severity: 'high', title: '有 2 段你停手、參考仍在輸出，共少打 4 個 GCD', section: LOST_GCD_SECTION })
+    expect(advice[0].at).toBeUndefined()
+    expect(advice[0].detail).toContain('見下方「少打 GCD 的時段」')
   })
 
   it('estimates GCDs lost to a slower GCD', () => {
@@ -427,7 +412,6 @@ describe('generateSoloAdvice', () => {
     expect(advice.map((a) => [a.severity, a.title])).toEqual([
       ['high', '你死亡了 1 次：避免死亡是最優先的改進'],
       ['high', '有 1 段停手，約少打 3 個 GCD'],
-      ['high', '3:20.0 停手 10.0 秒'],
       ['medium', 'Meikyo Shisui：2 次中 1 次合格'],
       ['medium', '被施加傷害降低 1 次，共 30.0 秒'],
       ['medium', '整場沒有使用強化藥'],

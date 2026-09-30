@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { LOST_GCD_SECTION } from '../analysis/advice'
 import { controlNames } from '../analysis/control'
 import { LATE_LISTED_MS, type CooldownPair, type CooldownUsage } from '../analysis/cooldowns'
 import type { AbilityUsage, GcdStats, LostWindow } from '../analysis/metrics'
@@ -77,7 +78,8 @@ function GcdSection({
       </table>
       {slower > 10 && <p className="hint">你的 GCD 比參考慢 {slower.toFixed(0)} 毫秒，可能是技能速度或加速效果的差異。</p>}
 
-      <h3>
+      {/* 停手建議的「查看」捲到這裡（LOST_GCD_SECTION） */}
+      <h3 id={LOST_GCD_SECTION}>
         {reference ? '少打 GCD 的時段' : '停手時段'}
         <HelpTip
           text={[
