@@ -42,10 +42,10 @@ import { Fillers } from './Fillers'
 import { Weaving } from './Weaving'
 import { lossFillerTimes, RANGED_FILLERS } from '../jobs/rangedFillers'
 import { DOT_RULES, fflogsStatusId } from '../jobs/dotRules'
-import { evaluateDot } from '../analysis/dots'
+import { evaluateDot, type DotSummary } from '../analysis/dots'
 import { Metrics } from './Metrics'
 import { Positions } from './Positions'
-import { Timeline } from './Timeline'
+import { DOT_CLIP_MARK_MIN_MS, Timeline, type DotMark } from './Timeline'
 
 // 錨點太少時對齊結果不可靠
 const MIN_ANCHORS = 5
@@ -701,6 +701,31 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       }))
     return [...marks(weaving?.mine, 'mine'), ...marks(weaving?.ref, 'ref')]
   }, [weaving, abilityName])
+  // DoT 斷掉與提早續上（各自的時間、比較範圍內）
+  const dotMarks = useMemo(() => {
+    const marks = (summary: DotSummary | null, side: 'mine' | 'ref'): DotMark[] => {
+      if (!summary) return []
+      const dotName = summary.rule.statusIds.map((id) => abilityName(fflogsStatusId(id))).join('／')
+      return [
+        ...summary.gaps.map((g) => ({
+          side,
+          kind: 'gap' as const,
+          start: g.start,
+          end: g.end,
+          title: `${dotName} 斷掉 ${formatFightTime(g.start)}～${formatFightTime(g.end)}（${((g.end - g.start) / 1000).toFixed(1)} 秒）`,
+        })),
+        // 在一個 GCD 內續上是正常打法，只標覆蓋掉超過一個 GCD 的
+        ...(summary.clipPerMinMs === null ? [] : summary.clips.filter((c) => c.ms >= DOT_CLIP_MARK_MIN_MS)).map((c) => ({
+          side,
+          kind: 'clip' as const,
+          start: c.t,
+          end: c.t,
+          title: `${dotName} 提早續上 ${formatFightTime(c.t)}（覆蓋掉 ${(c.ms / 1000).toFixed(1)} 秒）`,
+        })),
+      ]
+    }
+    return dots.flatMap((d) => [...marks(d.mine, 'mine'), ...marks(d.ref, 'ref')])
+  }, [dots, abilityName])
 
   // 不隨游標變動的區塊先做好，播放時游標每秒更新多次，不必跟著重繪
   const staticSections = useMemo(
@@ -870,6 +895,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         highlights={timelineHighlights}
         windows={timelineWindows}
         weaveMarks={weaveMarks}
+        dotMarks={dotMarks}
         isFocused={isFocused}
         pushes={pushes}
         focus={focus}

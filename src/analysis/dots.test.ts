@@ -50,4 +50,19 @@ describe('evaluateDot', () => {
     expect(s.clips).toEqual([])
     expect(s.uptime).toBeCloseTo(73.33, 1)
   })
+
+  it('lists the stretches without the DoT while the boss can be targeted', () => {
+    // 120 秒：開場 2.5 秒才施加、60～90 秒斷掉但 70～80 秒無法選中；0.5 秒的空檔不列
+    const s = evaluateDot(HIGANBANA, {
+      buffs: [window(1_001_228, 2_500, 60_000), window(1_001_228, 90_000, 110_000), window(1_001_228, 110_500, 120_000)],
+      debuffApplications: [],
+      untargetable: [{ start: 70_000, end: 80_000 }],
+      duration: 120_000,
+    })
+    expect(s.gaps).toEqual([
+      { start: 0, end: 2_500 },
+      { start: 60_000, end: 70_000 },
+      { start: 80_000, end: 90_000 },
+    ])
+  })
 })

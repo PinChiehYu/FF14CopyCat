@@ -20,6 +20,18 @@ export interface WeaveMark {
   title: string
 }
 
+/** 時間軸只標覆蓋掉至少這麼多的提早續上（一個 GCD 內續上是正常打法） */
+export const DOT_CLIP_MARK_MIN_MS = 3000
+
+/** 時間軸上標示的 DoT 斷掉時段（gap）與提早續上（clip，start＝續上的時間）；該側自己的戰鬥時間 */
+export interface DotMark {
+  side: 'mine' | 'ref'
+  kind: 'gap' | 'clip'
+  start: number
+  end: number
+  title: string
+}
+
 interface Lane {
   label: string
   side: 'mine' | 'ref'
@@ -62,6 +74,7 @@ export function Timeline({
   highlights = [],
   windows = [],
   weaveMarks = [],
+  dotMarks = [],
   isFocused = null,
   pushes = [],
   focus = null,
@@ -82,6 +95,8 @@ export function Timeline({
   windows?: (TimelineWindow & { side: 'mine' | 'ref' })[]
   /** 穿插過多（各側自己的戰鬥時間）：前一個 GCD 到被延後的 GCD */
   weaveMarks?: WeaveMark[]
+  /** DoT 斷掉與提早續上（各側自己的戰鬥時間），畫在該側 GCD 列的頂部 */
+  dotMarks?: DotMark[]
   /** 關注的機制時間點（技能 ID、我的時間；見 focusedMechanics.ts），Boss 列高光；沒有選擇時為 null */
   isFocused?: ((abilityId: number, mineT: number) => boolean) | null
   /** 推進差距（例如轉場）：兩邊各自照實際長度排開，較快的一方補上空白 */
@@ -157,6 +172,7 @@ export function Timeline({
             reference && '一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。',
             '灰底為 Boss 無法選中。滑鼠停在圖示上可看技能與原始時間。',
             '能力技列頂部的紅線：穿插過多，下一個 GCD 被延後（從前一個 GCD 到被延後的 GCD）。',
+            dotMarks.length > 0 && `GCD 列頂部的金黃線：DoT 斷掉（Boss 可選中但 DoT 不在敵人身上，1 秒以上）；金黃短直線：DoT 提早續上（覆蓋掉 ${DOT_CLIP_MARK_MIN_MS / 1000} 秒以上）。`,
             'Boss 列較粗的紫色標記：你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）。',
             '金黃框：止損技（近戰與坦克離開 Boss 時用的遠程 GCD，例如投盾、飛刀）；用得多代表離 Boss 太遠或走位不順。開場起手（開打前與第一個 GCD）與有強化效果時（貫穿尖、勾刃、燕飛效果提高）不標。',
           ]
@@ -196,6 +212,7 @@ export function Timeline({
               highlights={highlights}
               windows={windows}
               weaveMarks={weaveMarks}
+              dotMarks={dotMarks}
               isFocused={isFocused}
               pxPerSec={pxPerSec}
               totalMs={totalMs}
@@ -220,6 +237,7 @@ function TimelineLanesImpl({
   highlights,
   windows,
   weaveMarks,
+  dotMarks,
   isFocused,
   pxPerSec,
   totalMs,
@@ -236,6 +254,7 @@ function TimelineLanesImpl({
   highlights: { start: number; end: number }[]
   windows: (TimelineWindow & { side: 'mine' | 'ref' })[]
   weaveMarks: WeaveMark[]
+  dotMarks: DotMark[]
   isFocused: ((abilityId: number, mineT: number) => boolean) | null
   pxPerSec: number
   totalMs: number
@@ -333,6 +352,17 @@ function TimelineLanesImpl({
                         title={w.title}
                       />
                     ))}
+                {/* DoT 斷掉（線）與提早續上（短直線）：畫在每側第一列（GCD 列）頂部 */}
+                {first &&
+                  dotMarks
+                    .filter((d) => d.side === lane.side)
+                    .map((d) =>
+                      d.kind === 'gap' ? (
+                        <span key={`dot-gap-${d.start}-${d.title}`} className="dot-gap" style={span(at(d.start), at(d.end))} title={d.title} />
+                      ) : (
+                        <span key={`dot-clip-${d.start}-${d.title}`} className="dot-clip-mark" style={{ left: x(at(d.start)) }} title={d.title} />
+                      ),
+                    )}
                 {/* 穿插過多：畫在每側最後一列（能力技列）頂部，從前一個 GCD 到被延後的 GCD */}
                 {allLanes.findLastIndex((l) => l.side === lane.side) === laneIndex &&
                   weaveMarks

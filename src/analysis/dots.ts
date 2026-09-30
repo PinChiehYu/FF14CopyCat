@@ -11,7 +11,12 @@ export interface DotSummary {
   clips: { t: number; ms: number }[]
   /** 施加與續上的次數 */
   applications: number
+  /** DoT 斷掉的時段：Boss 可選中但規則內的效果都不在敵人身上（至少 GAP_MIN_MS；含開場第一次施加前） */
+  gaps: Span[]
 }
+
+/** 短於此的斷掉不列（施加的延遲、目標切換） */
+export const GAP_MIN_MS = 1000
 
 interface Span {
   start: number
@@ -71,6 +76,7 @@ export function evaluateDot(
     down,
   )
   const uptime = targetable > 0 ? Math.min(100, (length(covered) / targetable) * 100) : 0
+  const gaps = subtract(subtract([{ start: 0, end: side.duration }], down), union(covered)).filter((g) => g.end - g.start >= GAP_MIN_MS)
 
   const applications = side.debuffApplications.filter((a) => ids.has(a.statusId))
   const last = new Map<string, number>()
@@ -90,6 +96,7 @@ export function evaluateDot(
     clipPerMinMs: rule.clipTiers && targetable > 0 ? total / (targetable / 60000) : rule.clipTiers ? 0 : null,
     clips,
     applications: applications.length,
+    gaps,
   }
 }
 

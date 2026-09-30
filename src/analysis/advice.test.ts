@@ -388,7 +388,7 @@ describe('generateSoloAdvice', () => {
 
   it('flags DoT uptime below the target and early refreshes', () => {
     const rule = DOT_RULES.Samurai[0]
-    const dot = { rule, uptime: 78, clipPerMinMs: 35_000, clips: [{ t: 144_000, ms: 3600 }], applications: 10 }
+    const dot = { rule, uptime: 78, clipPerMinMs: 35_000, clips: [{ t: 144_000, ms: 3600 }], applications: 10, gaps: [] }
     const advice = generateSoloAdvice(solo({ dots: [{ mine: dot, ref: null }] }))
     expect(advice.map((a) => [a.severity, a.title])).toEqual([
       ['high', '#1001228 覆蓋率 78.0%（目標 90%）'],

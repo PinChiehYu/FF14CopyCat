@@ -1445,6 +1445,26 @@ h3 {
   border-radius: 2px;
 }
 
+/* DoT 斷掉（GCD 列頂部的線）與提早續上（短直線）；金黃色，與穿插過多的紅線區隔 */
+.dot-gap {
+  position: absolute;
+  top: 0;
+  height: 3px;
+  background: var(--warning);
+  border-radius: 2px;
+  z-index: 1;
+}
+
+.dot-clip-mark {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 6px;
+  margin-left: -1px;
+  background: var(--warning);
+  z-index: 1;
+}
+
 /* 穿插過多：時間｜穿插的能力技圖示｜個數｜GCD 晚幾秒 */
 .lost-list.weave-list li {
   grid-template-columns: 5em auto 5.5em 1fr;

@@ -148,6 +148,7 @@
 - `evaluateDot()`：覆蓋率＝規則內各效果時段的聯集扣掉 Boss 無法選中（`SideData.untargetable`）÷（戰鬥長度 − 無法選中）；提早續上＝同一效果、同一目標的下一次施加時上一次剩下的時間（`持續時間 −（這次 − 上次）`，負值不算），總和 ÷ 可選中的分鐘數。`clipSeverity()` 依規則的門檻。
 - 規則移植自 xivanalysis dawntrail（commit b240252）的 `core/modules/DoTs.tsx` 與各職業模組（sam/Higanbana、drg/Debuffs、ast/Combust、whm／sch／sge／brd／blm 的 DoTs、rpr/DeathsDesign）。xivanalysis 的算法：覆蓋率為每個上過 DoT 的敵人各自（扣掉該敵人的無敵時間）後**平均**；提早續上為每個敵人各自換算每分鐘後**相加**，沒有容許值；checklist 目標預設 95%；賢者、黑魔的單體＋範圍版覆蓋率相加；黑魔 7.2 以前用另一個 Thunder 模組（本站對應的國際服版本都 ≥ 7.2，不需要）。
 - 與 xivanalysis 的差異：覆蓋率合併所有敵人（不平均；M8S 第二階段 Boss 是另一個角色、短暫上過 DoT 的小怪也不會拉低）、排除的時間用 Boss 無法選中（沒有逐敵人的無敵資料）、提早續上以可選中的總時間換算（不逐敵人相加）、吟遊詩人兩條 DoT 各自判斷（xivanalysis 取平均）。槍刃戰士音速破（xivanalysis 只檢查跳數）、騎士厄運流轉等其餘範圍 DoT 沒有移植（xivanalysis 也沒有覆蓋率檢查）。
+- 時間軸標示：`DotSummary.gaps`＝（整場 − Boss 無法選中）− 覆蓋時段，只留 ≥ `GAP_MIN_MS`（1 秒）的；`Comparison.tsx` 轉成 `DotMark`（gap／clip，各自的時間），`Timeline.tsx` 畫在每側第一列（GCD 列）頂部（`.dot-gap`、`.dot-clip-mark`）；提早續上只標 ≥ `DOT_CLIP_MARK_MIN_MS`（3 秒）的。
 - 狀態 ID 以 `/abilities` 查繁中名稱確認（彼岸花、櫻花繚亂、天輝、蠱毒法、焚灼、均衡注藥III、均衡失衡、烈毒咬箭、狂風蝕箭、高階雷電、高階中雷電、死亡烙印）。
 
 ### 建議（`src/analysis/advice.ts`）
