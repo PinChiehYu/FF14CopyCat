@@ -477,6 +477,14 @@ describe('groupAdvice', () => {
   it('orders groups of the same severity by importance', () => {
     const groups = groupAdvice([a('medium', 'position', 'p'), a('medium', 'dot', 'd'), a('medium', 'window', 'w')])
     expect(groups.map((g) => g.key)).toEqual(['window', 'dot', 'position'])
+    // 組內：團隊減傷 → 自身減傷 → 移動，同類維持產生順序
+    const [mitigation] = groupAdvice([
+      a('medium', 'partyMitigation', 'veil'),
+      a('medium', 'movement', 'sprint'),
+      a('medium', 'partyMitigation', 'reprisal'),
+      a('medium', 'mitigation', 'rampart'),
+    ])
+    expect(mitigation.items.map((x) => x.title)).toEqual(['veil', 'reprisal', 'rampart', 'sprint'])
     // 懲罰效果緊接在死亡之後
     expect(groupAdvice([a('high', 'gcd', 'g'), a('high', 'penalty', 'p'), a('high', 'death', 'd')]).map((g) => g.key)).toEqual([
       'death',

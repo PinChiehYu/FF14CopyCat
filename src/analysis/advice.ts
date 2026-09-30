@@ -34,7 +34,9 @@ export type AdviceKind =
   | 'prepull'
   | 'usage'
   | 'potion'
+  | 'partyMitigation'
   | 'mitigation'
+  | 'movement'
   | 'weave'
   | 'filler'
   | 'position'
@@ -68,11 +70,11 @@ export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[
   { key: 'penalty', label: '懲罰效果', kinds: ['penalty'] },
   { key: 'gcd', label: '停手與 GCD', kinds: ['gcd'] },
   { key: 'window', label: '技能窗口', kinds: ['window'] },
-  { key: 'usage', label: '技能與強化藥', kinds: ['cooldown', 'potion', 'usage'] },
+  { key: 'usage', label: '技能與強化藥', kinds: ['potion', 'cooldown', 'usage'] },
   { key: 'dot', label: 'DoT', kinds: ['dot'] },
   { key: 'weave', label: '穿插過多', kinds: ['weave'] },
   { key: 'filler', label: '止損技', kinds: ['filler'] },
-  { key: 'mitigation', label: '減傷與移動', kinds: ['mitigation'] },
+  { key: 'mitigation', label: '減傷與移動', kinds: ['partyMitigation', 'mitigation', 'movement'] },
   { key: 'prepull', label: '開打前', kinds: ['prepull'] },
   { key: 'position', label: '站位', kinds: ['position'] },
 ]
@@ -91,7 +93,8 @@ export interface AdviceGroup {
 const groupKey = (a: Advice) => (a.kind ? ADVICE_GROUPS[GROUP_INDEX.get(a.kind)!].key : `title:${a.title}`)
 
 /**
- * 依組整理建議：同一組的一起列出；組的順序依最高等級、再依 ADVICE_GROUPS 的重要性；組內依等級，同等級維持產生順序（總結在前）。
+ * 依組整理建議：同一組的一起列出；組的順序依最高等級、再依 ADVICE_GROUPS 的重要性。
+ * 組內依等級、再依組內類別的順序（例如團隊減傷 → 自身減傷 → 移動），同類別維持產生順序（總結在前）。
  * 建議區先依各則的等級分頁，再對每個分頁的建議分組。
  */
 export function groupAdvice(advice: Advice[]): AdviceGroup[] {
@@ -100,7 +103,11 @@ export function groupAdvice(advice: Advice[]): AdviceGroup[] {
   return [...groups.entries()]
     .map(([key, items]) => {
       const def = ADVICE_GROUPS.find((g) => g.key === key)
-      const sorted = sortAdvice(items)
+      const kindOrder = (a: Advice) => (def && a.kind ? def.kinds.indexOf(a.kind) : 0)
+      const sorted = items
+        .map((a, i) => ({ a, i }))
+        .sort((x, y) => ORDER[x.a.severity] - ORDER[y.a.severity] || kindOrder(x.a) - kindOrder(y.a) || x.i - y.i)
+        .map((x) => x.a)
       return { key, label: def?.label ?? '', severity: sorted[0].severity, items: sorted, order: def ? ADVICE_GROUPS.indexOf(def) : ADVICE_GROUPS.length }
     })
     .sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || a.order - b.order)
@@ -313,7 +320,7 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUs
     if (kind === 'ignored') continue
     if (kind === 'mitigation' || kind === 'partyMitigation' || kind === 'movement') {
       const advice = mitigationAdvice(u, name, kind)
-      if (advice) items.push({ ...advice, kind: 'mitigation' })
+      if (advice) items.push({ ...advice, kind })
       continue
     }
     // 其他輔助技能依攻略使用，只合併為低優先
