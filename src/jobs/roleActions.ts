@@ -1,4 +1,5 @@
 import type { JobModule } from './index'
+import { JOB_CATEGORIES } from './generated'
 
 /**
  * 技能在分析中的分類：
@@ -54,6 +55,18 @@ const ROLE_UTILITY = new Set([
   7568, // Esuna
   7571, // Rescue
 ])
+
+/**
+ * 所有職業的減傷技能（自身與團隊，含職能技能）：死亡回顧中找出身上的減傷效果用
+ * （效果名稱多半與技能相同，以英文名稱比對）。
+ */
+export function allMitigationIds(): number[] {
+  return [
+    ...ROLE_MITIGATION,
+    ...ROLE_PARTY_MITIGATION,
+    ...Object.values(JOB_CATEGORIES).flatMap((c) => [...(c.mitigation ?? []), ...(c.partyMitigation ?? [])]),
+  ]
+}
 
 export function abilityCategory(abilityId: number, job?: JobModule): AbilityCategory {
   if (ROLE_IGNORED.has(abilityId) || job?.ignored?.has(abilityId)) return 'ignored'

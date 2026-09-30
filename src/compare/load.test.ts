@@ -6,6 +6,7 @@ import {
   bossPositions,
   castBars,
   clipSide,
+  damageTaken,
   deathAt,
   untargetableSpans,
   deaths,
@@ -177,6 +178,44 @@ describe('deaths', () => {
   })
 })
 
+describe('damageTaken', () => {
+  it('collects enemy hits on the player with mitigation and HP', () => {
+    const fight = { startTime: 1000, endTime: 60_000 } as Fight
+    const actors = [
+      { id: 2, type: 'Player' },
+      { id: 3, type: 'Pet' },
+      { id: 50, type: 'NPC' },
+    ] as Actor[]
+    const hits = damageTaken(
+      [
+        { timestamp: 5000, type: 'calculateddamage', sourceID: 50, targetID: 2, abilityGameID: 42831, amount: 19_275 },
+        {
+          timestamp: 5200,
+          type: 'damage',
+          sourceID: 50,
+          targetID: 2,
+          abilityGameID: 42831,
+          amount: 19_275,
+          absorbed: 80_936,
+          unmitigatedAmount: 170_237,
+          multiplier: 0.59,
+          targetResources: { hitPoints: 151_317, maxHitPoints: 170_592 },
+        },
+        { timestamp: 6000, type: 'damage', sourceID: 2, targetID: 50, abilityGameID: 100, amount: 5000 }, // 我打敵人
+        { timestamp: 6500, type: 'damage', sourceID: 3, targetID: 2, abilityGameID: 101, amount: 10 }, // 寵物（友方）
+        { timestamp: 7000, type: 'damage', sourceID: -1, targetID: 2, abilityGameID: 1_004_449, amount: 14_571, tick: true },
+        { timestamp: 7000, type: 'damage', sourceID: 50, targetID: 2, abilityGameID: 500_000, amount: 14_571, tick: true }, // 重複的跳傷
+      ],
+      fight,
+      2,
+      actors,
+    )
+    expect(hits).toEqual([
+      { t: 4200, abilityId: 42831, amount: 100_211, unmitigated: 170_237, multiplier: 0.59, tick: false, hpAfter: 151_317, maxHp: 170_592 },
+      { t: 6000, abilityId: 1_004_449, amount: 14_571, unmitigated: 14_571, multiplier: null, tick: true, hpAfter: null, maxHp: null },
+    ])
+  })
+})
 describe('castBars', () => {
   it('pairs begincast with its cast and marks cancelled casts', () => {
     const fight = { startTime: 1000, endTime: 60_000 } as Fight
@@ -233,6 +272,7 @@ describe('clipSide', () => {
       auras: [],
       hp: [],
       castBars: [],
+      damageTaken: [],
       deaths: [{ t: 9000, abilityId: 1, revivedAt: null }],
       untargetable: [
         { start: 2000, end: 3000 },
@@ -298,6 +338,7 @@ describe('unifyPotions', () => {
     auras: [],
     hp: [],
     castBars: [],
+    damageTaken: [],
     deaths: [],
     untargetable: [],
     duration: 600_000,
@@ -351,6 +392,7 @@ describe('boss cast filters', () => {
     auras: [],
     hp: [],
     castBars: [],
+    damageTaken: [],
     deaths: [],
     untargetable: [],
     duration: 600_000,

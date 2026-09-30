@@ -8,7 +8,9 @@ import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
 import { buildAlignment, pushDifferences, pushTitle, type Alignment } from '../analysis/alignment'
-import { generateAdvice, generateSoloAdvice } from '../analysis/advice'
+import { generateAdvice, generateSoloAdvice, keyTakeaways } from '../analysis/advice'
+import { damageRows, deathRecap } from '../analysis/damageTaken'
+import { aurasAt } from '../analysis/buffs'
 import { mainMechanicDifferences, mainMechanicGroups, mechanicOccurrences } from '../analysis/mainMechanics'
 import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, idleWindows, lostGcdWindows } from '../analysis/metrics'
@@ -20,7 +22,7 @@ import { useSideDamage, type SideDamage } from './sideDamage'
 import { abilityMap, isItemId, isPotionName, isUnnamedAbility } from '../fflogs/report'
 import { badWeaves, type BadWeave } from '../analysis/weaving'
 import { getJob } from '../jobs'
-import { abilityCategory } from '../jobs/roleActions'
+import { abilityCategory, allMitigationIds } from '../jobs/roleActions'
 import {
   clipSide,
   incompatibility,
@@ -34,6 +36,8 @@ import {
   type SideData,
 } from './load'
 import { AdviceList } from './AdviceList'
+import { KeyTakeaways } from './KeyTakeaways'
+import { DamageTaken } from './DamageTaken'
 import { HelpTip } from './HelpTip'
 import { Mechanics, MechanicsHeading } from './Mechanics'
 import { focusChecker, useIgnoredOccurrences } from './focusedMechanics'
@@ -103,6 +107,8 @@ function useSide(selection: Selection | null) {
 
 // 普通攻擊（Action 7，繁中「攻擊」）
 const AUTO_ATTACK = 7
+// 受到懲罰的效果（英文名稱）：受傷加重（被可避開的機制打中）、傷害降低
+const PENALTY_NAMES = new Set(['Vulnerability Up', 'Damage Down'])
 
 /** 查詢兩邊出現過的技能的繁中名稱；查詢失敗時沿用 FFLogs 的英文名稱。 */
 function useAbilityNames(mine: SideData, reference: SideData | null): Map<number, AbilityName> {
@@ -121,7 +127,13 @@ function useAbilityNames(mine: SideData, reference: SideData | null): Map<number
         ...s.auras.filter((a) => a.sourceId === s.selection.player.id).map((a) => a.statusId),
         // 死亡的致命技能
         ...s.deaths.flatMap((d) => (d.abilityId === null ? [] : [d.abilityId])),
+        // 受到的傷害（Boss 技能、DoT 效果）
+        ...s.damageTaken.map((h) => h.abilityId),
+        // 死亡回顧：死前身上的效果（找出減傷）
+        ...s.deaths.flatMap((d) => aurasAt(s.auras, d.t).map((a) => a.statusId)),
       ]),
+      // 減傷技能（死亡回顧中以英文名稱比對身上的減傷效果）
+      ...allMitigationIds(),
       // 技能窗口規則中的技能：兩邊都沒用過的（例如「缺少」的技能）不在報告的技能清單中
       ...windowRules(job).flatMap(ruleIds),
       // 冷卻技（兩邊都沒用過時也要顯示名稱）
@@ -609,6 +621,30 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
     },
     [abilities],
   )
+  // 受到的傷害：依技能的統計（多吃、減傷差距）與死亡回顧；懲罰＝受傷加重、傷害降低（依英文名稱）
+  const taken = useMemo(() => {
+    const penaltyTimes = mineInRange.bossDebuffs.filter((b) => PENALTY_NAMES.has(englishName(b.statusId))).map((b) => b.start)
+    const isAutoAttack = (id: number) => id === AUTO_ATTACK || englishName(id).toLowerCase() === 'attack'
+    const refHits = solo ? null : refInRange.damageTaken
+    return {
+      // 同名不同 ID 的技能（例如同一招的幾個版本）合併為一列
+      rows: damageRows(mineInRange.damageTaken, refHits, alignment.mineToRef, penaltyTimes, isAutoAttack, englishName),
+      recaps: mineInRange.deaths.map((d) =>
+        deathRecap(d, mineInRange.damageTaken, refHits && { hits: refHits, deaths: refInRange.deaths }, alignment.mineToRef),
+      ),
+    }
+  }, [mineInRange, refInRange, solo, alignment, englishName])
+  // 死亡回顧：當下身上的減傷效果（效果的英文名稱與任一職業的減傷技能相同）
+  const mitigationAt = useMemo(() => {
+    const names = new Set(allMitigationIds().map((id) => abilities.get(id)?.englishName ?? abilities.get(id)?.name).filter(Boolean))
+    return (t: number) => [
+      ...new Set(
+        aurasAt(mine.auras, t)
+          .filter((a) => !a.debuff && names.has(englishName(a.statusId)))
+          .map((a) => abilityName(a.statusId)),
+      ),
+    ]
+  }, [abilities, mine, englishName, abilityName])
   const advice = useMemo(() => {
     if (solo) {
       return generateSoloAdvice({
@@ -627,6 +663,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         weaving: weaving?.mine,
         subType: mine.selection.player.subType,
         fillerId,
+        damage: taken.rows,
+        deathRecaps: taken.recaps,
       })
     }
     return generateAdvice({
@@ -654,8 +692,14 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       weaving: weaving?.ref ? { mine: weaving.mine, ref: weaving.ref } : undefined,
       subType: mine.selection.player.subType,
       fillerId,
+      damage: taken.rows,
+      deathRecaps: taken.recaps,
+      penalties: {
+        mine: mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down'),
+        ref: refInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down'),
+      },
     })
-  }, [solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns, dots, fillers, fillerId, weaving])
+  }, [taken, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns, dots, fillers, fillerId, weaving])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)
@@ -751,6 +795,16 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
             <Dots dots={dots} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
           </>
         )}
+        <DamageTaken
+          rows={taken.rows}
+          recaps={taken.recaps}
+          solo={solo}
+          abilities={abilities}
+          abilityName={abilityName}
+          mitigationAt={mitigationAt}
+          mineToRef={alignment.mineToRef}
+          onJump={jumpTo}
+        />
         {!solo && (
           <>
             <MechanicsHeading main={mainMechanicGroups(mine.selection.fight.encounterID) !== null} />
@@ -796,11 +850,12 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         />
       </>
     ),
-    [solo, advice, jumpTo, windows, dots, fillers, fillerId, weaving, isFocused, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
+    [taken, mitigationAt, solo, advice, jumpTo, windows, dots, fillers, fillerId, weaving, isFocused, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
   )
 
   return (
     <>
+      <KeyTakeaways items={keyTakeaways(advice)} onJump={jumpTo} />
       <SummaryTable
         mine={mine}
         reference={shownRef}

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
-import { generateAdvice, generateSoloAdvice, type AdviceInput, type SoloAdviceInput } from './advice'
+import { generateAdvice, generateSoloAdvice, keyTakeaways, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
+import type { DamageRow } from './damageTaken'
 import { DOT_RULES } from '../jobs/dotRules'
 import type { WindowRule } from '../jobs/windows'
 import type { AbilityUsage } from './metrics'
@@ -125,7 +126,9 @@ describe('generateAdvice', () => {
       }),
     )
     expect(advice[0].title).toMatch('共少打 4 個 GCD')
-    const worst = advice.find((a) => a.at === 10_000)!
+    // 總結的「查看」跳到少打最多的一段
+    expect(advice[0].at).toBe(10_000)
+    const worst = advice.find((a) => a.at === 10_000 && a.title.includes('停手 6.0 秒'))!
     expect(worst.severity).toBe('high')
     expect(worst.detail).toMatch('走位路線不同')
   })
@@ -434,5 +437,96 @@ describe('generateSoloAdvice', () => {
     // 不和參考比較
     expect(advice.every((a) => !a.title.includes('參考'))).toBe(true)
     expect(advice[0].detail).toMatch('20.0 秒無法輸出')
+  })
+})
+
+describe('damage taken advice', () => {
+  const row = (over: Partial<DamageRow>): DamageRow => ({
+    abilityId: 1,
+    mine: { count: 2, total: 60_000, mitigation: 0.1 },
+    ref: { count: 0, total: 0, mitigation: null },
+    flagged: [],
+    mitigationGap: false,
+    firstHit: 10_000,
+    ...over,
+  })
+
+  it('lists hits the reference avoided, most first', () => {
+    const advice = generateAdvice(
+      input({
+        damage: [
+          row({ abilityId: 2, flagged: [{ t: 30_000, abilityId: 2, amount: 1, penalized: false }] }),
+          row({ flagged: [10_000, 50_000].map((t) => ({ t, abilityId: 1, amount: 1, penalized: false })) }),
+        ],
+      }),
+    )
+    expect(advice.filter((a) => a.kind === 'damage').map((a) => [a.severity, a.title, a.at])).toEqual([
+      ['high', '多吃了「Ikishoten」2 次（參考沒有被打中）', 10_000],
+      ['medium', '多吃了「Enpi」1 次（參考沒有被打中）', 30_000],
+    ])
+  })
+
+  it('suggests mitigating big hits better than the reference', () => {
+    const advice = generateAdvice(
+      input({ damage: [row({ mine: { count: 2, total: 1, mitigation: 0.1 }, ref: { count: 2, total: 1, mitigation: 0.35 }, mitigationGap: true })] }),
+    )
+    expect(advice.map((a) => a.title)).toContain('「Ikishoten」的減傷比參考少 25%')
+  })
+
+  it('adds a death recap to the death advice', () => {
+    const [death] = generateAdvice(
+      input({
+        deaths: { mine: [{ t: 100_000, abilityId: 2, revivedAt: null }], ref: [] },
+        deathRecaps: [
+          {
+            death: { t: 100_000, abilityId: 2, revivedAt: null },
+            hits: [{ t: 99_000, abilityId: 2, amount: 52_980, hpBefore: 0.3, hpAfter: 0, mitigation: 0, tick: false }],
+            ref: { amount: 31_005, mitigation: 0.38, died: false },
+          },
+        ],
+      }),
+    )
+    expect(death.kind).toBe('death')
+    expect(death.detail).toContain('1:39.0 Enpi 52,980（剩 0%）')
+    expect(death.detail).toContain('參考在同一時間吃「Enpi」受到 31,005（減傷 38%），沒有死亡。')
+  })
+
+  it('reports Damage Down only when I got more than the reference', () => {
+    const penalties = (mine: number, ref: number) => ({
+      mine: Array.from({ length: mine }, (_, i) => ({ start: i * 10_000, end: i * 10_000 + 5000 })),
+      ref: Array.from({ length: ref }, (_, i) => ({ start: i * 10_000, end: i * 10_000 + 5000 })),
+    })
+    expect(generateAdvice(input({ penalties: penalties(1, 1) })).some((a) => a.kind === 'penalty')).toBe(false)
+    expect(generateAdvice(input({ penalties: penalties(2, 1) })).find((a) => a.kind === 'penalty')?.title).toBe(
+      '被施加傷害降低 2 次，共 10.0 秒（參考 1 次）',
+    )
+  })
+})
+
+describe('keyTakeaways', () => {
+  const a = (severity: Advice['severity'], kind: Advice['kind'], title: string): Advice => ({ severity, kind, title, detail: '' })
+
+  it('takes at most one high or medium item per kind', () => {
+    const advice = [
+      a('high', 'death', 'death'),
+      a('high', 'gcd', 'gcd summary'),
+      a('high', 'gcd', 'gcd window'),
+      a('medium', 'cooldown', 'cooldown'),
+      a('medium', 'damage', 'damage'),
+      a('low', 'position', 'position'),
+    ]
+    expect(keyTakeaways(advice).map((x) => x.title)).toEqual(['death', 'gcd summary', 'cooldown'])
+    expect(keyTakeaways([a('low', 'position', 'position')])).toEqual([])
+  })
+
+  it('tags every generated advice with a kind', () => {
+    const advice = generateAdvice(
+      input({
+        usage: [usage(1, 3, 6), usage(3, 0, 2, null, 0, [5_000])],
+        lost: [{ mineStart: 10_000, mineEnd: 16_000, refStart: 10_000, refEnd: 16_000, refGcds: 3 }],
+      }),
+    )
+    expect(advice.length).toBeGreaterThan(0)
+    expect(advice.every((x) => x.kind !== undefined)).toBe(true)
   })
 })

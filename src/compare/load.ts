@@ -50,6 +50,8 @@ export interface SideData {
   castBars: CastBar[]
   /** 死亡（重點標示） */
   deaths: Death[]
+  /** 敵人對玩家造成的傷害（每一擊；受到的傷害與死亡回顧用） */
+  damageTaken: DamageHit[]
   /** Boss 無法選中的時段（戰鬥時間），例如召喚分身、轉場 */
   untargetable: TimeSpan[]
   /** 戰鬥長度（毫秒） */
@@ -254,6 +256,53 @@ export function deaths(events: FFLogsEvent[], fight: Fight, actorId: number): De
   return result
 }
 
+/** 敵人對玩家的一擊（戰鬥時間）。 */
+export interface DamageHit {
+  t: number
+  abilityId: number
+  /** 實際受到的傷害（含被護盾吸收的部分） */
+  amount: number
+  /** 減傷前的傷害 */
+  unmitigated: number
+  /** 承受倍率（減傷與受傷加重的乘積，1 為沒有；FFLogs 沒有提供時為 null） */
+  multiplier: number | null
+  /** DoT 跳傷（持續傷害） */
+  tick: boolean
+  /** 這一擊後的血量 */
+  hpAfter: number | null
+  maxHp: number | null
+}
+
+// FFLogs 以 500000 另記一份來源不明的 DoT 跳傷，與效果 ID 的跳傷重複
+const DUPLICATE_TICK_ID = 500000
+
+/**
+ * 敵人對玩家的傷害：玩家事件（sourceID＝玩家）也包含以玩家為目標的事件。
+ * 排除玩家與寵物造成的（例如自己的反噬）與重複的 DoT 跳傷；效果 ID（≥ 1,000,000）的傷害視為跳傷。
+ */
+export function damageTaken(events: FFLogsEvent[], fight: Fight, actorId: number, actors: Actor[]): DamageHit[] {
+  const friendly = new Set(actors.filter((a) => a.type === 'Player' || a.type === 'Pet').map((a) => a.id))
+  const hits: DamageHit[] = []
+  for (const e of events) {
+    if (e.type !== 'damage' || e.targetID !== actorId || e.abilityGameID === undefined) continue
+    if (e.abilityGameID === DUPLICATE_TICK_ID || (e.sourceID !== undefined && friendly.has(e.sourceID))) continue
+    const num = (v: unknown) => (typeof v === 'number' ? v : null)
+    const amount = (num(e.amount) ?? 0) + (num(e.absorbed) ?? 0)
+    const target = e.targetResources as { hitPoints?: number; maxHitPoints?: number } | undefined
+    hits.push({
+      t: toFightTime(e.timestamp, fight.startTime),
+      abilityId: e.abilityGameID,
+      amount,
+      unmitigated: num(e.unmitigatedAmount) ?? amount,
+      multiplier: num(e.multiplier),
+      tick: e.tick === true || e.abilityGameID >= 1_000_000,
+      hpAfter: num(target?.hitPoints),
+      maxHp: num(target?.maxHitPoints),
+    })
+  }
+  return hits
+}
+
 /** 某個時間點是否處於死亡（到恢復行動前）；是的話回傳該次死亡。 */
 export function deathAt(list: Death[], t: number): Death | undefined {
   return list.find((d) => d.t <= t && (d.revivedAt === null || t < d.revivedAt))
@@ -320,6 +369,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     hp: hpSamples(playerEvents, fight, player.id),
     castBars: castBars(playerEvents, fight, player.id),
     deaths: deaths(playerEvents, fight, player.id),
+    damageTaken: damageTaken(playerEvents, fight, player.id, report.masterData.actors),
     untargetable: untargetableSpans(targetability, report.masterData.actors, fight),
     duration: fight.endTime - fight.startTime,
   }
@@ -339,6 +389,7 @@ export function clipSide(side: SideData, endMs: number): SideData {
     playerPositions: before(side.playerPositions),
     bossPositions: before(side.bossPositions),
     deaths: before(side.deaths),
+    damageTaken: before(side.damageTaken),
     untargetable: side.untargetable.filter((s) => s.start <= endMs).map((s) => ({ ...s, end: Math.min(s.end, endMs) })),
     // 比較範圍外才開始的窗口不計；跨過結束點的窗口視為未結束（不評分）
     buffs: side.buffs

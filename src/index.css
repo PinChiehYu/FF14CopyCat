@@ -2524,8 +2524,162 @@ h3 {
   color: var(--text-muted);
 }
 
+/* 重點摘要：比較結果最上方，每項一行「編號 標題 查看」 */
+.key-takeaways {
+  margin-bottom: 16px;
+}
+
+.key-takeaways h3 {
+  margin-top: 0;
+}
+
+.key-takeaways ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.key-takeaways li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--mine);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.key-takeaways li.high {
+  border-left-color: var(--error);
+}
+
+.key-takeaway-index {
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85em;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+}
+
+.key-takeaway-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.key-takeaways li > button {
+  flex: none;
+}
+
+/* 受到的傷害：死亡回顧與依技能的表格 */
+.death-recap {
+  max-width: 720px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--error);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.death-recap-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.death-recap-head > button {
+  flex: none;
+}
+
+.death-recap .hint {
+  margin: 4px 0 0;
+}
+
+.recap-hits {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.recap-hits li {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  padding: 2px 0;
+}
+
+.recap-time {
+  flex: none;
+  width: 4.5em;
+  color: var(--text-muted);
+}
+
+.recap-name {
+  font-weight: 600;
+}
+
+.recap-meta {
+  color: var(--text-muted);
+}
+
+.damage-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 「N 次」「減傷 X%」、死亡回顧的數值各自不斷行；多吃的時間按鈕在下方換行 */
+.damage-cell .nowrap,
+.recap-meta .nowrap {
+  white-space: nowrap;
+}
+
+/* 欄寬固定：「我」欄的時間按鈕多時不會擠壓「參考」欄 */
+.damage-table {
+  table-layout: fixed;
+}
+
+.damage-table thead th:first-child,
+.damage-table tbody th {
+  white-space: normal;
+  width: 30%;
+}
+
+.damage-toggle {
+  margin-top: 6px;
+}
+
 /* ---- 手機（窄螢幕）版面：放在檔案最後，才能覆寫前面同權重的規則 ---- */
 @media (max-width: 560px) {
+  /* 受到的傷害：技能名稱欄可換行、儲存格內距縮小；死亡回顧的數值換到名稱下一行 */
+  .damage-table th,
+  .damage-table td {
+    padding: 6px;
+  }
+
+  /* 技能名稱欄放得下 6～7 個字（「定住人的意念」不拆行） */
+  .damage-table thead th:first-child,
+  .damage-table tbody th {
+    width: 40%;
+    font-size: 0.9em;
+  }
+
+  .recap-meta {
+    flex-basis: 100%;
+    padding-left: calc(4.5em + 10px);
+  }
+
   /* DoT：覆蓋率與提早續上分兩行、名稱欄可換行，兩欄（我／參考）放得進手機寬度 */
   .dots-table {
     table-layout: fixed;
