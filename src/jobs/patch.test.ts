@@ -8,7 +8,10 @@ describe('patchAt', () => {
   it('uses the Traditional Chinese schedule, mapping TC 7.2 to the global 7.3 rules', () => {
     // 基準日誌：2026-08 的繁中服為 7.2，技能等同國際服 7.3
     expect(patchAt(at('2026-08-19T12:00:00Z'))).toEqual({ key: '7.2', rules: '7.3' })
-    expect(patchAt(at('2026-09-25T12:00:00Z'))).toEqual({ key: '7.25', rules: '7.3' })
+    // 7.25 為 2026-09-29（台灣時間）：9/25 仍是 7.2
+    expect(patchAt(at('2026-09-25T12:00:00Z'))).toEqual({ key: '7.2', rules: '7.3' })
+    expect(patchAt(at('2026-09-28T15:59:00Z')).key).toBe('7.2')
+    expect(patchAt(at('2026-09-28T16:00:00Z'))).toEqual({ key: '7.25', rules: '7.3' })
     // 繁中服 7.0～7.15 的技能等同國際服 7.2
     expect(patchAt(at('2026-05-01T12:00:00Z'))).toEqual({ key: '7.1', rules: '7.2' })
     expect(patchAt(at('2026-01-01T12:00:00Z')).rules).toBe('7.2')
