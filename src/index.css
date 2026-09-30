@@ -1028,21 +1028,41 @@ button:disabled {
 }
 
 /* 每個標籤整體不斷行，放不下就整個換到下一行；比面板寬時才允許內部換行 */
+/* 不顯示勾選框：選取的以外框與底色標示，未選取的只有滑鼠移上時顯示淡外框 */
 .log-input .finder-occurrences label.finder-occurrence {
+  position: relative;
   gap: 4px;
   max-width: 100%;
-  padding: 1px 8px 1px 4px;
+  padding: 1px 8px;
   white-space: nowrap;
   color: var(--text-muted);
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: 999px;
   cursor: pointer;
+}
+
+.log-input .finder-occurrences label.finder-occurrence:hover {
+  border-color: var(--border);
 }
 
 .log-input .finder-occurrences label.finder-occurrence.on {
   color: var(--accent);
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* 勾選框隱藏但保留鍵盤操作，取得焦點時標籤顯示外框 */
+.log-input .finder-occurrences label.finder-occurrence input[type='checkbox'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.log-input .finder-occurrences label.finder-occurrence:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .finder-occurrence span {
