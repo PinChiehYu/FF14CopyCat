@@ -9,7 +9,8 @@ import {
   type MechanicOccurrence,
 } from '../analysis/mainMechanics'
 import { formatFightTime } from '../analysis/timeline'
-import { fetchAbilityNames, fetchTcRankings, type TcRanking } from '../fflogs/client'
+import { fetchAbilityNames, fetchPullTimelines, fetchTcRankings, type TcRanking } from '../fflogs/client'
+import { decodeCasts } from '../analysis/castCodec'
 import { reportUrl } from '../fflogs/url'
 import { jobName } from '../jobs/names'
 import { Dropdown, type DropdownOption } from '../ui/Dropdown'
@@ -135,12 +136,18 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
     const pending = result.rows.filter((r) => !mechanics.has(rowKey(r)))
     if (pending.length === 0) return
     setMechanics((m) => new Map([...m, ...pending.map((r) => [rowKey(r), { status: 'loading' } as MechanicState] as const)]))
+    // 先一次取回 Worker 已預處理的 Boss 施放（一個請求），沒有預處理到的才逐筆向 FFLogs 抓
+    const stored = fetchPullTimelines(pending, controller.signal).catch(() => ({}) as Record<string, string>)
     const queue = [...pending]
     const worker = async () => {
       for (let row = queue.shift(); row; row = queue.shift()) {
         let state: MechanicState
         try {
-          const casts = await loadBossCasts(row.report, { id: row.fight, startTime: row.fightStart, endTime: row.fightEnd }, controller.signal)
+          const encoded = (await stored)[`${row.report}:${row.fight}`]
+          const casts =
+            encoded !== undefined
+              ? decodeCasts(encoded)
+              : await loadBossCasts(row.report, { id: row.fight, startTime: row.fightStart, endTime: row.fightEnd }, controller.signal)
           state = {
             status: 'done',
             points: variantPoints(mine.fight.encounterID, await mineCasts, casts, mineDuration, row.fightEnd - row.fightStart),
@@ -154,10 +161,15 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
       }
     }
     void Promise.all(Array.from({ length: MECHANIC_CONCURRENCY }, worker))
-    return () => controller.abort()
-    // mechanics 只用來跳過已比對的，不需要因它重跑
+    return () => {
+      controller.abort()
+      // 中止時還沒比對完的清掉「比對中」，下次重新比對（否則會被當成已處理而永遠停在比對中）
+      const keys = new Set(pending.map(rowKey))
+      setMechanics((m) => new Map([...m].filter(([k, s]) => !(keys.has(k) && s.status === 'loading'))))
+    }
+    // mechanics 只用來跳過已比對的，不需要因它重跑；mine 會隨 Boss 名稱翻譯換物件（資料相同），以戰鬥的鍵決定是否重跑
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [sameMechanics, result, mine])
+  }, [sameMechanics, result, fightKey])
 
   // 不關注（取消勾選）的時間點，依 Boss 記住；比較結果依此高光（focusedMechanics.ts）
   const [ignored, setIgnored] = useIgnoredOccurrences(encounter)

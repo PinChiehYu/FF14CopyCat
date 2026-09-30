@@ -56,6 +56,15 @@ export interface TcPosition {
  * 查詢繁中服排名中某 Boss、某職業 PR 在範圍內的紀錄（由高到低）。
  * 帶 rdps（與 player「名稱@伺服器」）時另外回傳該 rDPS 的位置（position）。
  */
+/**
+ * 已預處理場次的 Boss 施放（Worker 定時從收錄的擊殺整理，src/analysis/castCodec.ts 的編碼）：
+ * `{ "報告:戰鬥": 編碼字串 }`；還沒預處理的場次不在結果中（最多 40 場）。
+ */
+export function fetchPullTimelines(pulls: { report: string; fight: number }[], signal?: AbortSignal): Promise<Record<string, string>> {
+  const keys = [...new Set(pulls.map((p) => `${p.report}:${p.fight}`))]
+  return get(`/pull-timelines?pulls=${encodeURIComponent(keys.join(','))}`, signal)
+}
+
 export function fetchTcRankings(
   query: { encounter: number; difficulty: number; job: string; minPr: number; maxPr: number; rdps?: number; player?: string },
   signal?: AbortSignal,

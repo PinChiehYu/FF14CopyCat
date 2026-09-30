@@ -325,6 +325,29 @@ describe('handleRequest', () => {
     }
   })
 
+  it('serves preprocessed boss timelines for the requested pulls', async () => {
+    const bound: unknown[][] = []
+    const statement: StatementLike = {
+      bind: (...args: unknown[]) => {
+        bound.push(args)
+        return statement
+      },
+      all: async <T,>() => ({ results: [{ report: 'AAA', fight: 3, boss: 'e8.3e8' } as T] }),
+      first: async () => null,
+      run: async () => ({}),
+    }
+    const withDb: Env = { ...env, DB: { prepare: () => statement, batch: async () => [] } }
+    const res = await handleRequest(get('/pull-timelines?pulls=AAA:3,a:BBB:12,AAA:3'), withDb, ctx, null)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ 'AAA:3': 'e8.3e8' })
+    // 重複的場次只查一次
+    expect(bound[0]).toEqual(['AAA', 3, 'a:BBB', 12])
+    const many = Array.from({ length: 41 }, (_, i) => `R${i}:1`).join(',')
+    for (const path of ['/pull-timelines', '/pull-timelines?pulls=AAA', '/pull-timelines?pulls=A%20A:1', `/pull-timelines?pulls=${many}`]) {
+      expect((await handleRequest(get(path), withDb, ctx, null)).status, path).toBe(400)
+    }
+  })
+
   it('validates npc names', async () => {
     const fetchMock = mockFflogs({})
     for (const path of ['/npc-names', '/npc-names?name=a%22%20OR%201', `/npc-names?${'name=x&'.repeat(1)}${Array.from({ length: 21 }, (_, i) => `name=n${i}`).join('&')}`]) {

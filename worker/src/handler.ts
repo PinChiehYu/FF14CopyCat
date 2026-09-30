@@ -1,6 +1,7 @@
 import { abilityNames, gameRow } from './abilityNames'
 import { tcRankings, type DbLike, type Graphql } from './crawler'
 import { npcNames } from './npcNames'
+import { storedTimelines } from './timelines'
 import { AUTO_ATTACKS_TAKEN_QUERY, DAMAGE_DONE_QUERY, EVENTS_QUERY, REPORT_QUERY, TARGETABILITY_QUERY } from './queries'
 
 export interface Env {
@@ -225,9 +226,32 @@ async function tcRankingsRoute(params: URLSearchParams, env: Env): Promise<unkno
   )
 }
 
+// 一次最多查幾場的預處理 Boss 施放（搜尋前輩日誌最多列 40 筆）
+const MAX_PULLS = 40
+const PULL_KEY = /^((?:a:)?[A-Za-z0-9]{1,32}):(\d{1,6})$/
+
+/**
+ * 已預處理場次的 Boss 施放（timelines.ts）：`pulls=報告:戰鬥,…` → `{ "報告:戰鬥": 編碼字串 }`；
+ * 沒有預處理（或報告已不公開）的場次不回傳，前端改向 FFLogs 抓。
+ */
+async function pullTimelinesRoute(params: URLSearchParams, env: Env): Promise<Record<string, string>> {
+  if (!env.DB) throw new HttpError(503, 'Rankings database unavailable')
+  const keys = [...new Set((params.get('pulls') ?? '').split(',').filter(Boolean))]
+  if (keys.length === 0 || keys.length > MAX_PULLS) throw new HttpError(400, 'Invalid pulls')
+  const pulls = keys.map((key) => {
+    const match = PULL_KEY.exec(key)
+    if (!match) throw new HttpError(400, 'Invalid pulls')
+    return { report: match[1], fight: Number(match[2]) }
+  })
+  return storedTimelines(env.DB, pulls)
+}
+
 async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds: number }> {
   if (url.pathname.replace(/\/$/, '') === '/tc-rankings') {
     return { data: await tcRankingsRoute(url.searchParams, env), cacheSeconds: TC_RANKINGS_CACHE_SECONDS }
+  }
+  if (url.pathname.replace(/\/$/, '') === '/pull-timelines') {
+    return { data: await pullTimelinesRoute(url.searchParams, env), cacheSeconds: CACHE_SECONDS }
   }
   if (url.pathname.replace(/\/$/, '') === '/npc-names') {
     const { names, complete } = await npcNames(npcNameParams(url.searchParams))

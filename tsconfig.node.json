@@ -7,7 +7,9 @@
     "skipLibCheck": true,
 
     /* Bundler mode */
-    "module": "nodenext",
+    // 與 Worker 相同的解析方式：Node 測試會引用 Worker 與前端共用的原始碼（不帶副檔名的 import）
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",

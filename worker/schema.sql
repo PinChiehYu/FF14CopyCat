@@ -35,3 +35,24 @@ CREATE TABLE IF NOT EXISTS crawl_state (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- 預處理：每場（報告＋戰鬥，最多 8 位已收錄玩家共用）的 Boss 施放（src/analysis/castCodec.ts 的編碼，
+-- 同一技能 1 秒內只留一次）。搜尋前輩日誌比對機制、前輩的爆發點位對齊用（worker/src/timelines.ts）
+CREATE TABLE IF NOT EXISTS pull_timelines (
+  report TEXT NOT NULL,
+  fight INTEGER NOT NULL,
+  boss TEXT NOT NULL,
+  processed_at INTEGER NOT NULL,
+  PRIMARY KEY (report, fight)
+);
+
+-- 預處理：每位已收錄玩家的全部能力技（非 GCD）與道具施放（同上的編碼）；分類在讀取時才套用。
+-- slot：坦克的 MT／ST（承受 Boss 普通攻擊較多者為 MT），其他職業為空字串
+CREATE TABLE IF NOT EXISTS parse_actions (
+  report TEXT NOT NULL,
+  fight INTEGER NOT NULL,
+  actor INTEGER NOT NULL,
+  slot TEXT NOT NULL,
+  actions TEXT NOT NULL,
+  PRIMARY KEY (report, fight, actor)
+);

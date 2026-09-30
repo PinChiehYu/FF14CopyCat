@@ -232,7 +232,7 @@ const CHECK_INTERVAL_MS = 24 * 3600_000
 export const CHECKS_PER_RUN = 40
 const CHECK_QUERY = /* GraphQL */ `query ($code: String!) { reportData { report(code: $code) { code } } }`
 // FFLogs 對設為私人與已刪除的報告回傳的錯誤；其他錯誤（額度、網路）視為暫時的，下次再確認
-const GONE_REPORT = /permission to view this report|report does not exist/i
+export const GONE_REPORT = /permission to view this report|report does not exist/i
 
 export interface PruneResult {
   /** 確認是否仍公開的報告數與其中被移除的（設為私人或已刪除） */
@@ -271,6 +271,9 @@ export async function pruneGoneReports(db: DbLike, graphql: Graphql, now = Date.
     if (gone) {
       result.removedReports++
       writes.push(db.prepare('DELETE FROM parses WHERE report = ?').bind(code))
+      // 預處理的資料一併刪除（timelines.ts）
+      writes.push(db.prepare('DELETE FROM pull_timelines WHERE report = ?').bind(code))
+      writes.push(db.prepare('DELETE FROM parse_actions WHERE report = ?').bind(code))
     }
     writes.push(db.prepare('UPDATE scanned_reports SET checked_at = ? WHERE code = ?').bind(now, code))
   }

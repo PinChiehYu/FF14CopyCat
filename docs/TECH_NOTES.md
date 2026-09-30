@@ -31,6 +31,7 @@
 | `GET /npc-names?name=A&name=B` | Boss（NPC）繁中名稱（見「Boss 繁中名稱」） | 1 天 |
 | `GET /reports/:code/auto-attacks-taken?fight=` | 每位玩家承受的敵方普通攻擊總傷害 `{ 角色 ID: 傷害 }`，判斷 MT／ST（見「MT／ST 判斷」） | 10 分鐘 |
 | `GET /reports/:code/targetability?fight&start&end` | 敵方可否選中的變化 `[{ timestamp, sourceID, targetable }]`（`TARGETABILITY_QUERY`：`hostilityType: Enemies`、`filterExpression: "type = 'targetabilityupdate'"`；`dataType=Casts` 的事件不含這類事件，`All` 又太大） | 10 分鐘 |
+| `GET /pull-timelines?pulls=報告:戰鬥,…` | 已預處理場次的 Boss 施放 `{ "報告:戰鬥": 編碼字串 }`（最多 40 場，見「繁中服排名／預處理」） | 10 分鐘 |
 | `GET /tc-rankings?encounter&difficulty&job&minPr&maxPr[&rdps][&player]` | 繁中服排名（D1）中 PR 在範圍內的紀錄 `{ count, rankings }`，最多 100 筆（見「繁中服排名」）。有 `rdps`（整數）時另回 `position: { pr, better }`：任一 rDPS 在排名中的 PR（和其他玩家各自最好的一場比較；`player`＝`名稱@伺服器` 已在排名中時扣掉自己，總人數不重複計算）與資料庫中 rDPS 更高的擊殺數（重複上傳只算一次） | 5 分鐘 |
 
 - 保護：`ALLOWED_ORIGINS`（`wrangler.toml`）檢查 Origin 並回 CORS 標頭；Cloudflare Rate Limiting 綁定 `RATE_LIMITER`（每 IP 60 次／分）；成功回應以不含 Origin 的網址為鍵放入 `caches.default`。
@@ -221,6 +222,18 @@
 - 補資料進度（2026-09-26 13:07 查詢）：每小時都有執行，每次 126～150 份報告；共掃 495 份、其中繁中服 20 份（約 4%）、200 筆紀錄。進度從 7/28 推進到 7/31（每天約 160 份報告），補到現在還要約 2.5 天，而近期擊殺要等補完才會掃到，因此改為每次先掃最近 2 天。
 - 測試：`crawler.node.test.ts` 以 Node 24 內建的 `node:sqlite` 套用同一份 `schema.sql` 模擬 D1；這個檔案使用 Node 內建模組，Worker 的 tsconfig 排除它、改由 `tsconfig.node.json` 檢查。
 - 前端：`compare/ReferenceFinder.tsx`；`loadBossCasts()`（`load.ts`）只需戰鬥的 ID 與開始／結束，直接用資料庫存的時間抓 Boss 施放；`analysis/mainMechanics.ts` 的 `variantPoints()` 以時間軸對齊後主要機制「不同變化」的時間點判斷機制是否相同。比對同時最多 3 個請求（Worker 每 IP 每分鐘 60 次）。
+
+### 預處理（`worker/src/timelines.ts`，2026-09-30 起）
+- 目的：前端不必逐筆向 FFLogs 抓已收錄擊殺的施放。第一階段用於搜尋前輩日誌的「只看機制與我相同」（改前每筆候選各抓一次 Boss 施放，最多 40 多個請求），第二階段用於「前輩的爆發點位」。
+- 定時觸發 `2-59/10 * * * *`（每 10 分鐘；`index.ts` 的 `TIMELINE_CRON`）：先以 `rateLimitData` 查這小時的點數（超過 2,000 點跳過）；取尚未處理的場次（「報告＋戰鬥」，最近的報告優先），每場 `hostility=Enemies&dataType=Casts`、`hostility=Friendlies&dataType=Casts`（各最多 2 頁），有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST（承受普通攻擊全隊最多者為 MT）；每次最多約 9 場（每場預留 5 個請求、每次執行 46 個以內），寫入用一個 `db.batch`。
+- 資料表（`schema.sql`）：`pull_timelines`（每場 Boss 施放：同一技能 1 秒內只留一次，與前端 `buildAlignment()`／`mechanicDifferences()` 的 1 秒去重相同，比對結果不變）、`parse_actions`（每位已收錄玩家的全部能力技〔非 GCD、非普通攻擊〕與道具施放，`slot` 為坦克的 MT／ST；分類在讀取時才套用，改分類不必重抓）。編碼為 `src/analysis/castCodec.ts`：依時間排序，每筆「36 進位技能 ID.時間差」，時間以 10 毫秒為單位。
+- 失敗處理：報告已私人化或刪除（`GONE_REPORT`）時記錄 `boss = ''`、不再重試；其他錯誤（額度、網路）下次再試。`pruneGoneReports()` 移除報告時一併刪除兩張表的資料。
+- `GET /pull-timelines?pulls=報告:戰鬥,…`（最多 40，`storedTimelines()`）：只回已預處理且報告仍公開的場次；前端 `fetchPullTimelines()`，`ReferenceFinder` 先用它，沒有的再 `loadBossCasts()`。
+- 本機驗證（`wrangler d1 execute --local` 套用 schema＋`wrangler dev --local`）：D1 支援 `(report, fight) IN (VALUES (?, ?), …)`；沒有 `worker/.dev.vars`（FFLogs 密鑰只存在 Cloudflare）時無法在本機跑定時工作，流程以 `timelines.node.test.ts`（node:sqlite）測試。
+- 實測（2026-09-30 第一次執行）：9 場、72 位玩家、0 失敗，**28 點**（每場約 3 點），wall time 8 秒、CPU 134 毫秒。編碼後每場 Boss 施放平均 1.5 KB、每位玩家能力技平均 0.85 KB；收錄共 4,071 場、32,431 筆擊殺，全部預處理完約 35 MB（D1 原本 5.5 MB，免費上限 500 MB）。每次的結果（含 `points`）記在 log（`wrangler tail`）。
+- 一致性驗證：以已預處理的 M5S 3 場、M7S 4 場，分別用預處理資料與向 FFLogs 抓的原始 Boss 施放跑 `variantPoints()`（我的日誌為 M5S `BF76r8yKh4wGaYkm` #1、M7S `dbN4HXY3QPzMRvDw` #4）：7 場的差異處數、涉及的機制完全相同，時間只差 10 毫秒內的取整（Boss 施放由約 400 筆去重成約 200～300 筆）。
+- 搜尋面板的機制比對原本依賴 `mine` 物件：Boss 繁中名稱晚到會換掉物件（資料相同），比對被中止，中止的列停在「比對中」、下次又被當成已處理而永遠不會完成（預處理後打開面板就讀取我的 Boss 施放，較容易遇到）。改為依戰鬥的鍵重跑，中止時清掉還在比對中的列。
+- 頻率：點數很少，由每 20 分鐘改為每 10 分鐘（每小時約 54 場、170 點；排名掃描每小時約 300 點；2,000 點的上限留給訪客），約 3 天處理完現有場次，之後每天新增的擊殺隨掃描陸續處理。
 
 ## MT／ST 判斷（`AUTO_ATTACKS_TAKEN_QUERY`）
 
@@ -506,6 +519,9 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-09-30 預處理已收錄擊殺（前輩的爆發點位第一階段）
+- 新增 `worker/src/timelines.ts`（定時預處理、`storedTimelines()`）、`/pull-timelines` 端點、兩張 D1 表、`src/analysis/castCodec.ts`；`ReferenceFinder` 的機制比對先用預處理資料。`tsconfig.node.json` 改為 bundler 解析（Node 測試引用 Worker 與前端共用、不帶副檔名 import 的原始碼）。詳見「繁中服排名／預處理」。
 
 ### 2026-09-30 關注的機制時間點
 - `mainMechanics.ts` 新增 `mechanicOccurrences()`、`occurrenceOf()`，`variantPoints()` 多回傳 `mineT`；新增 `compare/focusedMechanics.ts`（`useIgnoredOccurrences()`、`focusChecker()`）與共用的 `ui/JobBadge.tsx`；`ReferenceFinder` 打開面板就載入我的 Boss 施放算出時間點；`Mechanics`、`Positions`（卡片）、`Timeline`（Boss 列）、`StatusPanel`（Boss 列）接受 `isFocused`。
