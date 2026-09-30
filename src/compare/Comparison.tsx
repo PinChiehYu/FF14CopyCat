@@ -664,7 +664,6 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       prepull: { mine: mine.prepull, ref: reference.prepull },
       deaths: { mine: mineInRange.deaths, ref: refInRange.deaths },
       mineDurationMs: mineInRange.duration,
-      pushes,
       cooldowns,
       dots,
       fillers: fillers?.ref ? { mine: fillers.mine, ref: fillers.ref } : undefined,
@@ -677,7 +676,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         ref: refInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down'),
       },
     })
-  }, [deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, pushes, cooldowns, dots, fillers, fillerId, weaving])
+  }, [deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)

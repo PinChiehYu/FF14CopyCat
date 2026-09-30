@@ -1,5 +1,4 @@
 import type { AbilityCategory } from '../jobs/roleActions'
-import type { PushDifference } from './alignment'
 import { LATE_LISTED_MS, type CooldownPair } from './cooldowns'
 import type { Death } from '../compare/load'
 import { ruleName } from '../jobs/windows'
@@ -29,7 +28,6 @@ export type Severity = 'high' | 'medium' | 'low'
 export type AdviceKind =
   | 'death'
   | 'gcd'
-  | 'push'
   | 'cooldown'
   | 'dot'
   | 'window'
@@ -67,7 +65,6 @@ const tag = (kind: AdviceKind, items: Advice[]): Advice[] => items.map((a) => (a
 export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[] = [
   { key: 'death', label: '死亡', kinds: ['death'] },
   { key: 'gcd', label: '停手與 GCD', kinds: ['gcd'] },
-  { key: 'push', label: '推進', kinds: ['push'] },
   { key: 'penalty', label: '懲罰效果', kinds: ['penalty'] },
   { key: 'window', label: '技能窗口', kinds: ['window'] },
   { key: 'usage', label: '技能與強化藥', kinds: ['cooldown', 'potion', 'usage'] },
@@ -139,8 +136,6 @@ export interface AdviceInput {
   deaths?: { mine: Death[]; ref: Death[] }
   /** 我的戰鬥長度（我的時間；死亡到戰鬥結束都沒恢復時計算無法行動的時間） */
   mineDurationMs?: number
-  /** 推進差距（例如轉場）：只含比較範圍內的 */
-  pushes?: PushDifference[]
   /** 冷卻技是否好了就用（xivanalysis 的 CooldownDowntime） */
   cooldowns?: CooldownPair[]
   /** DoT 覆蓋率與提早續上（xivanalysis 的 DoTs），兩邊依規則順序對應 */
@@ -523,28 +518,6 @@ function prepullAdvice(input: AdviceInput): Advice[] {
   ]
 }
 
-// 推進慢超過這麼多（毫秒）列為優先
-const SLOW_PUSH_HIGH_MS = 8000
-
-/** 推進較慢（例如 Boss 血量到了才轉場）：這之前的輸出較低，之後的機制也都跟著延後。 */
-function pushAdvice(input: AdviceInput): Advice[] {
-  return (input.pushes ?? [])
-    .filter((p) => p.deltaMs > 0)
-    .map((p): Advice => {
-      const died = input.deaths?.mine.some((d) => d.t < p.mineEnd)
-      return {
-        severity: p.deltaMs >= SLOW_PUSH_HIGH_MS ? 'high' : 'medium',
-        title: `${formatFightTime(p.refEnd)} 推進比參考慢 ${seconds(p.deltaMs)} 秒`,
-        detail:
-          `參考在 ${formatFightTime(p.refEnd)} 推進（例如 Boss 血量到了而轉場），你到 ${formatFightTime(p.mineEnd)} 才推進，` +
-          `之後的機制都晚了約 ${seconds(p.deltaMs)} 秒。推進時間取決於全隊輸出，` +
-          (died ? '你在這之前有死亡，也會拖慢推進；' : '') +
-          '對照這之前的 GCD、技能窗口與爆發是否對齊，看自己能補上多少。',
-        at: p.refEnd,
-      }
-    })
-}
-
 // 冷卻技晚用的時間點最多列出幾個
 const MAX_LATE_LISTED = 3
 
@@ -883,7 +856,6 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...tag('death', deathAdvice(input)),
     ...tag('gcd', lostGcdAdvice(input)),
     ...tag('gcd', gcdSpeedAdvice(input)),
-    ...tag('push', pushAdvice(input)),
     ...tag('cooldown', cooldownAdvice(input)),
     ...tag('dot', dotAdvice(input)),
     ...tag('window', windowAdvice(input)),
@@ -894,6 +866,6 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...tag('filler', fillerAdvice(input)),
     ...tag('position', positionAdvice(input)),
   ]
-  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 推進 → 冷卻技 → DoT → 技能窗口 → 開打前 → 技能 → 站位）
+  // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 冷卻技 → DoT → 技能窗口 → 開打前 → 技能 → 站位）
   return sortAdvice(items)
 }
