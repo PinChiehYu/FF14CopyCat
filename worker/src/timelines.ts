@@ -6,7 +6,7 @@ import { encodeApplications, encodeCasts, encodeWindows, type EncodedCast } from
 import { enemyDebuffApplications, enemyDebuffWindows, selfBuffWindows } from '../../src/analysis/buffs'
 import { patchAt } from '../../src/jobs/patch'
 import type { FFLogsEvent, Fight } from '../../src/fflogs/types'
-import { GONE_REPORT, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler'
+import { CURRENT_ENCOUNTERS, GONE_REPORT, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler'
 import { AUTO_ATTACKS_TAKEN_QUERY, EVENTS_QUERY } from './queries'
 
 // Workers 免費方案每次執行最多 50 個對外請求（含權杖與點數查詢），預留幾個
@@ -153,13 +153,25 @@ export function selectTier(candidates: Candidate[], previous: { report: string; 
 
 type Combo = { encounter: number; difficulty: number; job: string }
 
-/** parses_rdps 索引順序中 after 之後的下一個 Boss×職業（沒有 after 時為第一個）；以索引查詢只讀一列，不掃整個 parses */
+/**
+ * parses_rdps 索引順序中 after 之後的下一個本季 Boss×職業（沒有 after 時為第一個）；以索引查詢只讀一列，不掃整個 parses。
+ * 只選本季的 Boss（CURRENT_ENCOUNTERS）：parses 也有舊副本的擊殺，依編號排序時會先輪到它們
+ */
 async function nextCombo(db: DbLike, after: Combo | null): Promise<Combo | null> {
-  const columns = 'SELECT encounter, difficulty, job FROM parses'
-  const order = 'ORDER BY encounter, difficulty, job LIMIT 1'
-  return after
-    ? db.prepare(`${columns} WHERE (encounter, difficulty, job) > (?, ?, ?) ${order}`).bind(after.encounter, after.difficulty, after.job).first<Combo>()
-    : db.prepare(`${columns} ${order}`).first<Combo>()
+  // 逐個 Boss 以「encounter = ? AND (difficulty, job) > (?, ?)」查：IN 搭配列值比較時 SQLite 不會用後者定位，會從頭讀起
+  const order = 'ORDER BY difficulty, job LIMIT 1'
+  for (const encounter of [...CURRENT_ENCOUNTERS].sort((a, b) => a - b)) {
+    if (after && encounter < after.encounter) continue
+    const next =
+      after && encounter === after.encounter
+        ? await db
+            .prepare(`SELECT encounter, difficulty, job FROM parses WHERE encounter = ? AND (difficulty, job) > (?, ?) ${order}`)
+            .bind(encounter, after.difficulty, after.job)
+            .first<Combo>()
+        : await db.prepare(`SELECT encounter, difficulty, job FROM parses WHERE encounter = ? ${order}`).bind(encounter).first<Combo>()
+    if (next) return next
+  }
+  return null
 }
 
 function parseCombo(value: string | undefined): Combo | null {

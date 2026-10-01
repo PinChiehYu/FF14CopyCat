@@ -250,7 +250,7 @@
 ### 前輩平均的樣本（`worker/src/timelines.ts`，2026-10-01 起）
 - 區間固定三組：`top` PR 95+、`upper` 75–94、`mid` 50–74；每個 Boss×職業（坦克再分 MT／ST，還沒判斷 MT／ST 的場次不選）×區間最多 30 筆（`SAMPLES_PER_TIER`），**每位玩家最多一筆**。PR 以 `tcRankings()` 計算（與排名表相同）。
 - `selectTier()`：之前選過、PR 仍在區間 ±3 內的保留（避免邊界的擊殺每次進出，減少重抓）；不足的從區間內其他玩家補，依 rDPS **平均分布**（涵蓋整個區間）。目前版本（`patchAt(now)`）的擊殺 ≥ 10 位時只用目前版本，否則舊版本一起用。
-- `refreshSamples()`：依 `crawl_state.samples_cursor`（上次處理的 `[encounter, difficulty, job]`）以 `parses_rdps` 索引找下一組輪替，每次 4 組（D1 讀取：每組約數百列的 `parses`；全部約 100 組，約 4 小時輪完一次）。**只寫有變動的列**：換掉的樣本刪除、新選的插入（`pending` 依 `sample_data` 是否已有，該場在 `pull_queue` 的 `priority` 設為 1）、PR 變了的更新；`sample_tiers`（區間內擊殺數、`updated_at`＝樣本最近一次變動的時間）只在候選人數或樣本有變時寫。換掉的樣本刪除其 `sample_data`（`deaths = 0` 者；有死亡的保留當作記號）。
+- `refreshSamples()`：依 `crawl_state.samples_cursor`（上次處理的 `[encounter, difficulty, job]`）以 `parses_rdps` 索引找下一組輪替（**只輪本季的 Boss** `CURRENT_ENCOUNTERS`：掃到的報告也有舊副本的擊殺，編號較小、排在前面，2026-10-01 上線後的前 110 組全是舊副本 76～81，候選每區間不到 10 人；逐個 Boss 以 `encounter = ? AND (difficulty, job) > (?, ?)` 查，IN 搭配列值比較不會用索引定位），每次 4 組（D1 讀取：每組約數百列的 `parses`；全部約 100 組，約 4 小時輪完一次）。**只寫有變動的列**：換掉的樣本刪除、新選的插入（`pending` 依 `sample_data` 是否已有，該場在 `pull_queue` 的 `priority` 設為 1）、PR 變了的更新；`sample_tiers`（區間內擊殺數、`updated_at`＝樣本最近一次變動的時間）只在候選人數或樣本有變時寫。換掉的樣本刪除其 `sample_data`（`deaths = 0` 者；有死亡的保留當作記號）。
 - `sample_data`：施放（含 GCD，不含普通攻擊，`cast` 事件）、效果時段（`selfBuffWindows()`＋`enemyDebuffWindows()`，與前端 `SideData.buffs` 相同）、施加效果（`enemyDebuffApplications()`，DoT 提早續上用）、死亡次數。**有死亡的樣本排除**（只存死亡次數，內容清空），下次選樣本時跳過、以其他擊殺補上。
 - `GET /average-samples?encounter&difficulty&job&tier=top|upper|mid[&slot=MT|ST]`（`averageSamples()`）：已預處理、沒有死亡、該場有 Boss 施放的樣本（依 rDPS），附名字、伺服器、報告與角色（樣本清單用）、PR、rDPS、版本、戰鬥長度與四種編碼資料；`count` 為區間內擊殺數、`updatedAt` 為最近一次選樣本的時間。快取 10 分鐘。
 - 前端的平均計算（第二階段）尚未實作；第一階段只累積樣本，介面不出現前輩平均。
@@ -553,6 +553,10 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-10-02 前輩平均只為本季 Boss 選樣本
+- 變更：`refreshSamples()` 只輪 `CURRENT_ENCOUNTERS`（97～100）的 Boss×職業；之前為舊副本選的 97 筆樣本與區間紀錄刪除。
+- 原因：`parses` 也有掃描到的舊副本擊殺（76～81 等），依編號輪替時先輪到它們，上線後處理的 110 組全是舊副本，330 個區間只有 2 個候選達 10 人。
 
 ### 2026-10-01 D1 讀取額度超量的修正
 - 變更：定時工作的查詢改為全部走索引（`pull_queue`、`average_samples.pending`、部分索引、組合游標），選樣本只寫變動的列；D1 無法使用時 Worker 回 503 `Database unavailable`，前端停用搜尋前輩日誌。詳見「D1 免費方案的額度」。

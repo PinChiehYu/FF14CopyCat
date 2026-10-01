@@ -22,6 +22,9 @@ export const TC_SERVERS: ReadonlySet<string> = new Set(['泰坦', '奧汀', '利
 // 掃描的副本：目前的零式（AAC Cruiserweight，zone 68）；換季時更新
 export const CRAWL_ZONES = [68]
 export const CRAWL_DIFFICULTY = 101
+// 本季零式的 Boss（CRAWL_ZONES 的副本；換季時一起更新）。掃到的報告中也有其他副本的擊殺（舊零式等），
+// 前輩平均只為這些 Boss 選樣本
+export const CURRENT_ENCOUNTERS = [97, 98, 99, 100]
 
 const PAGE_SIZE = 25
 // 每小時執行一次（wrangler.toml），每次最多 6 頁：每小時約 300 點列表＋傷害表，留大部分額度給訪客

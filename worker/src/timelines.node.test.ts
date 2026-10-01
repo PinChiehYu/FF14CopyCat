@@ -177,6 +177,19 @@ describe('refreshSamples', () => {
     expect((await db.prepare('SELECT report, pending FROM average_samples').all()).results).toEqual([{ report: 'AAA', pending: 1 }])
   })
 
+  it('only selects samples for the current raid tier', async () => {
+    const db = memoryDb()
+    // 掃到的報告中也有舊副本（編號較小、排在前面）的擊殺
+    await db
+      .prepare(
+        "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES ('OLD', 1, 1, 80, 101, 'Bard', 'p1', '泰坦', 30000, 0, 60000, 0)",
+      )
+      .run()
+    await addParse(db, 'NEW', 1, 2, 'Samurai', 30000)
+    expect(await refreshSamples(db, NOW, 4)).toBe(1)
+    expect((await db.prepare('SELECT DISTINCT encounter FROM sample_tiers').all()).results).toEqual([{ encounter: 100 }])
+  })
+
   it('only rewrites samples that changed and rotates through the combos', async () => {
     const db = memoryDb()
     await addParse(db, 'AAA', 1, 1, 'Samurai', 30000)
