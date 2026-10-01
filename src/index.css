@@ -1674,6 +1674,17 @@ h3 {
   pointer-events: none;
 }
 
+.out-of-range-label {
+  white-space: nowrap;
+}
+
+/* 範圍外的區域太窄：標示放在虛線左側、靠右對齊 */
+.out-of-range.narrow .out-of-range-label {
+  position: absolute;
+  top: 26px;
+  right: calc(100% + 6px);
+}
+
 .timeline-cursor {
   position: absolute;
   top: 0;

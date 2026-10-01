@@ -11,6 +11,8 @@ import { HelpTip } from './HelpTip'
 import { isRangedFiller, lossFillerTimes } from '../jobs/rangedFillers'
 
 const ZOOM_LEVELS = [10, 20, 40, 80] // 每秒像素
+// 「比較範圍外」標示在一行內需要的寬度（像素）；範圍外的區域比這窄時改放在虛線左側
+const OUT_OF_RANGE_LABEL_PX = 90
 
 /** 時間軸上標示的穿插過多（該側自己的戰鬥時間） */
 export interface WeaveMark {
@@ -197,8 +199,13 @@ export function Timeline({
           <div className="timeline-canvas" style={{ width }}>
             {cursor !== undefined && <span className="timeline-cursor" style={{ left: x(axis.ref(cursor)) }} />}
             {compareEnd !== undefined && totalMs - axis.ref(compareEnd) >= 1000 && (
-              <span className="out-of-range" style={{ left: x(axis.ref(compareEnd)) }} title="超出比較範圍：另一方的戰鬥已結束，不列入統計">
-                比較範圍外
+              <span
+                // 範圍外的區域太窄、放不下標示時，標示改放在虛線左側（不在窄區域內拆成多行）
+                className={`out-of-range${width - x(axis.ref(compareEnd)) < OUT_OF_RANGE_LABEL_PX ? ' narrow' : ''}`}
+                style={{ left: x(axis.ref(compareEnd)) }}
+                title="超出比較範圍：另一方的戰鬥已結束，不列入統計"
+              >
+                <span className="out-of-range-label">比較範圍外</span>
               </span>
             )}
             <TimelineLanes
