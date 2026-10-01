@@ -849,6 +849,8 @@ export function Positions({
 
 /** 游標與機制結算時間相差多少以內，視為「正在結算」而高亮該機制 */
 const MECHANIC_ACTIVE_MS = 1500
+// 同一次機制的連續施放（本體與分身等）相鄰不超過這麼久；排列卡片中機制的先後時用
+const MECHANIC_CHAIN_MS = 3000
 
 /**
  * 站位差異以一張張卡片橫向排列（單字卡式），游標進入某段時高亮該卡片並捲到可見位置。
@@ -905,7 +907,17 @@ function DivergenceCards({
           if (!first) byName.set(name, { ...m, name })
           else byName.set(name, { ...first, mine: first.mine ?? m.mine, ref: first.ref ?? m.ref })
         }
-        const unique = [...byName.values()]
+        // 依同一次機制最早的施放排列：Boss 本體先施放、分身稍後在區段內結算的（例如旋擊群狼劍）排在前面。
+        // 只往前接「相鄰不超過 MECHANIC_CHAIN_MS 的同名施放」，不會接到前一輪的同名機制（例如輪流出現的風爆／土爆）
+        const firstSeen = new Map<string, number>()
+        for (const [name, m] of byName) {
+          let t = m.t
+          for (const c of [...(d.nearbyCasts ?? [])].reverse()) {
+            if (c.t < t && t - c.t <= MECHANIC_CHAIN_MS && abilityName(c.abilityId) === name) t = c.t
+          }
+          firstSeen.set(name, t)
+        }
+        const unique = [...byName.values()].sort((a, b) => (firstSeen.get(a.name) ?? a.t) - (firstSeen.get(b.name) ?? b.t) || a.t - b.t)
         // 關注的機制時間點（名稱）：我的結算時間，只有參考那邊結算時換成我的時間
         const focusedNames = new Set(
           isFocused
