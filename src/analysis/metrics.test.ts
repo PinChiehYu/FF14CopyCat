@@ -40,6 +40,13 @@ describe('lostGcdWindows', () => {
     expect(lostGcdWindows(both, both, identity, 2000)).toEqual([])
   })
 
+  it('does not count a whole GCD for a gap just over the threshold', () => {
+    // 2.46 秒 GCD：3.8 秒的間隔（晚了 1.3 秒）參考中間剛好有一個 GCD，但多打不了一整個；5.2 秒的間隔才算少打 1 個
+    const ref = every(0, 40_000, 2460)
+    const mine = [0, 3800, 6260, 11_460, 13_920]
+    expect(lostGcdWindows(mine, ref, identity, 2460).map((w) => [w.mineStart, w.refGcds])).toEqual([[6260, 1]])
+  })
+
   it('maps my stop into reference time', () => {
     const ref = every(0, 40_000, 2000)
     const mine = [0, 2000, 4000, 14_000, 16_000]

@@ -69,7 +69,10 @@ export function lostGcdWindows(
     const refStart = mineToRef(mineStart)
     const refEnd = mineToRef(mineEnd)
     const refCount = refGcds.filter((t) => t > refStart + margin && t < refEnd - margin).length
-    if (refCount > 0) windows.push({ mineStart, mineEnd, refStart, refEnd, refGcds: refCount })
+    // 少打的 GCD 不超過這段間隔扣掉一個正常 GCD 後能多打的整數個（同 idleWindows）：剛超過門檻的間隔
+    // （例如 3.7 秒、只晚了 1 秒多）參考中間常剛好有一個 GCD，不算少打一整個
+    const lost = Math.min(refCount, Math.floor((mineEnd - mineStart - gcdMs) / gcdMs))
+    if (lost > 0) windows.push({ mineStart, mineEnd, refStart, refEnd, refGcds: lost })
   }
   return windows
 }
