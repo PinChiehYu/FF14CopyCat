@@ -2407,9 +2407,10 @@ h3 {
   border-color: color-mix(in srgb, var(--error) 60%, transparent);
 }
 
-/* 參考也用了：多半是機制造成 */
+/* 參考也用了：多半是機制造成。外框與文字同為灰色（預設按鈕的主色外框配灰字看起來像顏色錯了） */
 .filler-chip.shared {
   color: var(--text-muted);
+  border-color: color-mix(in srgb, var(--text-muted) 60%, transparent);
 }
 
 .tag.filler {
