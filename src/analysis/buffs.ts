@@ -95,6 +95,20 @@ export function debuffsOnPlayer(events: FFLogsEvent[], fight: Fight, actorId: nu
   return windows.sort((a, b) => a.start - b.start)
 }
 
+/**
+ * 合併重疊的時段（不分效果）：同一次失誤可能同時施加多種同名效果（例如數個「傷害降低」狀態 ID），
+ * 次數與總時長應以「被影響的時段」計算。結果依開始時間排序。
+ */
+export function mergeOverlapping<T extends { start: number; end: number }>(windows: T[]): { start: number; end: number }[] {
+  const merged: { start: number; end: number }[] = []
+  for (const w of [...windows].sort((a, b) => a.start - b.start)) {
+    const last = merged[merged.length - 1]
+    if (last && w.start <= last.end) last.end = Math.max(last.end, w.end)
+    else merged.push({ start: w.start, end: w.end })
+  }
+  return merged
+}
+
 /** 玩家身上的效果（任何來源）：當下狀態面板用。 */
 export interface Aura {
   statusId: number

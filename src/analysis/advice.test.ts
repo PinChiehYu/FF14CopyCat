@@ -402,7 +402,7 @@ describe('generateSoloAdvice', () => {
             ],
           },
         ],
-        penalties: [{ statusId: 1_002_911, start: 150_000, end: 180_000 }],
+        penalties: [{ start: 150_000, end: 180_000 }],
         potionUses: 0,
       }),
     )

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FFLogsEvent, Fight } from '../fflogs/types'
-import { aurasAt, enemyDebuffWindows, hpAt, hpSamples, playerAuras, prepullEffects, selfBuffWindows } from './buffs'
+import { aurasAt, enemyDebuffWindows, hpAt, hpSamples, mergeOverlapping, playerAuras, prepullEffects, selfBuffWindows } from './buffs'
 
 const fight = { id: 1, startTime: 10_000, endTime: 70_000 } as Fight
 const me = 6
@@ -94,6 +94,23 @@ describe('buffs', () => {
       { statusId: 1_001_233, start: 0, end: 3000, prepull: true, openEnded: false },
       { statusId: 1_001_233, start: 10_000, end: 16_000, prepull: false, openEnded: false },
       { statusId: 1_001_233, start: 55_000, end: 60_000, prepull: false, openEnded: true },
+    ])
+  })
+})
+
+describe('mergeOverlapping', () => {
+  it('counts simultaneous same-name effects as one window', () => {
+    // 同一次失誤同時施加三種「傷害降低」：算一段 10 秒，另一段分開
+    expect(
+      mergeOverlapping([
+        { statusId: 3, start: 607_600, end: 617_600 },
+        { statusId: 1, start: 607_600, end: 617_600 },
+        { statusId: 2, start: 607_600, end: 615_000 },
+        { statusId: 1, start: 30_000, end: 40_000 },
+      ]),
+    ).toEqual([
+      { start: 30_000, end: 40_000 },
+      { start: 607_600, end: 617_600 },
     ])
   })
 })

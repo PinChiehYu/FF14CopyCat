@@ -740,7 +740,7 @@ export interface SoloAdviceInput {
   /** 冷卻技（ref 為 null） */
   cooldowns: CooldownPair[]
   /** 讓輸出下降的懲罰效果（傷害降低；衰弱、瀕死是死亡的結果，由死亡建議處理） */
-  penalties: { statusId: number; start: number; end: number }[]
+  penalties: { start: number; end: number }[]
   /** 整場的強化藥使用次數；沒有規則可判斷（例如找不到強化藥）時為 null */
   potionUses: number | null
   /** DoT（ref 為 null） */

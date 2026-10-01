@@ -10,6 +10,7 @@ import { Windows } from './Windows'
 import { buildAlignment, pushDifferences, pushTitle, type Alignment } from '../analysis/alignment'
 import { generateAdvice, generateSoloAdvice } from '../analysis/advice'
 import { deathRecap, RECAP_WINDOW_MS } from '../analysis/damageTaken'
+import { mergeOverlapping } from '../analysis/buffs'
 import { mainMechanicDifferences, mainMechanicGroups, mechanicOccurrences } from '../analysis/mainMechanics'
 import { mechanicDifferences } from '../analysis/mechanics'
 import { abilityUsage, gcdStats, idleWindows, lostGcdWindows } from '../analysis/metrics'
@@ -635,7 +636,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         windows: windows.map((w) => w.mine),
         cooldowns,
         // 傷害降低（Damage Down）：機制失誤的懲罰，依英文名稱判斷
-        penalties: mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down'),
+        penalties: mergeOverlapping(mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')),
         // 強化藥：得到強化藥效果的次數（含開打前）
         potionUses: mineInRange.buffs.filter((b) => b.statusId === MEDICATED).length,
         dots,
@@ -672,8 +673,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       fillerId,
       deathRecaps,
       penalties: {
-        mine: mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down'),
-        ref: refInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down'),
+        mine: mergeOverlapping(mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')),
+        ref: mergeOverlapping(refInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')),
       },
     })
   }, [deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving])
