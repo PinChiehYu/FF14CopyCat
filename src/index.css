@@ -817,10 +817,23 @@ button:disabled {
 /* 站位差異卡片：關注的機制在名稱後加「關注」小標籤，不標整張卡片——整張高光（浮起、主色外框）留給「游標到了這段」，
    名稱的紅字與紅底留給「游標在機制結算前後」，三者互不覆蓋 */
 .tag.focus {
-  font-weight: normal;
-  color: var(--accent);
+  font-weight: 600;
+  color: var(--bg);
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: var(--accent);
+}
+
+/* 關注的機制：該機制一列加主色左條（只標這一列，不是整張卡片） */
+.card-mechanic.focused {
+  box-shadow: inset 3px 0 0 var(--accent);
+  padding-left: 9px;
+}
+
+/* 有關注機制的卡片：時間後加主色星號，捲動卡片列時一眼找到 */
+.divergence-card.focused .card-time::after {
+  content: '★';
+  margin-left: 6px;
+  color: var(--accent);
 }
 
 /* 當下狀態的 Boss 列：只把關注的技能名稱標成主色外框的小標籤（與搜尋面板選取的時間點相同），不標整列 */
