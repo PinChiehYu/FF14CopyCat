@@ -673,7 +673,7 @@ export function Positions({
             `以 Boss 為基準：${BOSS_FRAME_TITLE}；距離圖底部的細條標示這些時段。`,
             `相對 Boss 相同：${SAME_TO_BOSS_TITLE}（卡片中灰色的機制）。`,
             '卡片的機制：「我 時間 · 參考 時間」為兩邊各自結算的時間（各自的戰鬥時間，— 為那一邊這段沒有結算）；「相距 · 距王 我／參考」為結算當下兩人的距離與各自離自己 Boss 的距離（yalm，— 為沒有位置資料）。滑鼠停在「機制不同」上可看兩邊不同的機制。',
-            '主色外框的機制名稱：你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）；整張卡片浮起加框則是時間軸游標所在的這段。',
+            '機制名稱後的「關注」標籤：你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）；整張卡片浮起加框則是時間軸游標所在的這段。',
           ].join('\n')}
         />
       </p>
@@ -975,7 +975,10 @@ function DivergenceCards({
                           .filter(Boolean)
                           .join(' ')}
                       >
-                        <span className="card-mechanic-name">{m.name}</span>
+                        <span className="card-mechanic-name">
+                          {m.name}
+                          {focusedNames.has(m.name) && <span className="tag focus">關注</span>}
+                        </span>
                         <span className="card-sub">
                           我 {m.mine !== undefined ? formatFightTime(m.mine) : '—'} · 參考 {m.ref !== undefined ? formatFightTime(m.ref) : '—'}
                         </span>
