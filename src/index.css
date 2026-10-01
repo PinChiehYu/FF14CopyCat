@@ -1436,6 +1436,11 @@ h3 {
 }
 
 /* 少打 GCD 的時段：每段一列，時間｜停手秒數｜參考的 GCD 數各自對齊 */
+/* 時間區間「m:ss.s – m:ss.s」的連接號：左右留一點空隙，不黏著數字 */
+.range-sep {
+  margin: 0 0.3em;
+}
+
 .lost-list {
   display: grid;
   gap: 4px;

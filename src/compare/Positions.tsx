@@ -935,7 +935,9 @@ function DivergenceCards({
           <li key={d.start} className={classes.filter(Boolean).join(' ')} aria-current={i === active ? 'true' : undefined}>
             <button type="button" onClick={() => onJump(d.start)} title="跳到這段開始">
               <span className="card-time">
-                {formatFightTime(d.start)}–{formatFightTime(d.end)}
+                {formatFightTime(d.start)}
+                <span className="range-sep">–</span>
+                {formatFightTime(d.end)}
               </span>
               <span className="card-distance">
                 <strong>{d.maxDistance.toFixed(1)}</strong> yalm

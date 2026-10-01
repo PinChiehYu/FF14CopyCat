@@ -105,7 +105,9 @@ function GcdSection({
             {lost.map((w) => (
               <li key={w.mineStart} className={w.control ? 'controlled' : w.refGcds >= 3 ? 'many' : undefined}>
                 <button type="button" onClick={() => onFocus(w.refStart)} title="跳到這段">
-                  {formatFightTime(w.mineStart)}–{formatFightTime(w.mineEnd)}
+                  {formatFightTime(w.mineStart)}
+                  <span className="range-sep">–</span>
+                  {formatFightTime(w.mineEnd)}
                 </button>
                 <span>停手 {seconds(w.mineEnd - w.mineStart)} 秒</span>
                 {reference ? (

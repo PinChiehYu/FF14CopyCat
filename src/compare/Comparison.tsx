@@ -800,7 +800,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
           abilityName={abilityName}
           afterGcd={
             <>
-              {weaving && (
+              {weaving && weaving.mine.length > 0 && (
                 <Weaving weaving={weaving} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
               )}
               {fillers && fillerId !== undefined && (
