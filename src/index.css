@@ -2888,6 +2888,21 @@ h3 {
     padding-bottom: 6px;
   }
 
+  /* 關注的機制：列拆成兩行後，底色與左條改畫在整列（逐格畫會被格線間距切成色塊、左條只到上半） */
+  .metrics-table.mechanics tr.focused {
+    box-shadow: inset 3px 0 0 var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+
+  .metrics-table.mechanics tr.focused > * {
+    box-shadow: none;
+    background: none;
+  }
+
+  .metrics-table.mechanics tr.focused > :nth-child(odd) {
+    padding-left: 8px;
+  }
+
   /* 技能使用次數：一列兩張卡片，數據排成 2×2 */
   .usage-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
