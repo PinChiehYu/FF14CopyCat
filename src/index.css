@@ -2364,7 +2364,25 @@ h3 {
   padding: 1px 6px;
   font: inherit;
   font-size: 0.85em;
+}
+
+/* 時間按鈕（機制差異、止損技）：等寬數字並以兩位數分鐘的寬度為最小寬度（1ch＝數字寬；冒號與小數點較窄），
+   個位數與兩位數分鐘同寬、置中 */
+.metrics-table.mechanics tbody th button,
+.filler-chip {
+  box-sizing: content-box;
+  text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+/* 「10:00.0」 */
+.metrics-table.mechanics tbody th button {
+  min-width: 5.8ch;
+}
+
+/* 「10:00」 */
+.filler-chip {
+  min-width: 4.4ch;
 }
 
 /* 參考在同一段沒有用止損技：可以改善 */
