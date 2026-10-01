@@ -673,7 +673,7 @@ export function Positions({
             `以 Boss 為基準：${BOSS_FRAME_TITLE}；距離圖底部的細條標示這些時段。`,
             `相對 Boss 相同：${SAME_TO_BOSS_TITLE}（卡片中灰色的機制）。`,
             '卡片的機制：「我 時間 · 參考 時間」為兩邊各自結算的時間（各自的戰鬥時間，— 為那一邊這段沒有結算）；「相距 · 距王 我／參考」為結算當下兩人的距離與各自離自己 Boss 的距離（yalm，— 為沒有位置資料）。滑鼠停在「機制不同」上可看兩邊不同的機制。',
-            '深藍色左條：卡片中有你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）。',
+            '主色外框的機制名稱：你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）；整張卡片浮起加框則是時間軸游標所在的這段。',
           ].join('\n')}
         />
       </p>
@@ -921,8 +921,14 @@ function DivergenceCards({
           kind === 'mechanic' && 'at-mechanic',
           kind === 'variant' && 'by-variant',
           i === active && 'active',
-          focusedNames.size > 0 && 'focused',
         ]
+        // 最多列 MAX_LISTED_MECHANICS 個：關注的機制優先（不被「等 N 個」藏起來），列出的維持時間順序
+        const listed = unique
+          .map((m, order) => ({ m, order }))
+          .sort((a, b) => Number(focusedNames.has(b.m.name)) - Number(focusedNames.has(a.m.name)) || a.order - b.order)
+          .slice(0, MAX_LISTED_MECHANICS)
+          .sort((a, b) => a.order - b.order)
+          .map(({ m }) => m)
         // 滑鼠提示只放資料（哪些機制不同）；分類的意義在站位摘要的「?」
         const variantTitle = d.variant
           ? [
@@ -958,7 +964,7 @@ function DivergenceCards({
               </span>
               {unique.length > 0 && (
                 <span className="card-mechanics">
-                  {unique.slice(0, MAX_LISTED_MECHANICS).map((m) => {
+                  {listed.map((m) => {
                     const distance = distanceAt(track, m.t)
                     const now = Math.abs(cursor - m.t) <= MECHANIC_ACTIVE_MS
                     const yalm = (v: number | null | undefined) => (v == null ? '—' : v.toFixed(1))
