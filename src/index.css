@@ -2137,7 +2137,9 @@ h3 {
 .death-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  /* 窄欄（手機）放不下時，致命技能整個換到時間下一行，不拆開名稱 */
+  flex-wrap: wrap;
+  gap: 0 4px;
   padding: 0 8px;
   font: inherit;
   font-size: 0.85em;
@@ -2146,12 +2148,14 @@ h3 {
   color: var(--error);
   background: color-mix(in srgb, var(--error) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--error) 45%, transparent);
-  border-radius: 999px;
+  /* 一行時為膠囊形（高度約 24px），換行時為圓角矩形 */
+  border-radius: 12px;
   cursor: pointer;
 }
 
 .death-cause {
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .death-marker {
