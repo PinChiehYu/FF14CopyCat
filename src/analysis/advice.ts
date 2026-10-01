@@ -69,11 +69,12 @@ export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[
   // 懲罰效果（傷害降低）與死亡同為機制失誤的直接結果，緊接在死亡之後
   { key: 'penalty', label: '懲罰效果', kinds: ['penalty'] },
   { key: 'gcd', label: '停手與 GCD', kinds: ['gcd'] },
+  // 穿插過多會拖慢 GCD，緊接在停手之後、技能窗口與技能使用之前
+  { key: 'weave', label: '穿插過多', kinds: ['weave'] },
   { key: 'window', label: '技能窗口', kinds: ['window'] },
   // 止損技（威力低的遠程 GCD）直接少了輸出，與技能使用放在同一組
   { key: 'usage', label: '技能與強化藥', kinds: ['potion', 'cooldown', 'filler', 'usage'] },
   { key: 'dot', label: 'DoT', kinds: ['dot'] },
-  { key: 'weave', label: '穿插過多', kinds: ['weave'] },
   { key: 'mitigation', label: '減傷與移動', kinds: ['partyMitigation', 'mitigation', 'movement'] },
   { key: 'prepull', label: '開打前', kinds: ['prepull'] },
   { key: 'position', label: '站位', kinds: ['position'] },

@@ -511,6 +511,8 @@ describe('groupAdvice', () => {
   it('orders groups of the same severity by importance', () => {
     const groups = groupAdvice([a('medium', 'position', 'p'), a('medium', 'dot', 'd'), a('medium', 'window', 'w')])
     expect(groups.map((g) => g.key)).toEqual(['window', 'dot', 'position'])
+    // 穿插過多排在技能窗口與技能與強化藥之前
+    expect(groupAdvice([a('medium', 'usage', 'u'), a('medium', 'weave', 'w'), a('medium', 'window', 'x')]).map((g) => g.key)).toEqual(['weave', 'window', 'usage'])
     // 組內：團隊減傷 → 自身減傷 → 移動，同類維持產生順序
     const [mitigation] = groupAdvice([
       a('medium', 'partyMitigation', 'veil'),
