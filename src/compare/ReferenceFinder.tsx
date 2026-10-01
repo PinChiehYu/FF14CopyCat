@@ -254,12 +254,13 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
 
   if (!mine || !dbAvailable) {
     return (
-      <div className="finder">
+      <div className={`finder${dbAvailable ? '' : ' unavailable'}`}>
+        {/* 說明放在按鈕左側，與按鈕垂直置中 */}
+        {!dbAvailable && <HelpTip text={`${DB_UNAVAILABLE_MESSAGE}。額度每天台灣時間早上 8 點（UTC 0 點）重置。`} />}
         <button type="button" className="finder-toggle" disabled title={dbAvailable ? '先選好「我的日誌」的戰鬥與角色' : undefined}>
           <SearchIcon />
           搜尋前輩日誌
         </button>
-        {!dbAvailable && <HelpTip text={`${DB_UNAVAILABLE_MESSAGE}。額度每天台灣時間早上 8 點（UTC 0 點）重置。`} />}
       </div>
     )
   }

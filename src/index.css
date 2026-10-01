@@ -894,6 +894,17 @@ button:disabled {
   position: relative;
 }
 
+/* 排名資料庫無法使用：「?」在停用的按鈕左側，兩者垂直置中 */
+.finder.unavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.finder.unavailable .help-tip {
+  margin-left: 0;
+}
+
 /* 實心強調色讓按鈕明顯；內距、行高、字級不變，不影響標題列的高度 */
 .finder-toggle {
   display: inline-flex;
