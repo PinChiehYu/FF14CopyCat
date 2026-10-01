@@ -292,6 +292,7 @@
 
 ## FFLogs 資料特性
 
+- **沒有裝備與品級資料**（2026-10-02 驗證，6 份不同上傳者的繁中服日誌：黑魔、鐮刀、暗騎、騎士等）：事件的 `combatantinfo` 只有 `gear`（空陣列）、`auras`、`level`、`simulatedCrit`、`simulatedDirectHit`；GraphQL `report.playerDetails(fightIDs)` 每位玩家只有 `name, id, guid, type, server, icon, potionUse, healthstoneUse, combatantInfo`，`combatantInfo` 為空陣列，沒有 `minItemLevel`／`maxItemLevel`。ACT 上傳的 FFXIV 日誌不含裝備，無法比較品級（使用者 2026-10-01 提議在摘要比較品級，驗證後放棄；驗證用的端點已移除）。
 - **時間**：事件 `timestamp` 相對於整份報告開始；需減去 fight 的 `startTime`。
 - **連結格式**：`fight`、`source` 可能在 hash（`#fight=5`）或 query string（`?fight=29`）；`fight=last` 代表最後一場；區域子網域（`tw.`、`cn.`）也會出現在網址中；匿名報告代碼以 `a:` 開頭。
 - **玩家清單**：`masterData.actors` 中 type 為 `Player` 的包含極限技假角色（subType `LimitBreak`，名稱 `Limit Break`、`Multiple Players`）與 subType `Unknown` 的重複項。`fights[].friendlyPlayers` 列出參戰者；報告中可能有角色沒有參與任何戰鬥。subType 等於英文職業名稱去空白（`BlackMage`、`DarkKnight`）。
