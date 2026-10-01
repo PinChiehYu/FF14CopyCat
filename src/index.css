@@ -1348,9 +1348,17 @@ h3 {
 
 /* 效果圖示原圖 24×32 直式：同高時寬度縮為 3/4 */
 .usage-icon.status-icon {
+  position: relative;
+  /* vertical-align: middle 對中文字偏下約 1.5px */
+  top: -1px;
   width: 18px;
   height: 24px;
   margin: -2px 6px -2px 0;
+}
+
+/* 負面效果（DoT 等）的圖案在原圖中偏下（不透明列 4～30，增益效果為 1～27），再上移才與文字置中 */
+.usage-icon.status-icon.debuff {
+  top: -3px;
 }
 
 .tag {
@@ -2627,8 +2635,10 @@ h3 {
   }
 
   /* 名稱欄窄：圖示、名稱、「目標 N%」各一行，4 字的名稱（櫻花繚亂）不被圖示擠成兩行 */
-  .dots-table tbody th .status-icon {
+  .dots-table tbody th .status-icon,
+  .dots-table tbody th .status-icon.debuff {
     display: block;
+    top: 0;
     margin: 0 0 2px;
   }
 

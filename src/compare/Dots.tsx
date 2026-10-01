@@ -78,7 +78,7 @@ export function Dots({
           return (
             <tr key={mine.rule.key}>
               <th>
-                {icon && <img className="usage-icon status-icon" src={abilityIconUrl(icon.icon)} alt="" loading="lazy" />}
+                {icon && <img className="usage-icon status-icon debuff" src={abilityIconUrl(icon.icon)} alt="" loading="lazy" />}
                 {/* 多個名稱只在「／」處換行，不把單一名稱拆開 */}
                 {ids.map((id, i) => (
                   <span key={id} className="name-part">
