@@ -46,6 +46,18 @@ CREATE TABLE IF NOT EXISTS pull_timelines (
   PRIMARY KEY (report, fight)
 );
 
+-- 待預處理的場次：排名掃描收錄擊殺時加入、預處理後刪除。D1 免費方案每天只能讀 500 萬列，
+-- 不能每次定時工作都掃整個 parses 找未處理的場次；依索引的順序只讀要處理的幾列
+CREATE TABLE IF NOT EXISTS pull_queue (
+  report TEXT NOT NULL,
+  fight INTEGER NOT NULL,
+  report_start INTEGER NOT NULL,
+  -- 1：含前輩平均的樣本（樣本要有 Boss 施放才能用，優先處理）
+  priority INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (report, fight)
+);
+CREATE INDEX IF NOT EXISTS pull_queue_order ON pull_queue (priority DESC, report_start DESC);
+
 -- 預處理：已收錄坦克在該場的 MT／ST（承受 Boss 普通攻擊較多者為 MT），前輩平均依此分開選樣本
 CREATE TABLE IF NOT EXISTS tank_slots (
   report TEXT NOT NULL,
@@ -73,8 +85,12 @@ CREATE TABLE IF NOT EXISTS average_samples (
   -- 繁中服版本（src/jobs/patch.ts）
   patch TEXT NOT NULL,
   selected_at INTEGER NOT NULL,
+  -- 1：還沒預處理（sample_data 沒有這位樣本）；正式資料庫以 ALTER TABLE average_samples ADD COLUMN pending INTEGER NOT NULL DEFAULT 1 加上
+  pending INTEGER NOT NULL DEFAULT 1,
   PRIMARY KEY (encounter, difficulty, job, slot, tier, report, fight, actor)
 );
+-- 待預處理的樣本（部分索引：只含 pending = 1，查詢只讀要處理的幾列）
+CREATE INDEX IF NOT EXISTS average_samples_pending ON average_samples (selected_at) WHERE pending = 1;
 
 -- 各區間的候選人數（區間內的擊殺數）與最近一次選樣本的時間
 CREATE TABLE IF NOT EXISTS sample_tiers (
@@ -102,3 +118,5 @@ CREATE TABLE IF NOT EXISTS sample_data (
   processed_at INTEGER NOT NULL,
   PRIMARY KEY (report, fight, actor)
 );
+-- 排除的樣本（有死亡或報告已不公開；部分索引：選樣本時只讀這些列）
+CREATE INDEX IF NOT EXISTS sample_data_excluded ON sample_data (report, fight, actor) WHERE deaths != 0;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { TimedCast } from '../analysis/alignment'
 import {
   mainMechanicGroups,
@@ -9,7 +9,7 @@ import {
   type MechanicOccurrence,
 } from '../analysis/mainMechanics'
 import { formatFightTime } from '../analysis/timeline'
-import { fetchAbilityNames, fetchPullTimelines, fetchTcRankings, type TcRanking } from '../fflogs/client'
+import { DB_UNAVAILABLE_MESSAGE, dbStatus, fetchAbilityNames, fetchPullTimelines, fetchTcRankings, type TcRanking } from '../fflogs/client'
 import { decodeCasts } from '../analysis/castCodec'
 import { reportUrl } from '../fflogs/url'
 import { jobName } from '../jobs/names'
@@ -56,6 +56,8 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   const [picked, setPicked] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
+  // 排名資料庫無法使用（每日讀取額度用完）時停用搜尋，只能貼參考日誌的網址
+  const dbAvailable = useSyncExternalStore(dbStatus.subscribe, dbStatus.available)
 
   // 點面板外或按 Esc 關閉（搜尋結果保留，再打開不用重搜）
   useEffect(() => {
@@ -250,13 +252,14 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
   const totalOccurrences = checklist.reduce((sum, g) => sum + g.occurrences.length, 0)
   const focusedCount = checklist.reduce((sum, g) => sum + g.occurrences.filter((o) => !ignored.has(o.id)).length, 0)
 
-  if (!mine) {
+  if (!mine || !dbAvailable) {
     return (
       <div className="finder">
-        <button type="button" className="finder-toggle" disabled title="先選好「我的日誌」的戰鬥與角色">
+        <button type="button" className="finder-toggle" disabled title={dbAvailable ? '先選好「我的日誌」的戰鬥與角色' : undefined}>
           <SearchIcon />
           搜尋前輩日誌
         </button>
+        {!dbAvailable && <HelpTip text={`${DB_UNAVAILABLE_MESSAGE}。額度每天台灣時間早上 8 點（UTC 0 點）重置。`} />}
       </div>
     )
   }

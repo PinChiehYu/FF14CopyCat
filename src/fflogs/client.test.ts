@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchReport, fightNameParts, translateFightName } from './client'
+import { DB_UNAVAILABLE_MESSAGE, dbStatus, fetchReport, fetchTcRankings, fightNameParts, translateFightName } from './client'
 
 describe('translateFightName', () => {
   const names = new Map([
@@ -64,5 +64,23 @@ describe('request timeout', () => {
     const pending = fetchReport('abc', controller.signal)
     controller.abort()
     await expect(pending).rejects.toThrow('aborted')
+  })
+})
+describe('ranking database status', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('tells FFLogs rate limits apart from an unavailable ranking database', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Too many requests' }, { status: 503 })))
+    await expect(fetchReport('abc')).rejects.toThrow('請求過多')
+    expect(dbStatus.available()).toBe(true)
+
+    const listener = vi.fn()
+    const unsubscribe = dbStatus.subscribe(listener)
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Database unavailable' }, { status: 503 })))
+    await expect(fetchTcRankings({ encounter: 100, difficulty: 101, job: 'Samurai', minPr: 90, maxPr: 100 })).rejects.toThrow(DB_UNAVAILABLE_MESSAGE)
+    // 之後本次瀏覽都視為不可用（只允許貼參考日誌）
+    expect(dbStatus.available()).toBe(false)
+    expect(listener).toHaveBeenCalledTimes(1)
+    unsubscribe()
   })
 })

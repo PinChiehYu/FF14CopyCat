@@ -236,7 +236,7 @@
 - 定時觸發 `2-59/10 * * * *`（每 10 分鐘；`index.ts` 的 `TIMELINE_CRON`）：先以 `rateLimitData` 查這小時的點數（超過 2,000 點跳過），然後依序：
   1. `refreshSamples()`：輪替重新選 4 組 Boss×職業的樣本（只讀 D1）。
   2. 樣本：每次最多 8 位，`sourceID=樣本&dataType=All`（最多 3 頁）一次取得施放、自身效果、對敵人施加的效果與死亡。
-  3. 新場次：剩下的請求處理尚未有 Boss 施放的場次（**含樣本的場次優先**，其次最近的報告），每場 `hostility=Enemies&dataType=Casts`（最多 2 頁），有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST（承受普通攻擊全隊最多者為 MT）→ `tank_slots`。
+  3. 新場次：剩下的請求處理 `pull_queue` 中的場次（排名掃描收錄擊殺時加入；**含樣本的場次優先**，其次最近的報告；處理後移出），每場 `hostility=Enemies&dataType=Casts`（最多 2 頁），有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST（承受普通攻擊全隊最多者為 MT）→ `tank_slots`。
   每次執行的對外請求在 46 個以內，寫入用一個 `db.batch`。
 - 資料表（`schema.sql`）：`pull_timelines`（每場 Boss 施放：同一技能 1 秒內只留一次，與前端 `buildAlignment()`／`mechanicDifferences()` 的 1 秒去重相同，比對結果不變）、`tank_slots`（坦克的 MT／ST）、`average_samples`／`sample_tiers`／`sample_data`（前輩平均，見下）。編碼為 `src/analysis/castCodec.ts`：依時間排序，每筆「36 進位技能 ID.時間差」，時間以 10 毫秒為單位；效果時段另加持續時間與旗標（開打前已有／到結束未移除），施加效果另加目標 ID。
 - 失敗處理：報告已私人化或刪除（`GONE_REPORT`）時記錄 `boss = ''`（樣本記 `deaths = -1`）、不再重試；其他錯誤（額度、網路）下次再試。`pruneGoneReports()` 移除報告時一併刪除預處理與樣本的資料（下次選樣本時補上）。
@@ -250,10 +250,22 @@
 ### 前輩平均的樣本（`worker/src/timelines.ts`，2026-10-01 起）
 - 區間固定三組：`top` PR 95+、`upper` 75–94、`mid` 50–74；每個 Boss×職業（坦克再分 MT／ST，還沒判斷 MT／ST 的場次不選）×區間最多 30 筆（`SAMPLES_PER_TIER`），**每位玩家最多一筆**。PR 以 `tcRankings()` 計算（與排名表相同）。
 - `selectTier()`：之前選過、PR 仍在區間 ±3 內的保留（避免邊界的擊殺每次進出，減少重抓）；不足的從區間內其他玩家補，依 rDPS **平均分布**（涵蓋整個區間）。目前版本（`patchAt(now)`）的擊殺 ≥ 10 位時只用目前版本，否則舊版本一起用。
-- `refreshSamples()`：依 `crawl_state.samples_cursor` 輪替，每次 4 組（D1 讀取：每組約數百列的 `parses`；全部約 100 組，約 4 小時輪完一次）；每組刪除後重寫 `average_samples` 與 `sample_tiers`（區間內擊殺數、選取時間）。之後刪除不再是樣本的 `sample_data`（`deaths = 0` 者；有死亡的保留當作記號）。
+- `refreshSamples()`：依 `crawl_state.samples_cursor`（上次處理的 `[encounter, difficulty, job]`）以 `parses_rdps` 索引找下一組輪替，每次 4 組（D1 讀取：每組約數百列的 `parses`；全部約 100 組，約 4 小時輪完一次）。**只寫有變動的列**：換掉的樣本刪除、新選的插入（`pending` 依 `sample_data` 是否已有，該場在 `pull_queue` 的 `priority` 設為 1）、PR 變了的更新；`sample_tiers`（區間內擊殺數、`updated_at`＝樣本最近一次變動的時間）只在候選人數或樣本有變時寫。換掉的樣本刪除其 `sample_data`（`deaths = 0` 者；有死亡的保留當作記號）。
 - `sample_data`：施放（含 GCD，不含普通攻擊，`cast` 事件）、效果時段（`selfBuffWindows()`＋`enemyDebuffWindows()`，與前端 `SideData.buffs` 相同）、施加效果（`enemyDebuffApplications()`，DoT 提早續上用）、死亡次數。**有死亡的樣本排除**（只存死亡次數，內容清空），下次選樣本時跳過、以其他擊殺補上。
 - `GET /average-samples?encounter&difficulty&job&tier=top|upper|mid[&slot=MT|ST]`（`averageSamples()`）：已預處理、沒有死亡、該場有 Boss 施放的樣本（依 rDPS），附名字、伺服器、報告與角色（樣本清單用）、PR、rDPS、版本、戰鬥長度與四種編碼資料；`count` 為區間內擊殺數、`updatedAt` 為最近一次選樣本的時間。快取 10 分鐘。
 - 前端的平均計算（第二階段）尚未實作；第一階段只累積樣本，介面不出現前輩平均。
+
+### D1 免費方案的額度（2026-10-01 超量）
+- 上限：**每天讀 500 萬列、寫 10 萬列**（UTC 0 點重置）；超過後所有讀取被拒（`code 7500`，「exceeded D1's free tier daily row read limit」），排名、搜尋前輩日誌與預處理都停擺到重置。以 `npx wrangler d1 info ff14-copycat-rankings` 看 `rows_read_24h`／`rows_written_24h`。
+- 事故：前輩平均第一階段上線後一天讀了 1,208 萬列。每 10 分鐘的定時工作有兩個掃整個 `parses`（約 3.8 萬列）的查詢：`SELECT DISTINCT encounter, difficulty, job`（每天約 550 萬列），以及找未處理場次的 `pendingPulls`——每一列 `parses` 都對沒有 (report, fight) 索引的 `average_samples` 做一次 `EXISTS`，每次執行數百萬列，是主因。每次選樣本整組刪除重寫，樣本選滿後每天也會寫到約 10 萬列。
+- 修正（**定時工作的查詢一律走索引，以 `EXPLAIN QUERY PLAN` 確認沒有 `SCAN` 大表**）：
+  - 輪替組合：以 `(encounter, difficulty, job) > (?, ?, ?) … LIMIT 1` 查 `parses_rdps` 索引，每組只讀一列。
+  - 未處理場次：`pull_queue` 表（排名掃描收錄擊殺時 `INSERT OR IGNORE`，處理後刪除，`pruneGoneReports()` 一併刪除），索引 `(priority DESC, report_start DESC)`，每次只讀要處理的十幾列。
+  - 未處理樣本：`average_samples.pending` 與部分索引 `average_samples_pending (selected_at) WHERE pending = 1`；排除的樣本：部分索引 `sample_data_excluded … WHERE deaths != 0`。
+  - 換掉的樣本只刪該列的 `sample_data`（不再 `NOT EXISTS` 掃整個表）；`pruneGoneReports()` 的 `IN (SELECT DISTINCT report FROM parses)` 改為以主鍵查的 `EXISTS`。
+  - 估計：每次定時工作約讀數千列（主要是 4 組的 `tcRankings()`），每天約 100 萬列以內。
+- 前端：D1 相關路由（`/tc-rankings`、`/pull-timelines`、`/average-samples`）的非參數錯誤回 **503 `{ error: 'Database unavailable' }`**（`handler.ts` 的 `fromDb()`）；`client.ts` 收到後標記資料庫不可用（`dbStatus`，本次瀏覽有效），「搜尋前輩日誌」停用並以「?」說明，只能貼參考日誌網址；摘要的 PR 顯示「—」。
+- 正式資料庫的遷移（額度重置後執行）：`ALTER TABLE average_samples ADD COLUMN pending INTEGER NOT NULL DEFAULT 1`、套用 `schema.sql`（新表與索引）、`UPDATE average_samples SET pending = 0 WHERE EXISTS (SELECT 1 FROM sample_data d WHERE …)`、以 `INSERT INTO pull_queue SELECT report, fight, MAX(report_start), 0 FROM parses p WHERE NOT EXISTS (SELECT 1 FROM pull_timelines t WHERE …) GROUP BY report, fight` 填入現有的未處理場次（一次約 4 萬列讀取），`crawl_state.samples_cursor` 舊的數字格式會被當成從頭開始。
 
 ## MT／ST 判斷（`AUTO_ATTACKS_TAKEN_QUERY`）
 
@@ -540,6 +552,10 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-10-01 D1 讀取額度超量的修正
+- 變更：定時工作的查詢改為全部走索引（`pull_queue`、`average_samples.pending`、部分索引、組合游標），選樣本只寫變動的列；D1 無法使用時 Worker 回 503 `Database unavailable`，前端停用搜尋前輩日誌。詳見「D1 免費方案的額度」。
+- 原因：一天讀了 1,208 萬列（上限 500 萬），D1 被停用到 UTC 0 點；主因是每 10 分鐘掃整個 `parses` 並對每列做沒有索引的子查詢。
 
 ### 2026-10-01 移除受到的傷害區塊
 - 刪除 `compare/KeyTakeaways.tsx` 與 `keyTakeaways()`（「重點」）。刪除 `compare/DamageTaken.tsx`、`damageRows()`／`notableRows()`、`allMitigationIds()` 與多吃、減傷差距的建議；`damageTaken()` 與 `deathRecap()` 保留給死亡建議。名稱查詢只加入死前 10 秒受到的技能。

@@ -44,6 +44,8 @@ async function addParse(db: DbLike, report: string, fight: number, actor: number
     )
     .bind(report, fight, actor, job, `p${actor}`, '泰坦', rdps, reportStart)
     .run()
+  // 排名掃描收錄擊殺時同時排入預處理（crawler.ts）
+  await db.prepare('INSERT OR IGNORE INTO pull_queue (report, fight, report_start) VALUES (?, ?, ?)').bind(report, fight, reportStart).run()
 }
 
 describe('timeline extraction', () => {
@@ -162,10 +164,45 @@ describe('refreshSamples', () => {
   it('drops the stored data of kills that are no longer samples but keeps the death markers', async () => {
     const db = memoryDb()
     await addParse(db, 'AAA', 1, 1, 'Samurai')
+    // 之前選的 OLD 已不在排名中（被換掉）；DIED 有死亡，留著當記號
+    await db
+      .prepare(
+        "INSERT INTO average_samples VALUES (100, 101, 'Samurai', '', 'top', 'OLD', 1, 9, 'p9', '泰坦', 1, 99, '7.25', 1, 0), (100, 101, 'Samurai', '', 'top', 'DIED', 1, 8, 'p8', '泰坦', 1, 99, '7.25', 1, 0)",
+      )
+      .run()
     await db.prepare("INSERT INTO sample_data VALUES ('OLD', 1, 9, 'x', '', '', 0, 1), ('DIED', 1, 8, '', '', '', 2, 1)").run()
     await refreshSamples(db, NOW)
     const left = (await db.prepare('SELECT report FROM sample_data ORDER BY report').all<{ report: string }>()).results
     expect(left).toEqual([{ report: 'DIED' }])
+    expect((await db.prepare('SELECT report, pending FROM average_samples').all()).results).toEqual([{ report: 'AAA', pending: 1 }])
+  })
+
+  it('only rewrites samples that changed and rotates through the combos', async () => {
+    const db = memoryDb()
+    await addParse(db, 'AAA', 1, 1, 'Samurai', 30000)
+    await addParse(db, 'BBB', 1, 2, 'Bard', 30000)
+    await addParse(db, 'CCC', 1, 3, 'Ninja', 30000)
+    // 依 Boss×職業的順序輪替，最後繞回第一組
+    const cursor = async () => (await db.prepare("SELECT value FROM crawl_state WHERE key = 'samples_cursor'").first<{ value: string }>())?.value
+    expect(await refreshSamples(db, NOW, 1)).toBe(1)
+    expect(await cursor()).toBe('[100,101,"Bard"]')
+    await refreshSamples(db, NOW + 1, 2)
+    expect(await cursor()).toBe('[100,101,"Samurai"]')
+    await refreshSamples(db, NOW + 2, 1)
+    expect(await cursor()).toBe('[100,101,"Bard"]')
+    // 組數比每次的上限少：每組只處理一次
+    expect(await refreshSamples(db, NOW + 3, 10)).toBe(3)
+    // 樣本沒變：不重寫（選取與更新時間維持第一次選的）
+    const bard = await db.prepare("SELECT selected_at FROM average_samples WHERE job = 'Bard'").first<{ selected_at: number }>()
+    expect(bard?.selected_at).toBe(NOW)
+    const tier = await db.prepare("SELECT updated_at FROM sample_tiers WHERE job = 'Bard' AND tier = 'top'").first<{ updated_at: number }>()
+    expect(tier?.updated_at).toBe(NOW)
+    // 新選的樣本：該場排到預處理佇列的最前面
+    expect((await db.prepare('SELECT report, priority FROM pull_queue ORDER BY report').all()).results).toEqual([
+      { report: 'AAA', priority: 1 },
+      { report: 'BBB', priority: 1 },
+      { report: 'CCC', priority: 1 },
+    ])
   })
 })
 
@@ -206,6 +243,9 @@ describe('processTimelines', () => {
     expect(sample!.deaths).toBe(0)
     const slot = await db.prepare("SELECT slot FROM tank_slots WHERE report = 'NEW'").first<{ slot: string }>()
     expect(slot?.slot).toBe('MT')
+    // 處理完的場次移出佇列、樣本不再列為待處理
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM pull_queue').first()).toEqual({ n: 0 })
+    expect(await db.prepare('SELECT pending FROM average_samples').first()).toEqual({ pending: 0 })
     // 讀取：樣本已預處理、該場有 Boss 施放
     const read = await averageSamples(db, { encounter: 100, difficulty: 101, job: 'Samurai', slot: '', tier: 'top' })
     expect(read.count).toBe(1)

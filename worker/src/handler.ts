@@ -277,15 +277,29 @@ async function averageSamplesRoute(params: URLSearchParams, env: Env): Promise<u
   })
 }
 
+/** D1 無法使用（例如免費方案的每日讀取額度用完）時的錯誤訊息；前端依此停用搜尋前輩日誌 */
+export const DB_UNAVAILABLE = 'Database unavailable'
+
+/** 讀 D1 的路由：參數錯誤照常回報，其餘錯誤（D1 額度用完、暫時故障）一律回 503 DB_UNAVAILABLE */
+async function fromDb<T>(load: () => Promise<T>): Promise<T> {
+  try {
+    return await load()
+  } catch (err) {
+    if (err instanceof HttpError) throw err
+    console.error(err)
+    throw new HttpError(503, DB_UNAVAILABLE)
+  }
+}
+
 async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds: number }> {
   if (url.pathname.replace(/\/$/, '') === '/average-samples') {
-    return { data: await averageSamplesRoute(url.searchParams, env), cacheSeconds: CACHE_SECONDS }
+    return { data: await fromDb(() => averageSamplesRoute(url.searchParams, env)), cacheSeconds: CACHE_SECONDS }
   }
   if (url.pathname.replace(/\/$/, '') === '/tc-rankings') {
-    return { data: await tcRankingsRoute(url.searchParams, env), cacheSeconds: TC_RANKINGS_CACHE_SECONDS }
+    return { data: await fromDb(() => tcRankingsRoute(url.searchParams, env)), cacheSeconds: TC_RANKINGS_CACHE_SECONDS }
   }
   if (url.pathname.replace(/\/$/, '') === '/pull-timelines') {
-    return { data: await pullTimelinesRoute(url.searchParams, env), cacheSeconds: CACHE_SECONDS }
+    return { data: await fromDb(() => pullTimelinesRoute(url.searchParams, env)), cacheSeconds: CACHE_SECONDS }
   }
   if (url.pathname.replace(/\/$/, '') === '/npc-names') {
     const { names, complete } = await npcNames(npcNameParams(url.searchParams))

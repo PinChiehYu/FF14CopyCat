@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StatementLike } from './crawler'
-import { handleRequest, resetTokenCache, setTokenStore, type Env } from './handler'
+import { DB_UNAVAILABLE, handleRequest, resetTokenCache, setTokenStore, type Env } from './handler'
 
 const ORIGIN = 'https://pinchiehyu.github.io'
 const env: Env = {
@@ -334,6 +334,25 @@ describe('handleRequest', () => {
       '/tc-rankings?encounter=100&difficulty=101&job=Samurai&rdps=100&player=no-server',
     ]) {
       expect((await handleRequest(get(path), withDb, ctx, null)).status, path).toBe(400)
+    }
+  })
+
+  it('reports the database as unavailable when D1 fails (e.g. the daily read limit)', async () => {
+    const failing = {
+      bind: () => failing,
+      all: async () => {
+        throw new Error('D1_ERROR: exceeded daily row read limit')
+      },
+      first: async () => {
+        throw new Error('D1_ERROR: exceeded daily row read limit')
+      },
+      run: async () => ({}),
+    }
+    const broken: Env = { ...env, DB: { prepare: () => failing, batch: async () => [] } }
+    for (const path of ['/tc-rankings?encounter=100&difficulty=101&job=Samurai', '/pull-timelines?pulls=abc:1']) {
+      const res = await handleRequest(get(path), broken, ctx, null)
+      expect(res.status, path).toBe(503)
+      expect(await res.json(), path).toEqual({ error: DB_UNAVAILABLE })
     }
   })
 

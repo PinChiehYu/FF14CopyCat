@@ -206,7 +206,14 @@ async function scanPage(
       )
       for (const fight of kills) {
         const entries = tables?.reportData?.report?.[`f${fight.id}`]?.data?.entries ?? []
-        for (const p of parsesFromDamage(report, fight, entries)) {
+        const parses = parsesFromDamage(report, fight, entries)
+        // 有收錄玩家的場次排入預處理（timelines.ts）
+        if (parses.length > 0) {
+          writes.push(
+            db.prepare('INSERT OR IGNORE INTO pull_queue (report, fight, report_start) VALUES (?, ?, ?)').bind(parses[0].report, parses[0].fight, parses[0].reportStart),
+          )
+        }
+        for (const p of parses) {
           result.parses++
           writes.push(
             db
@@ -247,7 +254,8 @@ export async function pruneGoneReports(db: DbLike, graphql: Graphql, now = Date.
   const result: PruneResult = { checkedReports: 0, removedReports: 0, failedReports: 0 }
   const { results } = await db
     .prepare(
-      `SELECT s.code FROM scanned_reports s WHERE s.code IN (SELECT DISTINCT report FROM parses)
+      // EXISTS 以主鍵查 parses，不掃整個 parses（D1 每日讀取額度）
+      `SELECT s.code FROM scanned_reports s WHERE EXISTS (SELECT 1 FROM parses p WHERE p.report = s.code)
        AND COALESCE(s.checked_at, s.scanned_at) < ? ORDER BY COALESCE(s.checked_at, s.scanned_at) LIMIT ?`,
     )
     .bind(now - CHECK_INTERVAL_MS, CHECKS_PER_RUN)
@@ -273,6 +281,7 @@ export async function pruneGoneReports(db: DbLike, graphql: Graphql, now = Date.
       writes.push(db.prepare('DELETE FROM parses WHERE report = ?').bind(code))
       // 預處理的資料一併刪除（timelines.ts）
       writes.push(db.prepare('DELETE FROM pull_timelines WHERE report = ?').bind(code))
+      writes.push(db.prepare('DELETE FROM pull_queue WHERE report = ?').bind(code))
       writes.push(db.prepare('DELETE FROM tank_slots WHERE report = ?').bind(code))
       // 前輩平均的樣本：下次選樣本時以其他擊殺補上
       writes.push(db.prepare('DELETE FROM average_samples WHERE report = ?').bind(code))

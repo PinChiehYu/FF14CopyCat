@@ -32,17 +32,41 @@ async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<Resp
   }
 }
 
+// 與 Worker 的 DB_UNAVAILABLE 一致：排名資料庫（D1）無法使用，例如免費方案的每日讀取額度用完
+const DB_UNAVAILABLE = 'Database unavailable'
+export const DB_UNAVAILABLE_MESSAGE = '排名資料庫今天的查詢額度已用完，暫時無法搜尋前輩日誌，請直接貼上參考日誌的網址'
+
+// 排名資料庫是否可用：任何一個請求回報無法使用後，本次瀏覽都視為不可用（只允許貼參考日誌）
+let dbAvailable = true
+const dbListeners = new Set<() => void>()
+export const dbStatus = {
+  subscribe(listener: () => void) {
+    dbListeners.add(listener)
+    return () => dbListeners.delete(listener)
+  },
+  available: () => dbAvailable,
+}
+function markDbUnavailable() {
+  if (!dbAvailable) return
+  dbAvailable = false
+  for (const listener of dbListeners) listener()
+}
+
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   let res = await fetchWithTimeout(`${API_BASE}${path}`, signal)
   if (res === null || res.status === 504) res = await fetchWithTimeout(`${API_BASE}${path}`, signal)
   if (res === null) throw new ApiError(504, TIMEOUT_MESSAGE)
   if (!res.ok) {
     if (res.status === 504) throw new ApiError(504, TIMEOUT_MESSAGE)
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    if (res.status === 503 && body?.error === DB_UNAVAILABLE) {
+      markDbUnavailable()
+      throw new ApiError(503, DB_UNAVAILABLE_MESSAGE)
+    }
     // 429：本站的每 IP 限制；503：FFLogs 的請求上限
     if (res.status === 429 || res.status === 503) {
       throw new ApiError(res.status, '請求過多，暫時無法取得資料，請稍候一分鐘再試')
     }
-    const body = (await res.json().catch(() => null)) as { error?: string } | null
     throw new ApiError(res.status, body?.error ?? `API 錯誤：${res.status}`)
   }
   return (await res.json()) as T

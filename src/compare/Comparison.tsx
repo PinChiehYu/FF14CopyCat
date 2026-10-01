@@ -236,7 +236,7 @@ function SummaryTable({
     {
       // 這場的 rDPS 在繁中服排名（Worker 掃描的公開日誌）中的百分位；未擊殺或沒有資料時「—」
       label: 'PR',
-      help: `繁中服 PR：這場的 rDPS 與本站收錄的繁中服${prCount ? ` ${prCount} 位` : ''}同職業玩家各自最好的一場比較（自己已在排名中時不和自己比），同「搜尋前輩日誌」的 PR。未擊殺或沒有這個職業的排名資料時為「—」。`,
+      help: `繁中服 PR：這場的 rDPS 與本站收錄的繁中服${prCount ? ` ${prCount} 位` : ''}同職業玩家各自最好的一場比較（自己已在排名中時不和自己比），同「搜尋前輩日誌」的 PR。未擊殺、沒有這個職業的排名資料或排名資料庫暫時無法使用時為「—」。`,
       cell: (s) => {
         const side = damageOf(s)
         if (side === undefined) return <span className="hint-inline">…</span>
