@@ -236,11 +236,6 @@ export interface Divergence {
   mirror: MirrorKind | null
   /** 區段期間結算的 Boss 機制（兩邊都列出，見 attachMechanics）；站位差異在機制結算時才有明顯意義 */
   mechanics: DivergenceMechanic[]
-  /**
-   * 區段開始前 MECHANIC_LEAD_MS 起到區段結束、兩邊的 Boss 施放（參考時間，不看當下距離；見 attachMechanics）。
-   * 只用來排列卡片中機制的先後：同一個機制常由 Boss 本體先施放、分身稍後在區段內結算
-   */
-  nearbyCasts?: { abilityId: number; t: number }[]
   /** 區段期間（或開始前不久）兩邊的 Boss 隨機機制不同（見 attachVariants）：站位不同可能是機制造成 */
   variant?: MechanicDifference
   /** 區段與任一邊 Boss 無法選中的時段重疊（轉場等，玩家常被強制移動或無法移動；見 attachUntargetable） */
@@ -316,8 +311,6 @@ export function distanceAt(track: TrackPoint[], t: number): number | null {
 
 // 兩邊同一技能的結算相差這麼久以內視為同一次（與 Boss 機制差異的配對相同）
 export const PAIR_MECHANIC_MS = 5000
-// 排列卡片中機制的先後時，往區段開始前多看這麼久（Boss 本體常比分身早幾秒施放同一個機制）
-export const MECHANIC_LEAD_MS = 5000
 
 /** 機制候選：同一技能短時間內重複施放只算一次，施放次數多的（自動攻擊等）不算機制。 */
 function mechanicCasts(bossCasts: TimedCast[], { maxOccurrences = 8, dedupeMs = 1000 }: MechanicOptions): TimedCast[] {
@@ -375,9 +368,7 @@ export function attachMechanics(
     mine.forEach((m, i) => {
       if (!used.has(i) && inside(m.t)) out.push({ abilityId: m.abilityId, t: m.t, mine: m.own })
     })
-    const nearby = (c: { t: number }) => c.t >= d.start - MECHANIC_LEAD_MS && c.t <= d.end
-    const nearbyCasts = [...ref.filter(nearby), ...mine.filter(nearby)].map((c) => ({ abilityId: c.abilityId, t: c.t })).sort((a, b) => a.t - b.t)
-    return { ...d, mechanics: out.sort((a, b) => a.t - b.t), nearbyCasts }
+    return { ...d, mechanics: out.sort((a, b) => a.t - b.t) }
   })
 }
 

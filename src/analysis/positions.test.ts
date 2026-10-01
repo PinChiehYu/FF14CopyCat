@@ -133,12 +133,6 @@ describe('compareTracks / divergences', () => {
     const [a, b] = attachMechanics(divs, { mine: [], ref: boss, mineToRef: (t) => t }, distance, 8)
     expect(a.mechanics.map((m) => m.abilityId)).toEqual([2])
     expect(b.mechanics).toEqual([])
-    // 排列先後用：區段開始前 5 秒內起的施放都附上（不看當下距離），9.5 秒的 1 在內
-    expect(a.nearbyCasts?.filter((c) => c.abilityId !== 99)).toEqual([
-      { abilityId: 1, t: 9500 },
-      { abilityId: 2, t: 13_000 },
-      { abilityId: 3, t: 15_500 },
-    ])
   })
 
   it('lists the mechanics of both sides, pairing the same ability within 5 seconds', () => {
