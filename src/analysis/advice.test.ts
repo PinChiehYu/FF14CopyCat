@@ -418,6 +418,30 @@ describe('generateSoloAdvice', () => {
     // 不和參考比較
     expect(advice.every((a) => !a.title.includes('參考'))).toBe(true)
     expect(advice[0].detail).toMatch('20.0 秒無法輸出')
+    // 只發生一次的問題不加「（1 次）」
+    expect(advice[3].detail).toBe('常見問題：只打了 2 個 GCD（應 3 個）。對照時間軸上Meikyo Shisui期間使用的技能。')
+  })
+
+  it('merges the same shortfall across windows and lists each count', () => {
+    const window = (issues: string[], start: number) => ({ start, end: start + 10_000, gcds: 3, issues, judged: true })
+    const [advice] = generateSoloAdvice(
+      solo({
+        windows: [
+          {
+            rule: meikyo,
+            judged: 3,
+            passed: 0,
+            windows: [
+              window(['暗影鋒、暗影波動 合計只用了 3 次（應 5 次）', '缺少：血亂'], 50_000),
+              window(['暗影鋒、暗影波動 合計只用了 2 次（應 5 次）', '缺少：血亂'], 100_000),
+              window(['暗影鋒、暗影波動 合計只用了 4 次（應 5 次）'], 150_000),
+            ],
+          },
+        ],
+        potionUses: null,
+      }),
+    )
+    expect(advice.detail).toBe('常見問題：暗影鋒、暗影波動 合計只用了 3、2、4 次（應 5 次）；缺少：血亂（2 次）。對照時間軸上Meikyo Shisui期間使用的技能。')
   })
 })
 

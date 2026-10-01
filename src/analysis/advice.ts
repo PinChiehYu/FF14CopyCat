@@ -489,6 +489,34 @@ const WINDOW_HIGH_GAP = 0.3
 // 常見問題最多列出幾項
 const MAX_WINDOW_ISSUES = 2
 
+// 次數不足的問題（windows.ts）：「…只用了 3 次（應 5 次）」「只打了 7 個 GCD（應 8 個）」
+const SHORTFALL = /^(.*只(?:用|打)了 )(\d+)( (?:次|個 GCD))（應 (\d+) (次|個)）$/
+
+/**
+ * 技能窗口最常見的問題（依發生的窗口數排序，最多 MAX_WINDOW_ISSUES 項）。次數不足的同一種問題合併、列出每次的實際次數
+ * （「暗影鋒 合計只用了 3、2 次（應 5 次）」），不因次數不同分成兩項；其他問題發生多次時標示次數。
+ */
+function commonIssues(failed: { issues: string[] }[]): string {
+  const groups = new Map<string, { issue: string; shortfall: RegExpExecArray | null; used: string[]; windows: number }>()
+  for (const w of failed) {
+    for (const issue of w.issues) {
+      const shortfall = SHORTFALL.exec(issue)
+      const key = shortfall ? `${shortfall[1]}|${shortfall[3]}|${shortfall[4]}` : issue
+      const group = groups.get(key) ?? { issue, shortfall, used: [], windows: 0 }
+      if (shortfall) group.used.push(shortfall[2])
+      group.windows++
+      groups.set(key, group)
+    }
+  }
+  const text = ({ issue, shortfall: m, used, windows }: { issue: string; shortfall: RegExpExecArray | null; used: string[]; windows: number }) =>
+    m ? `${m[1]}${used.join('、')}${m[3]}（應 ${m[4]} ${m[5]}）` : windows > 1 ? `${issue}（${windows} 次）` : issue
+  return [...groups.values()]
+    .sort((a, b) => b.windows - a.windows)
+    .slice(0, MAX_WINDOW_ISSUES)
+    .map(text)
+    .join('；')
+}
+
 /** 技能窗口（例如明鏡止水、戰逃反應期間該做的事）合格率比參考低時提出，並列出最常見的問題。 */
 function windowAdvice(input: AdviceInput): Advice[] {
   const items: Advice[] = []
@@ -500,13 +528,7 @@ function windowAdvice(input: AdviceInput): Advice[] {
     const refRate = ref.judged > 0 ? ref.passed / ref.judged : 1
     if (mineRate >= refRate || mine.passed === mine.judged) continue
     const failed = mine.windows.filter((w) => w.judged && w.issues.length > 0)
-    const counts = new Map<string, number>()
-    for (const w of failed) for (const issue of w.issues) counts.set(issue, (counts.get(issue) ?? 0) + 1)
-    const common = [...counts]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, MAX_WINDOW_ISSUES)
-      .map(([issue, n]) => `${issue}（${n} 次）`)
-      .join('；')
+    const common = commonIssues(failed)
     const name = ruleName(mine.rule, input.abilityName)
     items.push({
       severity: refRate - mineRate >= WINDOW_HIGH_GAP ? 'high' : 'medium',
@@ -828,13 +850,7 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
   for (const summary of input.windows) {
     if (summary.inapplicable || summary.judged === 0 || summary.passed === summary.judged) continue
     const failed = summary.windows.filter((w) => w.judged && w.issues.length > 0)
-    const counts = new Map<string, number>()
-    for (const w of failed) for (const issue of w.issues) counts.set(issue, (counts.get(issue) ?? 0) + 1)
-    const common = [...counts]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, MAX_WINDOW_ISSUES)
-      .map(([issue, n]) => `${issue}（${n} 次）`)
-      .join('；')
+    const common = commonIssues(failed)
     const name = ruleName(summary.rule, abilityName)
     items.push({
       kind: 'window',
