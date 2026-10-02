@@ -97,6 +97,41 @@ export const EVENTS_QUERY = /* GraphQL */ `
   }
 `
 
+/**
+ * 定時工作（timelines.ts）用的事件查詢：不含位置與血量（includeResources），並以 filterExpression 只取需要的事件類型。
+ * Workers 免費方案每次執行只有 10 ms CPU，一位玩家整場的全部事件含位置約 1.4 MB，光解析就超過上限。
+ */
+export const CRON_EVENTS_QUERY = /* GraphQL */ `
+  query CronEvents(
+    $code: String!
+    $fightIDs: [Int]
+    $startTime: Float
+    $endTime: Float
+    $sourceID: Int
+    $dataType: EventDataType
+    $hostilityType: HostilityType
+    $filterExpression: String
+  ) {
+    reportData {
+      report(code: $code) {
+        events(
+          fightIDs: $fightIDs
+          startTime: $startTime
+          endTime: $endTime
+          sourceID: $sourceID
+          dataType: $dataType
+          hostilityType: $hostilityType
+          filterExpression: $filterExpression
+          limit: 10000
+        ) {
+          data
+          nextPageTimestamp
+        }
+      }
+    }
+  }
+`
+
 /** 敵方可否選中的變化（Boss 無法選中的階段）；事件很少，一頁即可取完。 */
 export const TARGETABILITY_QUERY = /* GraphQL */ `
   query Targetability($code: String!, $fightIDs: [Int], $startTime: Float, $endTime: Float) {

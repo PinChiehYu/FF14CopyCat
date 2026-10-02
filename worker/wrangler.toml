@@ -21,6 +21,6 @@ binding = "DB"
 database_name = "ff14-copycat-rankings"
 database_id = "44fe769b-0d5b-413c-9613-f9595c61af56"
 
-# 每小時掃描一次新的公開報告（crawler.ts）；這個專案不需要高頻更新
+# 定時工作（index.ts）：免費方案每次執行只有 10 ms CPU，每次只做一小部分、以較高頻率執行
 [triggers]
-crons = ["7 * * * *", "37 * * * *", "2-59/10 * * * *"]
+crons = ["7-59/10 * * * *", "5-59/10 * * * *", "*/2 * * * *"]

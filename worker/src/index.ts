@@ -1,14 +1,20 @@
 import { crawl, CRAWL_ZONES, pruneGoneReports } from './crawler'
 import { graphqlFor, handleRequest, setTokenStore, type CacheLike, type Context, type Env } from './handler'
-import { processTimelines } from './timelines'
+import { processTimelines, timelineWork } from './timelines'
 
 // Workers 執行環境提供的快取
 declare const caches: { default: CacheLike }
 
-// 確認報告是否仍公開的定時觸發（與 wrangler.toml 的 crons 一致；其餘觸發為掃描）
-const PRUNE_CRON = '37 * * * *'
-// 預處理已收錄擊殺的 Boss 施放與玩家能力技（timelines.ts）
-const TIMELINE_CRON = '2-59/10 * * * *'
+// 定時觸發（與 wrangler.toml 的 crons 一致）。Workers 免費方案每次執行只有 10 ms CPU（超過即中斷、不寫入任何結果），
+// 所以每次只做一小部分、以較高頻率執行：
+// 掃描新的公開報告：每 10 分鐘一頁（7、17…57 分）
+const CRAWL_CRON = '7-59/10 * * * *'
+// 確認報告是否仍公開：每 10 分鐘（5、15…55 分）
+const PRUNE_CRON = '5-59/10 * * * *'
+// 預處理已收錄擊殺的 Boss 施放與樣本（timelines.ts）：每 2 分鐘，每 10 分鐘的那一次改為選樣本
+const TIMELINE_CRON = '*/2 * * * *'
+// 掃描一次最多查幾份繁中服報告的傷害表（一份可能有多場擊殺，傷害表較大）
+const CRAWL_REPORTS_PER_RUN = 5
 
 export default {
   fetch(request: Request, env: Env, ctx: Context): Promise<Response> {
@@ -17,12 +23,11 @@ export default {
     return handleRequest(request, env, ctx, caches.default)
   },
 
-  // 定時觸發（wrangler.toml 的 crons）：掃描新的公開報告，更新繁中服排名資料庫；
-  // 確認已收錄的報告是否仍公開放在另一個觸發（每次執行各自有對外請求的上限）
-  async scheduled(controller: { cron?: string }, env: Env, ctx: Context): Promise<void> {
+  async scheduled(controller: { cron?: string; scheduledTime?: number }, env: Env, ctx: Context): Promise<void> {
     if (!env.DB) return
     setTokenStore(caches.default)
     const db = env.DB
+    const minute = new Date(controller.scheduledTime ?? Date.now()).getUTCMinutes()
     ctx.waitUntil(
       (async () => {
         if (controller.cron === PRUNE_CRON) {
@@ -30,11 +35,14 @@ export default {
           return
         }
         if (controller.cron === TIMELINE_CRON) {
-          console.log('timelines', JSON.stringify(await processTimelines(db, graphqlFor(env))))
+          console.log('timelines', JSON.stringify(await processTimelines(db, graphqlFor(env), Date.now(), timelineWork(minute))))
           return
         }
+        if (controller.cron !== CRAWL_CRON) return
+        // 還在補舊資料時，最近兩天與補舊資料輪流（17、37、57 分補舊資料）
+        const backfillOnly = Math.floor(minute / 10) % 2 === 1
         for (const zone of CRAWL_ZONES) {
-          const result = await crawl(db, graphqlFor(env), Date.now(), zone)
+          const result = await crawl(db, graphqlFor(env), Date.now(), zone, { pages: 1, backfillOnly, maxRequests: 1 + CRAWL_REPORTS_PER_RUN })
           console.log(`crawl zone ${zone}`, JSON.stringify(result))
         }
       })(),

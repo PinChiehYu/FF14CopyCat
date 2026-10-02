@@ -7,7 +7,7 @@ import { enemyDebuffApplications, enemyDebuffWindows, selfBuffWindows } from '..
 import { patchAt } from '../../src/jobs/patch'
 import type { FFLogsEvent, Fight } from '../../src/fflogs/types'
 import { CURRENT_ENCOUNTERS, GONE_REPORT, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler'
-import { AUTO_ATTACKS_TAKEN_QUERY, EVENTS_QUERY } from './queries'
+import { AUTO_ATTACKS_TAKEN_QUERY, CRON_EVENTS_QUERY } from './queries'
 
 // Workers 免費方案每次執行最多 50 個對外請求（含權杖與點數查詢），預留幾個
 const SUBREQUEST_BUDGET = 46
@@ -15,8 +15,21 @@ const SUBREQUEST_BUDGET = 46
 const REQUESTS_PER_PULL = 3
 // 每位樣本最多用到的請求數（該玩家的全部事件最多 3 頁）
 const REQUESTS_PER_SAMPLE = 3
-// 每次最多處理幾位樣本（其餘請求留給新場次的 Boss 施放與 MT／ST）
-const SAMPLES_PER_RUN = 8
+// Workers 免費方案每次執行只有 10 ms CPU（超過即中斷、不寫入任何結果）：每次只做一小部分，改以較高頻率執行（index.ts）。
+// 實測（docs/TECH_NOTES.md）：解析與處理一位樣本約 1.2 ms、一場 Boss 施放約 0.2 ms
+// 每次最多處理幾位樣本與幾場新場次
+export const SAMPLES_PER_RUN = 2
+export const PULLS_PER_RUN = 3
+// 樣本只用到這些事件（playerCasts、selfBuffWindows、enemyDebuffWindows、enemyDebuffApplications 與死亡次數）；
+// 只抓這些，存下的資料與抓全部事件時逐字相同（以 6 份日誌驗證，見 docs/TECH_NOTES.md）
+const SAMPLE_EVENT_TYPES = ['cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death']
+const SAMPLE_TYPES_FILTER = `type in (${SAMPLE_EVENT_TYPES.map((t) => `'${t}'`).join(', ')})`
+/** 再只取該玩家自己施放的（隊友給的效果、治療等別人以玩家為目標的事件約佔一半）；死亡事件的施放者不是玩家，另外保留 */
+export const sampleEventsFilter = (actor: number) => `${SAMPLE_TYPES_FILTER} and (source.id = ${actor} or type = 'death')`
+// FFLogs 不接受 source.id 時（查詢錯誤）改用只依類型過濾，這個 isolate 之後都用它（資料相同，只是多抓一些）
+let sourceFilterRejected = false
+// Boss 施放只用 cast（不含詠唱開始）
+const BOSS_EVENTS_FILTER = "type = 'cast'"
 // 這小時的點數超過此值就不處理（與排名掃描相同，留給訪客）
 const POINTS_CEILING = 2000
 // 事件最多翻幾頁（一頁 10,000 筆）
@@ -37,8 +50,8 @@ export const SAMPLES_PER_TIER = 30
 const PR_BUFFER = 3
 // 目前版本的擊殺少於這麼多筆時，用舊版本補
 const MIN_CURRENT_PATCH = 10
-// 每次定時工作重新選幾個 Boss×職業（依序輪替，D1 讀取額度與 CPU 時間有限）
-const COMBOS_PER_RUN = 4
+// 選樣本的那次定時工作重新選幾個 Boss×職業（依序輪替，D1 讀取額度與 CPU 時間有限）
+export const COMBOS_PER_RUN = 1
 
 const POINTS_QUERY = /* GraphQL */ `query { rateLimitData { pointsSpentThisHour } }`
 
@@ -371,14 +384,14 @@ async function pendingSamples(db: DbLike, limit: number) {
 async function fetchEvents(
   graphql: Graphql,
   pull: { report: string; fight: number; start: number; end: number },
-  variables: { hostilityType?: 'Enemies' | 'Friendlies'; dataType: string; sourceID?: number },
+  variables: { hostilityType?: 'Enemies' | 'Friendlies'; dataType: string; sourceID?: number; filterExpression: string },
   maxPages = MAX_PAGES,
 ): Promise<RawEvent[]> {
   const events: RawEvent[] = []
   let start: number | null = pull.start
   for (let page = 0; start !== null && page < maxPages; page++) {
     const data: { reportData?: { report?: { events?: { data?: RawEvent[]; nextPageTimestamp?: number | null } } } } | undefined =
-      await graphql(EVENTS_QUERY, { code: pull.report, fightIDs: [pull.fight], startTime: start, endTime: pull.end, ...variables })
+      await graphql(CRON_EVENTS_QUERY, { code: pull.report, fightIDs: [pull.fight], startTime: start, endTime: pull.end, ...variables })
     const got: { data?: RawEvent[]; nextPageTimestamp?: number | null } | undefined = data?.reportData?.report?.events
     events.push(...(got?.data ?? []))
     start = got?.nextPageTimestamp ?? null
@@ -396,34 +409,70 @@ const bossRows = (db: DbLike, report: string, fight: number, boss: string, now: 
 const sampleDone = (db: DbLike, s: { report: string; fight: number; actor: number }) =>
   db.prepare('UPDATE average_samples SET pending = 0 WHERE report = ? AND fight = ? AND actor = ?').bind(s.report, s.fight, s.actor)
 
+/** 一次定時工作的工作量 */
+export interface TimelineWork {
+  /** 重新選樣本的 Boss×職業組數 */
+  combos: number
+  /** 預處理的樣本與新場次數上限 */
+  samples: number
+  pulls: number
+}
+
 /**
- * 一次定時工作：重新選一部分組合的樣本 → 預處理新選到的樣本（每次最多 SAMPLES_PER_RUN 位）→ 用剩下的請求預處理新場次（含樣本的場次優先，樣本要有 Boss 施放才能用）。
+ * 依排定的時間（分鐘）決定這次的工作：每 10 分鐘一次只選樣本（讀 D1 較多），其餘只預處理。
+ * 分開執行是為了讓每次的 CPU 時間都在免費方案的 10 ms 內。
+ */
+export function timelineWork(minute: number): TimelineWork {
+  return minute % 10 === 0 ? { combos: COMBOS_PER_RUN, samples: 0, pulls: 0 } : { combos: 0, samples: SAMPLES_PER_RUN, pulls: PULLS_PER_RUN }
+}
+
+/**
+ * 一次定時工作：重新選一部分組合的樣本 → 預處理新選到的樣本 → 用剩下的請求預處理新場次（含樣本的場次優先，樣本要有 Boss 施放才能用）。
  * 報告已私人化或刪除的場次記錄為空（boss 為空字串、樣本 deaths 為 -1）、不再重試；報告被移除時由 pruneGoneReports() 一併刪除。
  */
-export async function processTimelines(db: DbLike, query: Graphql, now = Date.now()): Promise<TimelineResult> {
+export async function processTimelines(
+  db: DbLike,
+  query: Graphql,
+  now = Date.now(),
+  work: TimelineWork = { combos: COMBOS_PER_RUN, samples: SAMPLES_PER_RUN, pulls: PULLS_PER_RUN },
+): Promise<TimelineResult> {
   const result: TimelineResult = { selected: 0, pulls: 0, samples: 0, failed: 0 }
   let requests = 0
   const graphql: Graphql = (q, v) => {
     requests++
     return query(q, v)
   }
+  result.selected = work.combos > 0 ? await refreshSamples(db, now, work.combos) : 0
+  if (work.samples + work.pulls === 0) return result
   const points = await graphql<{ rateLimitData?: { pointsSpentThisHour: number } }>(POINTS_QUERY, {})
   if ((points?.rateLimitData?.pointsSpentThisHour ?? 0) > POINTS_CEILING) {
     result.skipped = 'points'
     return result
   }
-  result.selected = await refreshSamples(db, now)
 
   const writes: StatementLike[] = []
   // 樣本：該玩家的全部事件（施放、自身效果、對敵人施加的效果、死亡）
-  for (const s of await pendingSamples(db, Math.min(SAMPLES_PER_RUN, Math.floor((SUBREQUEST_BUDGET - requests) / REQUESTS_PER_SAMPLE)))) {
+  for (const s of await pendingSamples(db, Math.min(work.samples, Math.floor((SUBREQUEST_BUDGET - requests) / REQUESTS_PER_SAMPLE)))) {
     if (requests + REQUESTS_PER_SAMPLE > SUBREQUEST_BUDGET) {
       result.skipped = 'subrequests'
       break
     }
     const pull = { report: s.report, fight: s.fight, start: s.fight_start, end: s.fight_end }
     try {
-      const events = (await fetchEvents(graphql, pull, { dataType: 'All', sourceID: s.actor }, MAX_SAMPLE_PAGES)) as FFLogsEvent[]
+      const sampleEvents = (filterExpression: string) => fetchEvents(graphql, pull, { dataType: 'All', sourceID: s.actor, filterExpression }, MAX_SAMPLE_PAGES)
+      let raw: RawEvent[]
+      if (sourceFilterRejected) raw = await sampleEvents(SAMPLE_TYPES_FILTER)
+      else {
+        try {
+          raw = await sampleEvents(sampleEventsFilter(s.actor))
+        } catch (err) {
+          if (GONE_REPORT.test(err instanceof Error ? err.message : String(err))) throw err
+          console.warn(`source filter failed, falling back to type filter: ${err instanceof Error ? err.message : String(err)}`)
+          sourceFilterRejected = true
+          raw = await sampleEvents(SAMPLE_TYPES_FILTER)
+        }
+      }
+      const events = raw as FFLogsEvent[]
       const fight = { startTime: s.fight_start, endTime: s.fight_end } as Fight
       const deaths = events.filter((e) => e.type === 'death' && e.targetID === s.actor).length
       // 有死亡的樣本排除：只留死亡次數當作記號
@@ -458,13 +507,13 @@ export async function processTimelines(db: DbLike, query: Graphql, now = Date.no
   }
 
   // 新場次：Boss 施放，有坦克時判斷 MT／ST
-  for (const pull of await pendingPulls(db, Math.floor((SUBREQUEST_BUDGET - requests) / REQUESTS_PER_PULL))) {
+  for (const pull of await pendingPulls(db, Math.min(work.pulls, Math.floor((SUBREQUEST_BUDGET - requests) / REQUESTS_PER_PULL)))) {
     if (requests + REQUESTS_PER_PULL > SUBREQUEST_BUDGET) {
       result.skipped = 'subrequests'
       break
     }
     try {
-      const enemies = await fetchEvents(graphql, pull, { hostilityType: 'Enemies', dataType: 'Casts' })
+      const enemies = await fetchEvents(graphql, pull, { hostilityType: 'Enemies', dataType: 'Casts', filterExpression: BOSS_EVENTS_FILTER })
       if (pull.tanks.length > 0) {
         const data = await graphql<{ reportData?: { report?: { table?: { data?: { entries?: { id: number; total: number }[] } } } } }>(
           AUTO_ATTACKS_TAKEN_QUERY,

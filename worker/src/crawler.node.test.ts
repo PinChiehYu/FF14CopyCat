@@ -158,6 +158,17 @@ describe('crawl', () => {
     expect(await state(db, 'recent_start')).toBe(now + 3600_000 - 2 * DAY)
   })
 
+  it('scans one page per run, alternating recent days and backfill (CPU limit of the free plan)', async () => {
+    const db = memoryDb()
+    const now = 100 * DAY
+    const recent = (q: { startTime: number; page: number }) => q.startTime >= now - 2 * DAY && q.page < 5
+    const first = listingGraphql(recent)
+    expect(await crawl(db, first.graphql, now, 68, { pages: 1 })).toMatchObject({ pages: 1, recentPages: 1 })
+    const second = listingGraphql(recent)
+    expect(await crawl(db, second.graphql, now, 68, { pages: 1, backfillOnly: true })).toMatchObject({ pages: 1, recentPages: 0 })
+    expect(second.lists).toEqual([{ startTime: now - 60 * DAY, endTime: now - 59 * DAY, page: 1 }])
+  })
+
   it('gives every page to the last two days once the backfill has caught up', async () => {
     const db = memoryDb()
     const now = 100 * DAY

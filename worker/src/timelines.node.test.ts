@@ -4,13 +4,14 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { decodeCasts, decodeWindows } from '../../src/analysis/castCodec.ts'
 import type { DbLike, Graphql, StatementLike } from './crawler.ts'
-import { AUTO_ATTACKS_TAKEN_QUERY, EVENTS_QUERY } from './queries.ts'
+import { AUTO_ATTACKS_TAKEN_QUERY, CRON_EVENTS_QUERY } from './queries.ts'
 import {
   averageSamples,
   bossTimeline,
   playerCasts,
   processTimelines,
   refreshSamples,
+  timelineWork,
   selectTier,
   storedTimelines,
   tankSlot,
@@ -145,7 +146,7 @@ describe('refreshSamples', () => {
     // 死亡的樣本排除；坦克只有判斷過 MT／ST 的才選
     await db.prepare("INSERT INTO sample_data VALUES ('CCC', 1, 3, '', '', '', 1, 1)").run()
     await db.prepare("INSERT INTO tank_slots VALUES ('AAA', 1, 4, 'MT')").run()
-    expect(await refreshSamples(db, NOW)).toBe(2)
+    expect(await refreshSamples(db, NOW, 4)).toBe(2)
     const rows = (await db.prepare('SELECT job, slot, tier, actor FROM average_samples ORDER BY job, actor').all<{ job: string; slot: string; tier: string; actor: number }>()).results
     // 武士：3 人 PR 100／50／0 → 100 在 top、50 在 mid（0 分以下不選），死亡的 CCC 排除
     expect(rows).toEqual([
@@ -225,14 +226,17 @@ describe('processTimelines', () => {
     await addParse(db, 'NEW', 1, 1, 'Paladin', 30000, NOW - 1000)
     await addParse(db, 'OLD', 3, 2, 'Samurai', 30000, NOW - 86_400_000)
     const calls: string[] = []
+    const filters = new Set<string>()
     const graphql: Graphql = async <T>(query: string, variables: Record<string, unknown>) => {
       if (query.includes('rateLimitData')) return { rateLimitData: { pointsSpentThisHour: 100 } } as T
       if (query === AUTO_ATTACKS_TAKEN_QUERY) {
         calls.push(`auto ${variables.code}`)
         return { reportData: { report: { table: { data: { entries: [{ id: 1, total: 500 }, { id: 9, total: 400 }] } } } } } as T
       }
-      if (query === EVENTS_QUERY) {
+      if (query === CRON_EVENTS_QUERY) {
         calls.push(variables.sourceID ? `All ${variables.code}/${variables.sourceID}` : `${variables.hostilityType} ${variables.code}`)
+        // 只取需要的事件類型（不含傷害與治療）
+        filters.add(String(variables.filterExpression))
         const data =
           variables.hostilityType === 'Enemies'
             ? [{ timestamp: 20_000, type: 'cast', abilityGameID: 500 }]
@@ -245,7 +249,11 @@ describe('processTimelines', () => {
       }
       throw new Error('unexpected query')
     }
-    const result = await processTimelines(db, graphql, NOW)
+    const result = await processTimelines(db, graphql, NOW, { combos: 4, samples: 2, pulls: 3 })
+    expect([...filters].sort()).toEqual([
+      "type = 'cast'",
+      "type in ('cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death') and (source.id = 2 or type = 'death')",
+    ])
     // 選樣本：武士 OLD/3/2 在 top；騎士還沒判斷 MT／ST，這次不選
     expect(result).toEqual({ selected: 2, pulls: 2, samples: 1, failed: 0, points: 0 })
     // 樣本先處理；新場次中含樣本的（OLD）優先於較新的報告（NEW）
@@ -277,7 +285,7 @@ describe('processTimelines', () => {
             { timestamp: 40_000, type: 'death', sourceID: 50, targetID: 2 },
           ]
         : []
-      if (query === EVENTS_QUERY) return { reportData: { report: { events: { data, nextPageTimestamp: null } } } } as T
+      if (query === CRON_EVENTS_QUERY) return { reportData: { report: { events: { data, nextPageTimestamp: null } } } } as T
       throw new Error('unexpected query')
     }
     await processTimelines(db, graphql, NOW)
@@ -309,7 +317,39 @@ describe('processTimelines', () => {
     const db = memoryDb()
     await addParse(db, 'AAA', 3, 1, 'Samurai')
     const graphql: Graphql = async <T>() => ({ rateLimitData: { pointsSpentThisHour: 3000 } }) as T
-    expect(await processTimelines(db, graphql)).toEqual({ skipped: 'points', selected: 0, pulls: 0, samples: 0, failed: 0 })
+    expect(await processTimelines(db, graphql, NOW, { combos: 0, samples: 2, pulls: 3 })).toEqual({ skipped: 'points', selected: 0, pulls: 0, samples: 0, failed: 0 })
+  })
+
+  it('falls back to the type-only filter when FFLogs rejects source.id', async () => {
+    const db = memoryDb()
+    await addParse(db, 'AAA', 3, 2, 'Samurai')
+    const filters: string[] = []
+    const graphql: Graphql = async <T>(query: string, variables: Record<string, unknown>) => {
+      if (query.includes('rateLimitData')) return { rateLimitData: { pointsSpentThisHour: 0 } } as T
+      if (!variables.sourceID) return { reportData: { report: { events: { data: [], nextPageTimestamp: null } } } } as T
+      filters.push(String(variables.filterExpression))
+      if (String(variables.filterExpression).includes('source.id')) throw new Error('Invalid filter expression')
+      return { reportData: { report: { events: { data: [{ timestamp: 21_000, type: 'cast', sourceID: 2, abilityGameID: 7477 }], nextPageTimestamp: null } } } } as T
+    }
+    const warn = console.warn
+    console.warn = () => {}
+    expect(await processTimelines(db, graphql, NOW, { combos: 1, samples: 2, pulls: 0 })).toMatchObject({ samples: 1, failed: 0 })
+    console.warn = warn
+    expect(filters.map((f) => f.includes('source.id'))).toEqual([true, false])
+    const sample = await db.prepare('SELECT casts FROM sample_data').first<{ casts: string }>()
+    expect(decodeCasts(sample!.casts)).toEqual([{ t: 11_000, abilityId: 7477 }])
+  })
+
+  it('splits the work: selecting samples every 10 minutes, processing otherwise', async () => {
+    expect(timelineWork(0)).toEqual({ combos: 1, samples: 0, pulls: 0 })
+    expect(timelineWork(12)).toEqual({ combos: 0, samples: 2, pulls: 3 })
+    // 只選樣本的那次不查 FFLogs
+    const db = memoryDb()
+    await addParse(db, 'AAA', 3, 1, 'Samurai')
+    const graphql: Graphql = async () => {
+      throw new Error('unexpected query')
+    }
+    expect(await processTimelines(db, graphql, NOW, timelineWork(10))).toEqual({ selected: 1, pulls: 0, samples: 0, failed: 0 })
   })
 })
 

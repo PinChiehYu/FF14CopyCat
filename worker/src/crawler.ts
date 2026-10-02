@@ -29,7 +29,7 @@ export const CURRENT_ENCOUNTERS = [97, 98, 99, 100]
 const PAGE_SIZE = 25
 // FFLogs 報告列表允許的最大頁碼（超過回錯誤），見 pageOutcome()
 export const MAX_PAGE = 25
-// 每小時執行一次（wrangler.toml），每次最多 6 頁：每小時約 300 點列表＋傷害表，留大部分額度給訪客
+// 一次 crawl() 預設最多幾頁（定時觸發以 CrawlOptions 改為每次 1 頁，見 index.ts）
 const PAGES_PER_RUN = 6
 // Workers 免費方案每次執行最多 50 個對外請求；留一些給取得 FFLogs 授權
 const SUBREQUEST_BUDGET = 47
@@ -271,13 +271,14 @@ export function pageOutcome(query: { startTime: number; endTime: number; page: n
 
 // 已收錄的報告多久確認一次是否仍公開，每次執行最多確認幾份（一份一個查詢，點數很少）。
 // 在獨立的定時觸發中執行（index.ts 的 PRUNE_CRON）：Workers 免費方案每次執行最多 50 個對外請求，
-// 與掃描放在同一次時，掃描用掉 40 多個，只剩 3 個給確認（其餘失敗被當成暫時的錯誤跳過）
+// 與掃描放在同一次時，掃描用掉 40 多個，只剩 3 個給確認（其餘失敗被當成暫時的錯誤跳過）。
+// 免費方案每次執行只有 10 ms CPU：每 10 分鐘一次、每次少量
 const CHECK_INTERVAL_MS = 24 * 3600_000
-export const CHECKS_PER_RUN = 40
+export const CHECKS_PER_RUN = 10
 // 沒有收錄擊殺的報告的 checked_at：排在確認順序的最後，永遠不會輪到（不必每次都讀過一遍）。
 // 舊資料由 pruneGoneReports 讀到時補上（不需要請求），每次最多 SCANS_PER_RUN 份
 export const NEVER_CHECK = Number.MAX_SAFE_INTEGER
-const SCANS_PER_RUN = 200
+const SCANS_PER_RUN = 50
 const CHECK_QUERY = /* GraphQL */ `query ($code: String!) { reportData { report(code: $code) { code } } }`
 // FFLogs 對設為私人與已刪除的報告回傳的錯誤；其他錯誤（額度、網路）視為暫時的，下次再確認
 export const GONE_REPORT = /permission to view this report|report does not exist/i
@@ -342,7 +343,18 @@ export async function pruneGoneReports(db: DbLike, graphql: Graphql, now = Date.
  * 1. 先掃最近兩天（跨次執行逐頁輪完一輪；時間窗的起點在一輪開始時固定，新上傳的報告只會讓後面的頁往後移，不會漏掉）。
  * 2. 剩下的頁數往回補舊資料（從 60 天前一天一天往後），追上最近兩天的起點就停止。
  */
-export async function crawl(db: DbLike, query: Graphql, now = Date.now(), zoneID = CRAWL_ZONES[0]): Promise<CrawlResult> {
+/** 一次掃描的工作量 */
+export interface CrawlOptions {
+  /** 最多幾頁 */
+  pages?: number
+  /** 還在補舊資料時這次只補舊資料（不掃最近兩天）；定時觸發輪流設定，兩邊各分到一半的執行次數 */
+  backfillOnly?: boolean
+  /** 最多幾個對外請求（列表一頁＋每份繁中服報告的傷害表一個）；用完時這一頁下次重新列出、已處理的跳過 */
+  maxRequests?: number
+}
+
+export async function crawl(db: DbLike, query: Graphql, now = Date.now(), zoneID = CRAWL_ZONES[0], options: CrawlOptions = {}): Promise<CrawlResult> {
+  const { pages = PAGES_PER_RUN, backfillOnly = false, maxRequests = SUBREQUEST_BUDGET } = options
   const result: CrawlResult = { pages: 0, recentPages: 0, reports: 0, tcReports: 0, parses: 0 }
   // 計算對外請求數（列表＋每份繁中服報告的傷害表），避免超過 Workers 每次執行的請求上限；
   // 一頁中途用完時，已處理的報告照常存入、不推進頁碼，下次重新列出這一頁（已處理的會跳過）
@@ -351,10 +363,10 @@ export async function crawl(db: DbLike, query: Graphql, now = Date.now(), zoneID
     requests++
     return query(q, v)
   }
-  const budgetLeft = () => requests < SUBREQUEST_BUDGET
+  const budgetLeft = () => requests < maxRequests
   // 至少還能列出一頁並查一份報告才開始新的一頁
   const canScanPage = () => {
-    if (requests + 2 <= SUBREQUEST_BUDGET) return true
+    if (requests + 2 <= maxRequests) return true
     result.skipped = 'subrequests'
     return false
   }
@@ -378,7 +390,7 @@ export async function crawl(db: DbLike, query: Graphql, now = Date.now(), zoneID
 
   // 1. 最近兩天：一輪掃完就停（下一輪留到下次執行，避免同一次重複列出相同的頁）；
   // 翻到最後一頁仍有下一頁時縮小範圍（recent_start／recent_end）從第 1 頁重新列出
-  const recentBudget = backfilling ? RECENT_PAGES_WHILE_BACKFILLING : PAGES_PER_RUN
+  const recentBudget = backfilling ? (backfillOnly ? 0 : Math.min(RECENT_PAGES_WHILE_BACKFILLING, pages)) : pages
   while (result.recentPages < recentBudget && canScanPage()) {
     const query = { zoneID, startTime: recentStart, endTime: recentEnd ?? now, page: recentPage }
     const outcome = await scanPage(
@@ -410,7 +422,7 @@ export async function crawl(db: DbLike, query: Graphql, now = Date.now(), zoneID
   }
 
   // 2. 補舊資料：同一時間窗還有下一頁就翻頁（翻到最後一頁仍有就縮小範圍），否則前進到下一個時間窗
-  while (backfilling && result.pages < PAGES_PER_RUN && cursor < backfillEnd && canScanPage()) {
+  while (backfilling && result.pages < pages && cursor < backfillEnd && canScanPage()) {
     const end = windowEnd ?? Math.min(cursor + WINDOW_MS, backfillEnd)
     const query = { zoneID, startTime: listStart ?? cursor, endTime: listEnd ?? end, page }
     const outcome = await scanPage(
