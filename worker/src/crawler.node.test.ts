@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
-import { crawl, pruneGoneReports, percentile, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
+import { crawl, MAX_PAGE, pageOutcome, pruneGoneReports, percentile, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
 
 /** 以 Node 內建的 SQLite 實作 D1 的最小介面，套用與正式環境相同的 schema.sql。 */
 function memoryDb(): DbLike {
@@ -168,6 +168,33 @@ describe('crawl', () => {
     expect(lists.every((l) => l.startTime === now - 2 * DAY)).toBe(true)
   })
 
+  it('narrows the time range instead of asking FFLogs for a page beyond 25', async () => {
+    const db = memoryDb()
+    const now = 100 * DAY
+    const start = now - 60 * DAY
+    // 舊版卡在第 26 頁（FFLogs 回錯誤「The maximum allowed page is 25」）
+    for (const [key, value] of [['cursor', start], ['page', 26], ['recent_start', now - 2 * DAY]]) {
+      await db.prepare('INSERT INTO crawl_state (key, value) VALUES (?, ?)').bind(`zone68:${key}`, String(value)).run()
+    }
+    const lists: { startTime: number; endTime: number; page: number }[] = []
+    const graphql: Graphql = async <T>(_query: string, vars: Record<string, unknown>) => {
+      const q = vars as { startTime: number; endTime: number; page: number }
+      lists.push({ startTime: q.startTime, endTime: q.endTime, page: q.page })
+      if (q.page > 25) throw new Error('The maximum allowed page is 25 until the performance of paginated queries can be improved.')
+      const recent = q.startTime >= now - 2 * DAY
+      // 補舊資料這一天報告很多：新到舊排列，最後一頁的最舊報告在 start + 6 小時，仍有下一頁
+      const data = recent ? [] : [{ code: `r${lists.length}a`, startTime: start + 8 * 3600_000, fights: [] }, { code: `r${lists.length}b`, startTime: start + 6 * 3600_000, fights: [] }]
+      const hasMore = !recent && (q.page < 25 || q.endTime > start + 6 * 3600_000 + 1)
+      return { rateLimitData: { pointsSpentThisHour: 10 }, reportData: { reports: { has_more_pages: hasMore, data } } } as T
+    }
+    await crawl(db, graphql, now, 68)
+    const backfill = lists.filter((l) => l.startTime < now - 2 * DAY)
+    // 退回第 25 頁；仍有下一頁 → 只列還沒涵蓋的 [開始, 最舊 + 1 毫秒]，從第 1 頁重新開始
+    expect(backfill[0]).toEqual({ startTime: start, endTime: start + DAY, page: 25 })
+    expect(backfill[1]).toEqual({ startTime: start, endTime: start + 6 * 3600_000 + 1, page: 1 })
+    expect(lists.every((l) => l.page <= 25)).toBe(true)
+  })
+
   it('stops when the hourly points are mostly used', async () => {
     const graphql: Graphql = async <T>() =>
       ({ rateLimitData: { pointsSpentThisHour: 3000 }, reportData: { reports: { has_more_pages: false, data: [tcReport] } } }) as T
@@ -292,5 +319,20 @@ describe('pruneGoneReports', () => {
     checked.length = 0
     await pruneGoneReports(db, graphql, now + 3600_000)
     expect(checked).toEqual(['FLAKY'])
+  })
+})
+
+describe('pageOutcome', () => {
+  const q = { startTime: 1000, endTime: 9000, page: MAX_PAGE }
+  it('keeps paging before the last allowed page', () => {
+    expect(pageOutcome({ ...q, page: 3 }, true, [{ startTime: 8000 }, { startTime: 5000 }])).toEqual({ hasMore: true })
+    expect(pageOutcome(q, false, [{ startTime: 8000 }])).toEqual({ hasMore: false })
+  })
+
+  it('narrows to the side the last page has not covered, for either sort order', () => {
+    // 新到舊：已列出 [5000, 9000]，剩下 [1000, 5001]
+    expect(pageOutcome(q, true, [{ startTime: 8000 }, { startTime: 5000 }])).toEqual({ hasMore: true, narrowed: { startTime: 1000, endTime: 5001 } })
+    // 舊到新：已列出 [1000, 6000]，剩下 [5999, 9000]
+    expect(pageOutcome(q, true, [{ startTime: 2000 }, { startTime: 6000 }])).toEqual({ hasMore: true, narrowed: { startTime: 5999, endTime: 9000 } })
   })
 })

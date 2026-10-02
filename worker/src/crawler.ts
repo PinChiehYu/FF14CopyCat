@@ -27,6 +27,8 @@ export const CRAWL_DIFFICULTY = 101
 export const CURRENT_ENCOUNTERS = [97, 98, 99, 100]
 
 const PAGE_SIZE = 25
+// FFLogs 報告列表允許的最大頁碼（超過回錯誤），見 pageOutcome()
+export const MAX_PAGE = 25
 // 每小時執行一次（wrangler.toml），每次最多 6 頁：每小時約 300 點列表＋傷害表，留大部分額度給訪客
 const PAGES_PER_RUN = 6
 // Workers 免費方案每次執行最多 50 個對外請求；留一些給取得 FFLogs 授權
@@ -166,9 +168,9 @@ async function scanPage(
   query: { zoneID: number; startTime: number; endTime: number; page: number },
   now: number,
   result: CrawlResult,
-  state: (hasMore: boolean) => StatementLike[],
+  state: (outcome: PageOutcome) => StatementLike[],
   budgetLeft: () => boolean = () => true,
-): Promise<boolean | null> {
+): Promise<PageOutcome | null> {
   const data = await graphql<{
     rateLimitData?: { pointsSpentThisHour: number }
     reportData?: { reports?: { has_more_pages: boolean; data: ListedReport[] } }
@@ -230,9 +232,36 @@ async function scanPage(
     }
     writes.push(db.prepare('INSERT OR REPLACE INTO scanned_reports (code, scanned_at) VALUES (?, ?)').bind(report.code, now))
   }
-  const hasMore = listed?.has_more_pages ?? false
-  await db.batch([...writes, ...state(hasMore)])
-  return hasMore
+  const outcome = pageOutcome(query, listed?.has_more_pages ?? false, reports)
+  await db.batch([...writes, ...state(outcome)])
+  return outcome
+}
+
+/** 一頁的結果：是否還有下一頁；翻到 FFLogs 允許的最後一頁仍有下一頁時，附上剩下未列出的時間範圍（narrowed） */
+interface PageOutcome {
+  hasMore: boolean
+  narrowed?: { startTime: number; endTime: number }
+}
+
+/**
+ * FFLogs 的報告列表最多只能翻到第 MAX_PAGE 頁（之後回錯誤「The maximum allowed page is 25」）。
+ * 最後一頁仍有下一頁時，把時間範圍縮到這一頁還沒涵蓋的那一側，從第 1 頁重新列出：依這一頁報告的開始時間判斷
+ * 列表的排序（新到舊或舊到新），已列出的是 [最舊, 結束] 或 [開始, 最新]。邊界多留 1 毫秒，同一時間開始的報告
+ * 會再列一次（已處理的會跳過），不會漏掉。
+ */
+export function pageOutcome(query: { startTime: number; endTime: number; page: number }, hasMore: boolean, reports: { startTime: number }[]): PageOutcome {
+  if (!hasMore || query.page < MAX_PAGE || reports.length === 0) return { hasMore }
+  const first = reports[0].startTime
+  const last = reports[reports.length - 1].startTime
+  const newestFirst = first >= last
+  const oldest = Math.min(first, last)
+  const newest = Math.max(first, last)
+  return {
+    hasMore,
+    narrowed: newestFirst
+      ? { startTime: query.startTime, endTime: Math.max(query.startTime, oldest + 1) }
+      : { startTime: Math.min(query.endTime, newest - 1), endTime: query.endTime },
+  }
 }
 
 // 已收錄的報告多久確認一次是否仍公開，每次執行最多確認幾份（一份一個查詢，點數很少）。
@@ -318,59 +347,88 @@ export async function crawl(db: DbLike, query: Graphql, now = Date.now(), zoneID
     return false
   }
   const prefix = `zone${zoneID}`
-  let cursor = Number((await getState(db, `${prefix}:cursor`)) ?? now - BACKFILL_MS)
-  let page = Number((await getState(db, `${prefix}:page`)) ?? 1)
-  let recentStart = Number((await getState(db, `${prefix}:recent_start`)) ?? now - RECENT_MS)
-  let recentPage = Number((await getState(db, `${prefix}:recent_page`)) ?? 1)
+  const num = async (key: string) => {
+    const value = await getState(db, `${prefix}:${key}`)
+    return value ? Number(value) : null
+  }
+  let cursor = (await num('cursor')) ?? now - BACKFILL_MS
+  // 舊版存過超過上限的頁碼（第 26 頁會回錯誤）：退回最後一頁，該頁仍有下一頁時改縮小時間範圍
+  let page = Math.min((await num('page')) ?? 1, MAX_PAGE)
+  // 補舊資料這個時間窗的結束；縮小過範圍時，目前列出的子範圍為 list_start～list_end
+  let windowEnd = (await num('window_end')) ?? null
+  let listStart = (await num('list_start')) ?? null
+  let listEnd = (await num('list_end')) ?? null
+  let recentStart = (await num('recent_start')) ?? now - RECENT_MS
+  let recentPage = Math.min((await num('recent_page')) ?? 1, MAX_PAGE)
+  let recentEnd = (await num('recent_end')) ?? null
   const backfillEnd = now - RECENT_MS
-  const backfilling = cursor < backfillEnd - BACKFILL_SLACK_MS || (page > 1 && cursor < backfillEnd)
+  const backfilling = cursor < backfillEnd - BACKFILL_SLACK_MS || ((page > 1 || listEnd !== null) && cursor < backfillEnd)
 
-  // 1. 最近兩天：一輪掃完就停（下一輪留到下次執行，避免同一次重複列出相同的頁）
+  // 1. 最近兩天：一輪掃完就停（下一輪留到下次執行，避免同一次重複列出相同的頁）；
+  // 翻到最後一頁仍有下一頁時縮小範圍（recent_start／recent_end）從第 1 頁重新列出
   const recentBudget = backfilling ? RECENT_PAGES_WHILE_BACKFILLING : PAGES_PER_RUN
   while (result.recentPages < recentBudget && canScanPage()) {
-    const hasMore = await scanPage(
+    const query = { zoneID, startTime: recentStart, endTime: recentEnd ?? now, page: recentPage }
+    const outcome = await scanPage(
       db,
       graphql,
-      { zoneID, startTime: recentStart, endTime: now, page: recentPage },
+      query,
       now,
       result,
-      (more) => [
-        setState(db, `${prefix}:recent_start`, String(more ? recentStart : now - RECENT_MS)),
-        setState(db, `${prefix}:recent_page`, String(more ? recentPage + 1 : 1)),
+      ({ hasMore, narrowed }) => [
+        setState(db, `${prefix}:recent_start`, String(narrowed?.startTime ?? (hasMore ? recentStart : now - RECENT_MS))),
+        setState(db, `${prefix}:recent_end`, narrowed ? String(narrowed.endTime) : hasMore && recentEnd !== null ? String(recentEnd) : ''),
+        setState(db, `${prefix}:recent_page`, String(narrowed ? 1 : hasMore ? recentPage + 1 : 1)),
       ],
       budgetLeft,
     )
-    if (hasMore === null) return result
+    if (outcome === null) return result
     result.recentPages++
-    if (!hasMore) {
+    if (!outcome.hasMore) {
       recentStart = now - RECENT_MS
+      recentEnd = null
       recentPage = 1
       break
     }
-    recentPage++
+    if (outcome.narrowed) {
+      recentStart = outcome.narrowed.startTime
+      recentEnd = outcome.narrowed.endTime
+      recentPage = 1
+    } else recentPage++
   }
 
-  // 2. 補舊資料：同一時間窗還有下一頁就翻頁，否則前進到下一個時間窗
+  // 2. 補舊資料：同一時間窗還有下一頁就翻頁（翻到最後一頁仍有就縮小範圍），否則前進到下一個時間窗
   while (backfilling && result.pages < PAGES_PER_RUN && cursor < backfillEnd && canScanPage()) {
-    const windowEnd = Math.min(cursor + WINDOW_MS, backfillEnd)
-    const hasMore = await scanPage(
+    const end = windowEnd ?? Math.min(cursor + WINDOW_MS, backfillEnd)
+    const query = { zoneID, startTime: listStart ?? cursor, endTime: listEnd ?? end, page }
+    const outcome = await scanPage(
       db,
       graphql,
-      { zoneID, startTime: cursor, endTime: windowEnd, page },
+      query,
       now,
       result,
-      (more) => [
-        setState(db, `${prefix}:cursor`, String(more ? cursor : windowEnd)),
-        setState(db, `${prefix}:page`, String(more ? page + 1 : 1)),
+      ({ hasMore, narrowed }) => [
+        setState(db, `${prefix}:cursor`, String(hasMore ? cursor : end)),
+        setState(db, `${prefix}:page`, String(narrowed ? 1 : hasMore ? page + 1 : 1)),
+        setState(db, `${prefix}:window_end`, hasMore ? String(end) : ''),
+        setState(db, `${prefix}:list_start`, narrowed ? String(narrowed.startTime) : hasMore && listStart !== null ? String(listStart) : ''),
+        setState(db, `${prefix}:list_end`, narrowed ? String(narrowed.endTime) : hasMore && listEnd !== null ? String(listEnd) : ''),
       ],
       budgetLeft,
     )
-    if (hasMore === null) return result
-    if (hasMore) {
-      page++
-    } else {
+    if (outcome === null) return result
+    if (!outcome.hasMore) {
       page = 1
-      cursor = windowEnd
+      cursor = end
+      windowEnd = listStart = listEnd = null
+    } else if (outcome.narrowed) {
+      page = 1
+      windowEnd = end
+      listStart = outcome.narrowed.startTime
+      listEnd = outcome.narrowed.endTime
+    } else {
+      page++
+      windowEnd = end
     }
   }
   return result
