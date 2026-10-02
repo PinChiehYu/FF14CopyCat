@@ -16,10 +16,10 @@ const REQUESTS_PER_PULL = 3
 // 每位樣本最多用到的請求數（該玩家的全部事件最多 3 頁）
 const REQUESTS_PER_SAMPLE = 3
 // Workers 免費方案每次執行只有 10 ms CPU（超過即中斷、不寫入任何結果）：每次只做一小部分，改以較高頻率執行（index.ts）。
-// 實測（docs/TECH_NOTES.md）：解析與處理一位樣本約 1.2 ms、一場 Boss 施放約 0.2 ms
+// 實測（docs/TECH_NOTES.md）：每次 2 位樣本＋3 場時 CPU 10～15 ms（含每個對外請求與 D1 呼叫的開銷），改為每分鐘 1 位＋2 場
 // 每次最多處理幾位樣本與幾場新場次
-export const SAMPLES_PER_RUN = 2
-export const PULLS_PER_RUN = 3
+export const SAMPLES_PER_RUN = 1
+export const PULLS_PER_RUN = 2
 // 樣本只用到這些事件（playerCasts、selfBuffWindows、enemyDebuffWindows、enemyDebuffApplications 與死亡次數）；
 // 只抓這些，存下的資料與抓全部事件時逐字相同（以 6 份日誌驗證，見 docs/TECH_NOTES.md）
 const SAMPLE_EVENT_TYPES = ['cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death']

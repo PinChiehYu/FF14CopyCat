@@ -342,7 +342,7 @@ describe('processTimelines', () => {
 
   it('splits the work: selecting samples every 10 minutes, processing otherwise', async () => {
     expect(timelineWork(0)).toEqual({ combos: 1, samples: 0, pulls: 0 })
-    expect(timelineWork(12)).toEqual({ combos: 0, samples: 2, pulls: 3 })
+    expect(timelineWork(12)).toEqual({ combos: 0, samples: 1, pulls: 2 })
     // 只選樣本的那次不查 FFLogs
     const db = memoryDb()
     await addParse(db, 'AAA', 3, 1, 'Samurai')

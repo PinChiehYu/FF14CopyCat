@@ -233,10 +233,10 @@
 ### 預處理（`worker/src/timelines.ts`，2026-09-30 起）
 - 目的：前端不必逐筆向 FFLogs 抓已收錄擊殺的施放。Boss 施放用於搜尋前輩日誌的「機制相同的排前面」（原名「只看機制與我相同」）（改前每筆候選各抓一次 Boss 施放，最多 40 多個請求）與前輩平均的對齊；**前輩平均的樣本**另存完整資料（見下方「前輩平均的樣本」）。
 - **2026-10-01 改版**：原本每位已收錄玩家都存能力技（parse_actions），改為只為前輩平均選到的樣本存全部施放（含 GCD）、效果與死亡——全部玩家含 GCD 約 110 MB，只存樣本約 25 MB，而且樣本以外的資料沒有用途。parse_actions 刪除（其中坦克的 MT／ST 先搬到 	ank_slots）。
-- 定時觸發 `*/2 * * * *`（每 2 分鐘；`index.ts` 的 `TIMELINE_CRON`，2026-10-03 起，原為每 10 分鐘做較多工作，見下方「Workers 免費方案的 CPU 上限」）。`timelineWork()` 依分鐘分工：
+- 定時觸發 `* * * * *`（每分鐘；`index.ts` 的 `TIMELINE_CRON`，2026-10-03 起，原為每 10 分鐘做較多工作，見下方「Workers 免費方案的 CPU 上限」）。`timelineWork()` 依分鐘分工：
   1. 整 10 分鐘的那次：`refreshSamples()` 輪替重新選 1 組 Boss×職業的樣本（只讀 D1，不查 FFLogs）。
-  2. 其餘每次：先以 `rateLimitData` 查這小時的點數（超過 2,000 點跳過）；樣本每次最多 2 位，`sourceID=樣本&dataType=All`（最多 3 頁）一次取得施放、自身效果、對敵人施加的效果與死亡（`CRON_EVENTS_QUERY`：不含位置資料，`filterExpression` 只取用得到的事件類型與玩家自己施放的事件，見下方「Workers 免費方案的 CPU 上限」）。
-  3. 新場次：每次最多 3 場，處理 `pull_queue` 中的場次（排名掃描收錄擊殺時加入；**含樣本的場次優先**，其次最近的報告；處理後移出），每場 `hostility=Enemies&dataType=Casts`（最多 2 頁），有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST（承受普通攻擊全隊最多者為 MT）→ `tank_slots`。
+  2. 其餘每次：先以 `rateLimitData` 查這小時的點數（超過 2,000 點跳過）；樣本每次最多 1 位，`sourceID=樣本&dataType=All`（最多 3 頁）一次取得施放、自身效果、對敵人施加的效果與死亡（`CRON_EVENTS_QUERY`：不含位置資料，`filterExpression` 只取用得到的事件類型與玩家自己施放的事件，見下方「Workers 免費方案的 CPU 上限」）。
+  3. 新場次：每次最多 2 場，處理 `pull_queue` 中的場次（排名掃描收錄擊殺時加入；**含樣本的場次優先**，其次最近的報告；處理後移出），每場 `hostility=Enemies&dataType=Casts`（最多 2 頁），有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST（承受普通攻擊全隊最多者為 MT）→ `tank_slots`。
   每次執行的對外請求在 46 個以內，寫入用一個 `db.batch`。
 - 資料表（`schema.sql`）：`pull_timelines`（每場 Boss 施放：同一技能 1 秒內只留一次，與前端 `buildAlignment()`／`mechanicDifferences()` 的 1 秒去重相同，比對結果不變）、`tank_slots`（坦克的 MT／ST）、`average_samples`／`sample_tiers`／`sample_data`（前輩平均，見下）。編碼為 `src/analysis/castCodec.ts`：依時間排序，每筆「36 進位技能 ID.時間差」，時間以 10 毫秒為單位；效果時段另加持續時間與旗標（開打前已有／到結束未移除），施加效果另加目標 ID。
 - 失敗處理：報告已私人化或刪除（`GONE_REPORT`）時記錄 `boss = ''`（樣本記 `deaths = -1`）、不再重試；其他錯誤（額度、網路）下次再試。`pruneGoneReports()` 移除報告時一併刪除預處理與樣本的資料（下次選樣本時補上）。
@@ -258,7 +258,7 @@
 ### Workers 免費方案的 CPU 上限（2026-10-02 起定時工作全部中斷）
 - 免費方案每次執行最多 **10 ms CPU**（等待 FFLogs／D1 的時間不算）。之前偶爾超過仍會執行完（約一半的定時工作 `exceededCpu`），2026-10-02 12:32 UTC 起每次都在約 1 秒、CPU 10 ms 時被中斷（`wrangler tail --format json` 的 `outcome: exceededCpu`、沒有 log），收錄、預處理、選樣本全部停擺；網站的 API 不受影響。使用者決定不升級付費方案，改為縮小每次的工作量。
 - 實測（Node 24，與 Workers 同為 V8；以已部署 Worker 的 `/reports/:code/events` 抓同樣的資料）：一位樣本 `dataType=All` 的事件含位置資料約 4,000 筆、1.4 MB，**光 `JSON.parse` 就 4.4 ms**；去掉位置（不加 `includeResources`）0.67 MB、2.0 ms；再排除傷害、治療、吸收與詠唱開始後約 1,600～2,200 筆、200～280 KB，解析加上 `selfBuffWindows` 等處理與編碼共 **1.1～1.3 ms**；改為只取用得到的類型（`cast`、`combatantinfo`、`applybuff`／`removebuff`、`applydebuff`／`removedebuff`／`refreshdebuff`、`death`）且施放者是玩家（死亡除外：隊友給的效果、治療等別人以玩家為目標的事件約佔一半）後 650～1,100 筆、75～127 KB，解析 0.18～0.32 ms。**資料不減少**：以 6 份日誌（M7S 黑暗騎士、M8S 武士與騎士、M7S 武士、黑魔、毒蛇）比對，用過濾後的事件與全部事件算出的 `sample_data`（施放、效果時段、施加效果、死亡次數）與 Boss 施放逐字相同。FFLogs 若不接受 `source.id`（查詢錯誤），自動退回只依類型過濾（`sourceFilterRejected`，資料相同、多抓約一倍）。一場 Boss 施放（只取 `cast`）約 450 筆、60 KB、0.2～0.3 ms。舊設定每次 8 位樣本＋12 場＋4 組選樣本，遠超 10 ms。
-- 修正：定時工作的事件查詢改用 `CRON_EVENTS_QUERY`（不含 `includeResources`、帶 `filterExpression`）；排程改為小量高頻——預處理每 2 分鐘（2 位樣本＋3 場，整 10 分鐘只選 1 組樣本）、掃描每 10 分鐘 1 頁且最多 5 份繁中服報告的傷害表（超過時該頁下次重新列出、已處理的跳過；最近 2 天與補舊資料輪流）、確認報告每 10 分鐘 10 份。每小時的處理量與點數和之前相近（樣本 48 位、場次 72 場、掃描 6 頁）。
+- 修正：定時工作的事件查詢改用 `CRON_EVENTS_QUERY`（不含 `includeResources`、帶 `filterExpression`）；排程改為小量高頻——預處理每分鐘（1 位樣本＋2 場，整 10 分鐘只選 1 組樣本；原為每 2 分鐘 2 位＋3 場，部署後實測 CPU 10～15 ms 仍貼近上限——大部分是每個對外請求與 D1 呼叫的開銷，不是資料解析）、掃描每 10 分鐘 1 頁且最多 5 份繁中服報告的傷害表（超過時該頁下次重新列出、已處理的跳過；最近 2 天與補舊資料輪流）、確認報告每 10 分鐘 10 份。每小時的處理量不低於之前（樣本 54 位、場次 108 場、掃描 6 頁）。
 - D1 讀取估計：選樣本每天 144 次×約 1,500 列、其餘定時工作每次數十列，每天約 30 萬列。
 
 ### D1 免費方案的額度（2026-10-01 超量）

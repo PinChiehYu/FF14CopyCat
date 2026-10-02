@@ -11,8 +11,8 @@ declare const caches: { default: CacheLike }
 const CRAWL_CRON = '7-59/10 * * * *'
 // 確認報告是否仍公開：每 10 分鐘（5、15…55 分）
 const PRUNE_CRON = '5-59/10 * * * *'
-// 預處理已收錄擊殺的 Boss 施放與樣本（timelines.ts）：每 2 分鐘，每 10 分鐘的那一次改為選樣本
-const TIMELINE_CRON = '*/2 * * * *'
+// 預處理已收錄擊殺的 Boss 施放與樣本（timelines.ts）：每分鐘，整 10 分鐘的那一次改為選樣本
+const TIMELINE_CRON = '* * * * *'
 // 掃描一次最多查幾份繁中服報告的傷害表（一份可能有多場擊殺，傷害表較大）
 const CRAWL_REPORTS_PER_RUN = 5
 
