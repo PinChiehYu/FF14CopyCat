@@ -23,11 +23,8 @@ export const PULLS_PER_RUN = 2
 // 樣本只用到這些事件（playerCasts、selfBuffWindows、enemyDebuffWindows、enemyDebuffApplications 與死亡次數）；
 // 只抓這些，存下的資料與抓全部事件時逐字相同（以 6 份日誌驗證，見 docs/TECH_NOTES.md）
 const SAMPLE_EVENT_TYPES = ['cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death']
-const SAMPLE_TYPES_FILTER = `type in (${SAMPLE_EVENT_TYPES.map((t) => `'${t}'`).join(', ')})`
-/** 再只取該玩家自己施放的（隊友給的效果、治療等別人以玩家為目標的事件約佔一半）；死亡事件的施放者不是玩家，另外保留 */
-export const sampleEventsFilter = (actor: number) => `${SAMPLE_TYPES_FILTER} and (source.id = ${actor} or type = 'death')`
-// FFLogs 不接受 source.id 時（查詢錯誤）改用只依類型過濾，這個 isolate 之後都用它（資料相同，只是多抓一些）
-let sourceFilterRejected = false
+// （曾再加上 source.id = 玩家 只取自己施放的：FFLogs 不報錯但一筆都不回傳，寫入了空的樣本，已移除；見 docs/TECH_NOTES.md）
+export const SAMPLE_EVENTS_FILTER = `type in (${SAMPLE_EVENT_TYPES.map((t) => `'${t}'`).join(', ')})`
 // Boss 施放只用 cast（不含詠唱開始）
 const BOSS_EVENTS_FILTER = "type = 'cast'"
 // 這小時的點數超過此值就不處理（與排名掃描相同，留給訪客）
@@ -459,22 +456,11 @@ export async function processTimelines(
     }
     const pull = { report: s.report, fight: s.fight, start: s.fight_start, end: s.fight_end }
     try {
-      const sampleEvents = (filterExpression: string) => fetchEvents(graphql, pull, { dataType: 'All', sourceID: s.actor, filterExpression }, MAX_SAMPLE_PAGES)
-      let raw: RawEvent[]
-      if (sourceFilterRejected) raw = await sampleEvents(SAMPLE_TYPES_FILTER)
-      else {
-        try {
-          raw = await sampleEvents(sampleEventsFilter(s.actor))
-        } catch (err) {
-          if (GONE_REPORT.test(err instanceof Error ? err.message : String(err))) throw err
-          console.warn(`source filter failed, falling back to type filter: ${err instanceof Error ? err.message : String(err)}`)
-          sourceFilterRejected = true
-          raw = await sampleEvents(SAMPLE_TYPES_FILTER)
-        }
-      }
-      const events = raw as FFLogsEvent[]
+      const events = (await fetchEvents(graphql, pull, { dataType: 'All', sourceID: s.actor, filterExpression: SAMPLE_EVENTS_FILTER }, MAX_SAMPLE_PAGES)) as FFLogsEvent[]
       const fight = { startTime: s.fight_start, endTime: s.fight_end } as Fight
       const deaths = events.filter((e) => e.type === 'death' && e.targetID === s.actor).length
+      // 擊殺中的玩家不可能一個技能都沒用：沒有施放表示查詢有問題（例如過濾條件錯誤），不寫入、下次再試
+      if (deaths === 0 && !events.some((e) => e.type === 'cast' && e.sourceID === s.actor)) throw new Error('no casts returned for the sample')
       // 有死亡的樣本排除：只留死亡次數當作記號
       const [casts, buffs, applications] =
         deaths > 0

@@ -252,7 +252,7 @@ describe('processTimelines', () => {
     const result = await processTimelines(db, graphql, NOW, { combos: 4, samples: 2, pulls: 3 })
     expect([...filters].sort()).toEqual([
       "type = 'cast'",
-      "type in ('cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death') and (source.id = 2 or type = 'death')",
+      "type in ('cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death')",
     ])
     // 選樣本：武士 OLD/3/2 在 top；騎士還沒判斷 MT／ST，這次不選
     expect(result).toEqual({ selected: 2, pulls: 2, samples: 1, failed: 0, points: 0 })
@@ -320,24 +320,20 @@ describe('processTimelines', () => {
     expect(await processTimelines(db, graphql, NOW, { combos: 0, samples: 2, pulls: 3 })).toEqual({ skipped: 'points', selected: 0, pulls: 0, samples: 0, failed: 0 })
   })
 
-  it('falls back to the type-only filter when FFLogs rejects source.id', async () => {
+  it('does not store a sample when the query returns no casts of the player', async () => {
     const db = memoryDb()
     await addParse(db, 'AAA', 3, 2, 'Samurai')
-    const filters: string[] = []
-    const graphql: Graphql = async <T>(query: string, variables: Record<string, unknown>) => {
+    const graphql: Graphql = async <T>(query: string) => {
       if (query.includes('rateLimitData')) return { rateLimitData: { pointsSpentThisHour: 0 } } as T
-      if (!variables.sourceID) return { reportData: { report: { events: { data: [], nextPageTimestamp: null } } } } as T
-      filters.push(String(variables.filterExpression))
-      if (String(variables.filterExpression).includes('source.id')) throw new Error('Invalid filter expression')
-      return { reportData: { report: { events: { data: [{ timestamp: 21_000, type: 'cast', sourceID: 2, abilityGameID: 7477 }], nextPageTimestamp: null } } } } as T
+      return { reportData: { report: { events: { data: [], nextPageTimestamp: null } } } } as T
     }
     const warn = console.warn
     console.warn = () => {}
-    expect(await processTimelines(db, graphql, NOW, { combos: 1, samples: 2, pulls: 0 })).toMatchObject({ samples: 1, failed: 0 })
+    expect(await processTimelines(db, graphql, NOW, { combos: 1, samples: 1, pulls: 0 })).toMatchObject({ samples: 0, failed: 1 })
     console.warn = warn
-    expect(filters.map((f) => f.includes('source.id'))).toEqual([true, false])
-    const sample = await db.prepare('SELECT casts FROM sample_data').first<{ casts: string }>()
-    expect(decodeCasts(sample!.casts)).toEqual([{ t: 11_000, abilityId: 7477 }])
+    // 沒有寫入，樣本仍待處理
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM sample_data').first()).toEqual({ n: 0 })
+    expect(await db.prepare('SELECT pending FROM average_samples').first()).toEqual({ pending: 1 })
   })
 
   it('splits the work: selecting samples every 10 minutes, processing otherwise', async () => {
