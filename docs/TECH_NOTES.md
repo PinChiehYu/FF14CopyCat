@@ -262,6 +262,13 @@
 - 修正：定時工作的事件查詢改用 `CRON_EVENTS_QUERY`（不含 `includeResources`、帶 `filterExpression`）；排程改為小量高頻——預處理每分鐘（1 位樣本＋2 場，整 10 分鐘只選 1 組樣本；原為每 2 分鐘 2 位＋3 場，部署後實測 CPU 10～15 ms 仍貼近上限——大部分是每個對外請求與 D1 呼叫的開銷，不是資料解析）、掃描每 10 分鐘 1 頁且最多 5 份繁中服報告的傷害表（超過時該頁下次重新列出、已處理的跳過；最近 2 天與補舊資料輪流）、確認報告每 10 分鐘 10 份。每小時的處理量不低於之前（樣本 54 位、場次 108 場、掃描 6 頁）。
 - D1 讀取估計：選樣本每天 144 次×約 1,500 列、其餘定時工作每次數十列，每天約 30 萬列。
 
+- 部署後實測（2026-10-02，`wrangler tail --format json` 的 `cpuTime`）：預處理 1 位樣本＋2 場 11～16 ms、只選 1 組樣本 16 ms、掃描 1 頁（5 份繁中服報告）18 ms、確認報告（0 份）2～4 ms，結果都是 ok（超過 10 ms 仍放行，但不保證）。
+- **CPU 剖析**（本機 `wrangler dev --local`＝workerd，包裝 Worker 直接呼叫 `processTimelines`、FFLogs 換成錄好的回應但仍以 `Response.json()` 解析，透過 inspector 的 `Profiler` 取樣 50 µs；D1 為本機資料：Boss 97 武士 847 筆擊殺）：
+  - 選樣本一次 14.6 ms（與正式環境 16 ms 一致）：我們的 JS（`refreshSamples`、`selectTier`、`tcRankings`、`patchAt`）合計約 4 ms，**其餘約 10 ms 是 D1 用戶端把查詢結果轉成物件**（`cloudflare-internal:d1-api` 的結果轉換、內部 `fetch`、`toJson`）。單一查詢：每次 D1 呼叫固定約 0.6 ms；讀整組擊殺（847 筆 × 9 欄，`tcRankings`）約 4 ms、改 `.raw()` 3.4 ms；只讀每位玩家最佳 rDPS（222 筆 × 1 欄）1.6 ms；該組舊樣本 78 筆 1.2 ms。也就是成本幾乎與「回傳的格數」成正比，加上每次呼叫的固定成本。
+  - 預處理一次（1 位樣本＋2 場）約 4 ms：事件解析與處理約 1 ms，其餘是 D1 呼叫與 Response 物件。正式環境 11～16 ms，多出的部分應是對 FFLogs 的真實請求（每次執行 5 個：點數、樣本事件、2 場 Boss 施放、結束時再查一次點數）的開銷，本機無法量。
+  - 模組載入：`abilityNames.ts`、`npcNames.ts` 在載入時各建立一個 opencc 轉換器，Node 量到 require 38 ms＋每個轉換器 40～50 ms（部署輸出的 Worker Startup Time 196 ms）；正式環境的定時工作 CPU 沒有出現這個量級，推斷冷啟動不計入每次執行的 CPU。
+- 可再降低的方向（資料不變）：選樣本改為先讀每位玩家最佳 rDPS 算 PR 門檻、只讀門檻以上的擊殺並用 `.raw()`；合併或減少 D1 呼叫（游標、排除名單）；預處理拿掉結束時的點數查詢；opencc 轉換器改為用到時才建立（改善冷啟動）。
+
 ### D1 免費方案的額度（2026-10-01 超量）
 - 上限：**每天讀 500 萬列、寫 10 萬列**（UTC 0 點重置）；超過後所有讀取被拒（`code 7500`，「exceeded D1's free tier daily row read limit」），排名、搜尋前輩日誌與預處理都停擺到重置。以 `npx wrangler d1 info ff14-copycat-rankings` 看 `rows_read_24h`／`rows_written_24h`。
 - 事故：前輩平均第一階段上線後一天讀了 1,208 萬列。每 10 分鐘的定時工作有兩個掃整個 `parses`（約 3.8 萬列）的查詢：`SELECT DISTINCT encounter, difficulty, job`（每天約 550 萬列），以及找未處理場次的 `pendingPulls`——每一列 `parses` 都對沒有 (report, fight) 索引的 `average_samples` 做一次 `EXISTS`，每次執行數百萬列，是主因。每次選樣本整組刪除重寫，樣本選滿後每天也會寫到約 10 萬列。
