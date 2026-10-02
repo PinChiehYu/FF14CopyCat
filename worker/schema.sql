@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS scanned_reports (
   -- 最後一次確認報告仍公開的時間（Unix 毫秒）；正式資料庫以 ALTER TABLE scanned_reports ADD COLUMN checked_at INTEGER 加上
   checked_at INTEGER
 );
+-- pruneGoneReports 依確認時間的順序只讀到期的幾列；沒有收錄擊殺的報告 checked_at 為 Number.MAX_SAFE_INTEGER（不確認）
+CREATE INDEX IF NOT EXISTS scanned_reports_check ON scanned_reports (COALESCE(checked_at, scanned_at));
 
 -- 掃描進度（key/value）
 CREATE TABLE IF NOT EXISTS crawl_state (
@@ -91,6 +93,8 @@ CREATE TABLE IF NOT EXISTS average_samples (
 );
 -- 待預處理的樣本（部分索引：只含 pending = 1，查詢只讀要處理的幾列）
 CREATE INDEX IF NOT EXISTS average_samples_pending ON average_samples (selected_at) WHERE pending = 1;
+-- 預處理完成時依場次與玩家更新 pending、報告不公開時依報告刪除（主鍵以 Boss×職業開頭，用不到）
+CREATE INDEX IF NOT EXISTS average_samples_pull ON average_samples (report, fight, actor);
 
 -- 各區間的候選人數（區間內的擊殺數）與最近一次選樣本的時間
 CREATE TABLE IF NOT EXISTS sample_tiers (

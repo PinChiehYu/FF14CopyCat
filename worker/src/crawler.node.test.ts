@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
-import { crawl, MAX_PAGE, pageOutcome, pruneGoneReports, percentile, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
+import { crawl, MAX_PAGE, NEVER_CHECK, pageOutcome, pruneGoneReports, percentile, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
 
 /** 以 Node 內建的 SQLite 實作 D1 的最小介面，套用與正式環境相同的 schema.sql。 */
 function memoryDb(): DbLike {
@@ -300,6 +300,8 @@ describe('pruneGoneReports', () => {
       // NEW 剛收錄，還不用確認
       await db.prepare('INSERT INTO scanned_reports (code, scanned_at) VALUES (?, ?)').bind(code, code === 'NEW' ? now : 0).run()
     }
+    // 沒有收錄擊殺的舊報告：不查 FFLogs，標為不必確認
+    await db.prepare('INSERT INTO scanned_reports (code, scanned_at) VALUES (?, 0)').bind('EMPTY').run()
     const checked: string[] = []
     const graphql: Graphql = async <T>(query: string, vars: Record<string, unknown>) => {
       if (query.includes('reports(')) return { rateLimitData: { pointsSpentThisHour: 10 }, reportData: { reports: { has_more_pages: false, data: [] } } } as T
@@ -314,6 +316,8 @@ describe('pruneGoneReports', () => {
     expect(checked.sort()).toEqual(['FLAKY', 'GONE', 'OK', 'PRIV'])
     const left = await db.prepare('SELECT report FROM parses ORDER BY report').all<{ report: string }>()
     expect(left.results.map((r) => r.report)).toEqual(['FLAKY', 'NEW', 'OK'])
+    const empty = await db.prepare("SELECT checked_at FROM scanned_reports WHERE code = 'EMPTY'").first<{ checked_at: number }>()
+    expect(empty?.checked_at).toBe(NEVER_CHECK)
 
     // 一小時後：暫時失敗的再確認一次，已確認的一天內不再確認
     checked.length = 0

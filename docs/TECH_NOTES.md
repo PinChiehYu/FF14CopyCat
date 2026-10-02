@@ -264,6 +264,10 @@
   - 未處理樣本：`average_samples.pending` 與部分索引 `average_samples_pending (selected_at) WHERE pending = 1`；排除的樣本：部分索引 `sample_data_excluded … WHERE deaths != 0`。
   - 換掉的樣本只刪該列的 `sample_data`（不再 `NOT EXISTS` 掃整個表）；`pruneGoneReports()` 的 `IN (SELECT DISTINCT report FROM parses)` 改為以主鍵查的 `EXISTS`。
   - 估計：每次定時工作約讀數千列（主要是 4 組的 `tcRankings()`），每天約 100 萬列以內。
+- 2026-10-02 以 `npx wrangler d1 insights ff14-copycat-rankings --timePeriod 1d --sortBy reads` 查到剩下的大宗（24 小時 271 萬列）：
+  - `pruneGoneReports()` 的選取每次掃整個 `scanned_reports`（8.4 千列，其中 3.5 千份有收錄擊殺）並排序，每次約 7.8 萬列、每天 171 萬列。改為運算式索引 `scanned_reports_check (COALESCE(checked_at, scanned_at))`，依確認順序只讀到期的列；沒有收錄擊殺的報告 `checked_at = Number.MAX_SAFE_INTEGER`（`NEVER_CHECK`：掃描時直接寫入，舊資料由 `pruneGoneReports()` 讀到時補上，每次最多 200 份、不查 FFLogs），之後永遠排不到。
+  - 預處理完成時 `UPDATE average_samples SET pending = 0 WHERE report AND fight AND actor` 每次掃整個表（主鍵以 Boss×職業開頭），每天 42 萬列。加索引 `average_samples_pull (report, fight, actor)`（報告不公開時依報告刪除也用到）。
+  - 部署時先套用 `schema.sql`（只新增兩個索引）。
 - 前端：D1 相關路由（`/tc-rankings`、`/pull-timelines`、`/average-samples`）的非參數錯誤回 **503 `{ error: 'Database unavailable' }`**（`handler.ts` 的 `fromDb()`）；`client.ts` 收到後標記資料庫不可用（`dbStatus`，本次瀏覽有效），「搜尋前輩日誌」停用並以「?」說明，只能貼參考日誌網址；摘要的 PR 顯示「—」。
 - 正式資料庫的遷移（額度重置後執行）：`ALTER TABLE average_samples ADD COLUMN pending INTEGER NOT NULL DEFAULT 1`、套用 `schema.sql`（新表與索引）、`UPDATE average_samples SET pending = 0 WHERE EXISTS (SELECT 1 FROM sample_data d WHERE …)`、以 `INSERT INTO pull_queue SELECT report, fight, MAX(report_start), 0 FROM parses p WHERE NOT EXISTS (SELECT 1 FROM pull_timelines t WHERE …) GROUP BY report, fight` 填入現有的未處理場次（一次約 4 萬列讀取），`crawl_state.samples_cursor` 舊的數字格式會被當成從頭開始。
 

@@ -197,6 +197,7 @@ async function scanPage(
   )
   const writes: StatementLike[] = []
   for (const report of reports.filter((r) => !scanned.has(r.code))) {
+    let stored = 0
     const kills = tcKills(report)
     if (kills.length > 0) {
       if (!budgetLeft()) {
@@ -220,6 +221,7 @@ async function scanPage(
         }
         for (const p of parses) {
           result.parses++
+          stored++
           writes.push(
             db
               .prepare(
@@ -230,7 +232,10 @@ async function scanPage(
         }
       }
     }
-    writes.push(db.prepare('INSERT OR REPLACE INTO scanned_reports (code, scanned_at) VALUES (?, ?)').bind(report.code, now))
+    // 沒有收錄任何擊殺的報告不需要確認是否仍公開（pruneGoneReports）
+    writes.push(
+      db.prepare('INSERT OR REPLACE INTO scanned_reports (code, scanned_at, checked_at) VALUES (?, ?, ?)').bind(report.code, now, stored > 0 ? null : NEVER_CHECK),
+    )
   }
   const outcome = pageOutcome(query, listed?.has_more_pages ?? false, reports)
   await db.batch([...writes, ...state(outcome)])
@@ -269,6 +274,10 @@ export function pageOutcome(query: { startTime: number; endTime: number; page: n
 // 與掃描放在同一次時，掃描用掉 40 多個，只剩 3 個給確認（其餘失敗被當成暫時的錯誤跳過）
 const CHECK_INTERVAL_MS = 24 * 3600_000
 export const CHECKS_PER_RUN = 40
+// 沒有收錄擊殺的報告的 checked_at：排在確認順序的最後，永遠不會輪到（不必每次都讀過一遍）。
+// 舊資料由 pruneGoneReports 讀到時補上（不需要請求），每次最多 SCANS_PER_RUN 份
+export const NEVER_CHECK = Number.MAX_SAFE_INTEGER
+const SCANS_PER_RUN = 200
 const CHECK_QUERY = /* GraphQL */ `query ($code: String!) { reportData { report(code: $code) { code } } }`
 // FFLogs 對設為私人與已刪除的報告回傳的錯誤；其他錯誤（額度、網路）視為暫時的，下次再確認
 export const GONE_REPORT = /permission to view this report|report does not exist/i
@@ -284,15 +293,18 @@ export interface PruneResult {
 /** 收錄後被設為私人或刪除的報告：前端打不開，從排名中移除（紀錄刪除，報告仍記在 scanned_reports，不會再收錄）。 */
 export async function pruneGoneReports(db: DbLike, graphql: Graphql, now = Date.now()): Promise<PruneResult> {
   const result: PruneResult = { checkedReports: 0, removedReports: 0, failedReports: 0 }
-  const { results } = await db
+  const { results: due } = await db
     .prepare(
-      // EXISTS 以主鍵查 parses，不掃整個 parses（D1 每日讀取額度）
-      `SELECT s.code FROM scanned_reports s WHERE EXISTS (SELECT 1 FROM parses p WHERE p.report = s.code)
-       AND COALESCE(s.checked_at, s.scanned_at) < ? ORDER BY COALESCE(s.checked_at, s.scanned_at) LIMIT ?`,
+      // 依索引 scanned_reports_check 的順序只讀到期的幾列（D1 每日讀取額度）；EXISTS 以主鍵查 parses
+      `SELECT s.code, EXISTS (SELECT 1 FROM parses p WHERE p.report = s.code) listed FROM scanned_reports s
+       WHERE COALESCE(s.checked_at, s.scanned_at) < ? ORDER BY COALESCE(s.checked_at, s.scanned_at) LIMIT ?`,
     )
-    .bind(now - CHECK_INTERVAL_MS, CHECKS_PER_RUN)
-    .all<{ code: string }>()
-  const writes: StatementLike[] = []
+    .bind(now - CHECK_INTERVAL_MS, SCANS_PER_RUN)
+    .all<{ code: string; listed: number }>()
+  const writes: StatementLike[] = due
+    .filter((r) => !r.listed)
+    .map((r) => db.prepare('UPDATE scanned_reports SET checked_at = ? WHERE code = ?').bind(NEVER_CHECK, r.code))
+  const results = due.filter((r) => r.listed).slice(0, CHECKS_PER_RUN)
   for (const { code } of results) {
     let gone: boolean
     try {
