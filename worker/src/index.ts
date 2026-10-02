@@ -11,8 +11,7 @@ declare const caches: { default: CacheLike }
 const CRAWL_CRON = '7-59/10 * * * *'
 // 確認報告是否仍公開：每 10 分鐘（5、15…55 分）
 const PRUNE_CRON = '5-59/10 * * * *'
-// 預處理已收錄擊殺的 Boss 施放與樣本（timelines.ts）：每分鐘，整 10 分鐘的那一次改為選樣本
-const TIMELINE_CRON = '* * * * *'
+// 預處理已收錄擊殺的 Boss 施放與樣本（timelines.ts）：'* * * * *' 每分鐘，整 10 分鐘的那一次改為選樣本（其餘觸發，見 scheduled()）
 // 掃描一次最多查幾份繁中服報告的傷害表（一份可能有多場擊殺，傷害表較大）
 const CRAWL_REPORTS_PER_RUN = 5
 
@@ -34,11 +33,12 @@ export default {
           console.log('prune', JSON.stringify(await pruneGoneReports(db, graphqlFor(env))))
           return
         }
-        if (controller.cron === TIMELINE_CRON) {
+        // 其餘觸發一律預處理：改排程後 Cloudflare 可能還會以舊的排程字串觸發一段時間（2026-10-02 實測超過 15 分鐘），
+        // 不依賴字串完全相同；工作量依分鐘決定，與觸發頻率無關
+        if (controller.cron !== CRAWL_CRON) {
           console.log('timelines', JSON.stringify(await processTimelines(db, graphqlFor(env), Date.now(), timelineWork(minute))))
           return
         }
-        if (controller.cron !== CRAWL_CRON) return
         // 還在補舊資料時，最近兩天與補舊資料輪流（17、37、57 分補舊資料）
         const backfillOnly = Math.floor(minute / 10) % 2 === 1
         for (const zone of CRAWL_ZONES) {
