@@ -1,12 +1,10 @@
-import { Converter } from 'opencc-js/cn2t'
+import { toTraditional } from './traditional'
 
 // FFLogs 的戰鬥名稱是 Boss 的英文名稱；NPC 的 gameID 是 BNpcBase，與名稱表（BNpcName）沒有對應，
 // 因此以英文名稱搜尋 BNpcName，再取該列的繁中名稱
 const XIVAPI = 'https://xivapi-v2.xivcdn.com/api'
 // 單一請求的逾時；逾時的名稱視為查不到，不拖住整個回應
 const TIMEOUT_MS = 8000
-
-const toTraditional = Converter({ from: 'cn', to: 'tw' })
 
 function usable(name: unknown): name is string {
   return typeof name === 'string' && name.trim() !== '' && !name.startsWith('_rsv_')
@@ -44,7 +42,7 @@ async function lookup(name: string): Promise<NpcName | null> {
   const tc = await rowName(row, 'tc')
   if (tc) return { name: tc, source: 'tc' }
   const chs = await rowName(row, 'chs')
-  return chs ? { name: toTraditional(chs), source: 'chs' } : null
+  return chs ? { name: await toTraditional(chs), source: 'chs' } : null
 }
 
 /**

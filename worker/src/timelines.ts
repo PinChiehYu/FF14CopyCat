@@ -6,7 +6,7 @@ import { encodeApplications, encodeCasts, encodeWindows, type EncodedCast } from
 import { enemyDebuffApplications, enemyDebuffWindows, selfBuffWindows } from '../../src/analysis/buffs'
 import { patchAt } from '../../src/jobs/patch'
 import type { FFLogsEvent, Fight } from '../../src/fflogs/types'
-import { CURRENT_ENCOUNTERS, GONE_REPORT, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler'
+import { CURRENT_ENCOUNTERS, GONE_REPORT, tcRankingsAbove, type DbLike, type Graphql, type StatementLike } from './crawler'
 import { AUTO_ATTACKS_TAKEN_QUERY, CRON_EVENTS_QUERY } from './queries'
 
 // Workers 免費方案每次執行最多 50 個對外請求（含權杖與點數查詢），預留幾個
@@ -219,7 +219,7 @@ export async function refreshSamples(db: DbLike, now: number, combosPerRun = COM
     ),
   )
   for (const { encounter, difficulty, job } of combos) {
-    const { rankings } = await tcRankings(db, encounter, difficulty, job, TIERS.mid[0] - PR_BUFFER, 100, Number.MAX_SAFE_INTEGER)
+    const rankings = await tcRankingsAbove(db, encounter, difficulty, job, TIERS.mid[0] - PR_BUFFER)
     const scope = [encounter, difficulty, job]
     const inCombo = 'p.encounter = ? AND p.difficulty = ? AND p.job = ?'
     const slots = new Map(
@@ -324,8 +324,8 @@ export interface TimelineResult {
   /** 處理的樣本（全部施放、效果與死亡） */
   samples: number
   failed: number
-  /** 這次用掉的 FFLogs 點數（前後兩次查詢的差；同一小時內其他請求也會算進去） */
-  points?: number
+  /** 開始時這小時已用掉的 FFLogs 點數（所有訪客與定時工作合計）。不再於結束時重查一次算這次的用量：每個對外請求都佔免費方案有限的 CPU */
+  hourPoints?: number
 }
 
 interface PullRow {
@@ -442,7 +442,8 @@ export async function processTimelines(
   result.selected = work.combos > 0 ? await refreshSamples(db, now, work.combos) : 0
   if (work.samples + work.pulls === 0) return result
   const points = await graphql<{ rateLimitData?: { pointsSpentThisHour: number } }>(POINTS_QUERY, {})
-  if ((points?.rateLimitData?.pointsSpentThisHour ?? 0) > POINTS_CEILING) {
+  result.hourPoints = points?.rateLimitData?.pointsSpentThisHour
+  if ((result.hourPoints ?? 0) > POINTS_CEILING) {
     result.skipped = 'points'
     return result
   }
@@ -525,13 +526,6 @@ export async function processTimelines(
     }
   }
   if (writes.length > 0) await db.batch(writes)
-  // 這次用掉的點數（記錄在 log，調整頻率用）
-  if (result.pulls + result.samples + result.failed > 0) {
-    const after = await graphql<{ rateLimitData?: { pointsSpentThisHour: number } }>(POINTS_QUERY, {}).catch(() => undefined)
-    const before = points?.rateLimitData?.pointsSpentThisHour
-    const spent = after?.rateLimitData?.pointsSpentThisHour
-    if (before !== undefined && spent !== undefined && spent >= before) result.points = spent - before
-  }
   return result
 }
 

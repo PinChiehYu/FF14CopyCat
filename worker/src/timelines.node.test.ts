@@ -255,7 +255,7 @@ describe('processTimelines', () => {
       "type in ('cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death')",
     ])
     // 選樣本：武士 OLD/3/2 在 top；騎士還沒判斷 MT／ST，這次不選
-    expect(result).toEqual({ selected: 2, pulls: 2, samples: 1, failed: 0, points: 0 })
+    expect(result).toEqual({ selected: 2, pulls: 2, samples: 1, failed: 0, hourPoints: 100 })
     // 樣本先處理；新場次中含樣本的（OLD）優先於較新的報告（NEW）
     expect(calls).toEqual(['All OLD/2', 'Enemies OLD', 'Enemies NEW', 'auto NEW'])
     const sample = await db.prepare('SELECT casts, buffs, deaths FROM sample_data').first<{ casts: string; buffs: string; deaths: number }>()
@@ -317,7 +317,7 @@ describe('processTimelines', () => {
     const db = memoryDb()
     await addParse(db, 'AAA', 3, 1, 'Samurai')
     const graphql: Graphql = async <T>() => ({ rateLimitData: { pointsSpentThisHour: 3000 } }) as T
-    expect(await processTimelines(db, graphql, NOW, { combos: 0, samples: 2, pulls: 3 })).toEqual({ skipped: 'points', selected: 0, pulls: 0, samples: 0, failed: 0 })
+    expect(await processTimelines(db, graphql, NOW, { combos: 0, samples: 2, pulls: 3 })).toEqual({ skipped: 'points', selected: 0, pulls: 0, samples: 0, failed: 0, hourPoints: 3000 })
   })
 
   it('does not store a sample when the query returns no casts of the player', async () => {

@@ -267,7 +267,11 @@
   - 選樣本一次 14.6 ms（與正式環境 16 ms 一致）：我們的 JS（`refreshSamples`、`selectTier`、`tcRankings`、`patchAt`）合計約 4 ms，**其餘約 10 ms 是 D1 用戶端把查詢結果轉成物件**（`cloudflare-internal:d1-api` 的結果轉換、內部 `fetch`、`toJson`）。單一查詢：每次 D1 呼叫固定約 0.6 ms；讀整組擊殺（847 筆 × 9 欄，`tcRankings`）約 4 ms、改 `.raw()` 3.4 ms；只讀每位玩家最佳 rDPS（222 筆 × 1 欄）1.6 ms；該組舊樣本 78 筆 1.2 ms。也就是成本幾乎與「回傳的格數」成正比，加上每次呼叫的固定成本。
   - 預處理一次（1 位樣本＋2 場）約 4 ms：事件解析與處理約 1 ms，其餘是 D1 呼叫與 Response 物件。正式環境 11～16 ms，多出的部分應是對 FFLogs 的真實請求（每次執行 5 個：點數、樣本事件、2 場 Boss 施放、結束時再查一次點數）的開銷，本機無法量。
   - 模組載入：`abilityNames.ts`、`npcNames.ts` 在載入時各建立一個 opencc 轉換器，Node 量到 require 38 ms＋每個轉換器 40～50 ms（部署輸出的 Worker Startup Time 196 ms）；正式環境的定時工作 CPU 沒有出現這個量級，推斷冷啟動不計入每次執行的 CPU。
-- 可再降低的方向（資料不變）：選樣本改為先讀每位玩家最佳 rDPS 算 PR 門檻、只讀門檻以上的擊殺並用 `.raw()`；合併或減少 D1 呼叫（游標、排除名單）；預處理拿掉結束時的點數查詢；opencc 轉換器改為用到時才建立（改善冷啟動）。
+- 已做（2026-10-03，資料不變）：
+  - 選樣本改用 `tcRankingsAbove()`：先讀每位玩家的最好一場（`GROUP BY name, server`）算出 PR 門檻，只讀門檻以上的擊殺；結果與 `tcRankings()` 完全相同（隨機資料與真實的 847 筆擊殺比對），回傳的列從 847 降到 557（總格數約少一半）。本機 A/B（同一資料庫、交替各 150 次）約 9.0 → 8.0 ms，只省約 1 ms：多一次 D1 呼叫的固定成本抵掉一部分。D1 讀取列數反而多約 40%（門檻查詢也要讀整組），每天約多 5 萬列，仍在額度內。
+  - 預處理不再於結束時重查點數（每次少一個對外請求）；log 改記開始時這小時已用的點數 `hourPoints`。
+  - opencc 轉換器改為共用的 `worker/src/traditional.ts`，以動態 import 在第一次需要簡轉繁時才初始化（打包後為延遲執行的 `init_cn2t()`），兩個模組原本各建一個。
+  - 未做：以 `batch` 合併唯讀的 D1 查詢（`DbLike.batch` 不回傳結果，測試替身也不支援；每次只省約 0.6 ms）。
 
 ### D1 免費方案的額度（2026-10-01 超量）
 - 上限：**每天讀 500 萬列、寫 10 萬列**（UTC 0 點重置）；超過後所有讀取被拒（`code 7500`，「exceeded D1's free tier daily row read limit」），排名、搜尋前輩日誌與預處理都停擺到重置。以 `npx wrangler d1 info ff14-copycat-rankings` 看 `rows_read_24h`／`rows_written_24h`。

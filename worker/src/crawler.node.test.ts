@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
-import { crawl, MAX_PAGE, NEVER_CHECK, pageOutcome, pruneGoneReports, percentile, tcRankings, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
+import { crawl, MAX_PAGE, NEVER_CHECK, pageOutcome, pruneGoneReports, percentile, tcRankings, tcRankingsAbove, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
 
 /** 以 Node 內建的 SQLite 實作 D1 的最小介面，套用與正式環境相同的 schema.sql。 */
 function memoryDb(): DbLike {
@@ -215,6 +215,28 @@ describe('crawl', () => {
 })
 
 describe('tcRankings', () => {
+  it('reads only the kills that can reach the PR threshold, with identical results (sample selection)', async () => {
+    const db = memoryDb()
+    // 固定種子的隨機資料：同一人多場、rDPS 相同、重複上傳（戰鬥的實際開始時間相同）
+    let seed = 7
+    const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31)
+    for (let i = 0; i < 400; i++) {
+      const player = Math.floor(rand() * 120)
+      const rdps = Math.round(20_000 + rand() * 15_000)
+      const start = rand() < 0.05 ? 7_000_000 + player : i * 3_600_000
+      await db
+        .prepare(
+          "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, 'Samurai', ?, '泰坦', ?, 0, 600000, ?)",
+        )
+        .bind(`R${i}`, `p${player}`, rdps, start)
+        .run()
+    }
+    for (const minPr of [0, 1, 47, 50, 75, 95, 100]) {
+      const { rankings } = await tcRankings(db, 100, 101, 'Samurai', minPr, 100, Number.MAX_SAFE_INTEGER)
+      expect(await tcRankingsAbove(db, 100, 101, 'Samurai', minPr), String(minPr)).toEqual(rankings)
+    }
+  })
+
   it('gives every kill its own rank and PR against the best rDPS of other characters',async () => {
     const db = memoryDb()
     // 戰鬥的實際開始時間＝報告開始＋戰鬥在報告中的開始；預設每份報告不同

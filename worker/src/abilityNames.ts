@@ -1,4 +1,4 @@
-import { Converter } from 'opencc-js/cn2t'
+import { toTraditional } from './traditional'
 
 // Boilmaster（XIVAPI v2 相容）鏡像：官方 XIVAPI 只有國際版語言，這個鏡像另有簡中（chs）與繁中（tc）
 const XIVAPI_URL = 'https://xivapi-v2.xivcdn.com/api/sheet'
@@ -8,9 +8,6 @@ const BATCH_SIZE = 100
 const ITEM_OFFSET = 0x2000000
 const HQ_OFFSET = 1_000_000
 const MAX_ITEM_ID = 2 * HQ_OFFSET
-
-// 簡中轉台灣正體（字元與異體字，不改用詞）
-const toTraditional = Converter({ from: 'cn', to: 'tw' })
 
 // FFLogs 以「1,000,000 + 狀態 ID」表示效果（Buff／Debuff）
 const STATUS_OFFSET = 1_000_000
@@ -59,7 +56,7 @@ async function sheetNames(sheet: Sheet, rows: number[]): Promise<Map<number, Abi
   for (const row of rows) {
     const official = tc.get(row)
     if (official) result.set(row, { name: official, source: 'tc' })
-    else if (chs.has(row)) result.set(row, { name: toTraditional(chs.get(row)!), source: 'chs' })
+    else if (chs.has(row)) result.set(row, { name: await toTraditional(chs.get(row)!), source: 'chs' })
   }
   return result
 }

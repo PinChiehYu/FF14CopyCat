@@ -458,6 +458,108 @@ export async function crawl(db: DbLike, query: Graphql, now = Date.now(), zoneID
   return result
 }
 
+interface ParseRow {
+  report: string
+  fight: number
+  actor: number
+  name: string
+  server: string
+  rdps: number
+  fight_start: number
+  fight_end: number
+  report_start: number
+}
+
+const playerOf = (r: { name: string; server: string }) => `${r.name}@${r.server}`
+
+/** 一個 Boss×職業的擊殺，依 rDPS 由高到低；minRdps 時只讀 rDPS 不低於它的 */
+async function parseRows(db: DbLike, encounter: number, difficulty: number, job: string, minRdps?: number): Promise<ParseRow[]> {
+  const above = minRdps === undefined ? '' : ' AND rdps >= ?'
+  const { results } = await db
+    .prepare(
+      `SELECT report, fight, actor, name, server, rdps, fight_start, fight_end, report_start
+       FROM parses WHERE encounter = ? AND difficulty = ? AND job = ?${above}
+       ORDER BY rdps DESC, report_start, report`,
+    )
+    .bind(...[encounter, difficulty, job, ...(minRdps === undefined ? [] : [minRdps])])
+    .all<ParseRow>()
+  return results
+}
+
+/** 高於 v 的「最好一場」有幾個（bestList 由高到低，二分搜尋） */
+function aboveIn(bestList: number[]): (v: number) => number {
+  return (v) => {
+    let lo = 0
+    let hi = bestList.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (bestList[mid] > v) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
+}
+
+/**
+ * 每一場擊殺各自的 PR：勝過幾位其他玩家的最好一場（不和自己的最好一場比較）。
+ * 同一人較差的一場有自己的 PR，PR 範圍內的每一場都列出，找得到隨機機制與我相同的機率較高。
+ * 同一場戰鬥被不同人重複上傳只留一筆：FFLogs 沒有跨報告的戰鬥識別碼，以戰鬥的實際開始時間（報告開始＋戰鬥在報告中的開始）判斷，
+ * 同一場在不同報告中完全相同。
+ * 名次為 rows 中依 rDPS 的順位（PR 相同的場次 rDPS 仍不同，名次不重複）。
+ */
+function rankParses(rows: ParseRow[], bests: Map<string, number>, bestList: number[], minPr: number, maxPr: number, limit: number): RankedParse[] {
+  const above = aboveIn(bestList)
+  const seen = new Set<string>()
+  const rankings: RankedParse[] = []
+  let rank = 0
+  for (const r of rows) {
+    const duplicate = `${playerOf(r)}|${r.report_start + r.fight_start}`
+    if (seen.has(duplicate)) continue
+    seen.add(duplicate)
+    rank++
+    const pr = percentile(1 + above(r.rdps) - (bests.get(playerOf(r))! > r.rdps ? 1 : 0), bestList.length)
+    if (pr < minPr || pr > maxPr) continue
+    rankings.push({
+      rank,
+      pr,
+      report: r.report,
+      fight: r.fight,
+      actor: r.actor,
+      name: r.name,
+      server: r.server,
+      rdps: r.rdps,
+      fightStart: r.fight_start,
+      fightEnd: r.fight_end,
+      reportStart: r.report_start,
+    })
+    if (rankings.length >= limit) break
+  }
+  return rankings
+}
+
+/**
+ * PR ≥ minPr 的所有擊殺（選樣本用），與 tcRankings(…, minPr, 100, ∞) 的 rankings 完全相同（門檻以上的擊殺是完整排序的前段，名次也相同）。
+ * Workers 免費方案每次執行只有 10 ms CPU，而 D1 回傳的每一格都要在 Worker 中轉成物件（整組擊殺約 4 ms）：
+ * 先只讀每位玩家的最好一場算出門檻——第 k 名以後的 PR 都低於 minPr 時，rDPS 低於第 k 好的「最好一場」的擊殺
+ * 勝過的人數不可能讓 PR 達到 minPr——再只讀門檻以上的擊殺。
+ */
+export async function tcRankingsAbove(db: DbLike, encounter: number, difficulty: number, job: string, minPr: number): Promise<RankedParse[]> {
+  const { results: bestRows } = await db
+    .prepare(
+      `SELECT name, server, MAX(rdps) AS best FROM parses WHERE encounter = ? AND difficulty = ? AND job = ?
+       GROUP BY name, server ORDER BY best DESC`,
+    )
+    .bind(encounter, difficulty, job)
+    .all<{ name: string; server: string; best: number }>()
+  const bests = new Map(bestRows.map((b) => [playerOf(b), b.best]))
+  const bestList = bestRows.map((b) => b.best)
+  // PR 仍 ≥ minPr 的最大名次（名次 = 1 + 勝過自己的人數，扣掉自己的最好一場時最多少 1）
+  let maxRank = 0
+  while (maxRank < bestList.length && percentile(maxRank + 1, bestList.length) >= minPr) maxRank++
+  const rows = await parseRows(db, encounter, difficulty, job, maxRank < bestList.length ? bestList[maxRank] : undefined)
+  return rankParses(rows, bests, bestList, minPr, 100, Number.MAX_SAFE_INTEGER)
+}
+
 export interface RankedParse {
   /** 這一場在所有場次（重複上傳只算一次）中依 rDPS 的順位，每場不同 */
   rank: number
@@ -503,71 +605,14 @@ export async function tcRankings(
   limit = 100,
   position?: { rdps: number; player?: string },
 ): Promise<{ count: number; rankings: RankedParse[]; position?: RankPosition }> {
-  const { results } = await db
-    .prepare(
-      `SELECT report, fight, actor, name, server, rdps, fight_start, fight_end, report_start
-       FROM parses WHERE encounter = ? AND difficulty = ? AND job = ?
-       ORDER BY rdps DESC, report_start, report`,
-    )
-    .bind(encounter, difficulty, job)
-    .all<{
-      report: string
-      fight: number
-      actor: number
-      name: string
-      server: string
-      rdps: number
-      fight_start: number
-      fight_end: number
-      report_start: number
-    }>()
+  const results = await parseRows(db, encounter, difficulty, job)
   // 每位玩家最好的一場（依 rDPS 由高到低，第一次出現即最好的一場），由高到低
-  const player = (r: { name: string; server: string }) => `${r.name}@${r.server}`
   const bests = new Map<string, number>()
-  for (const r of results) if (!bests.has(player(r))) bests.set(player(r), r.rdps)
+  for (const r of results) if (!bests.has(playerOf(r))) bests.set(playerOf(r), r.rdps)
   const bestList = [...bests.values()]
   const count = bestList.length
-  // 高於 v 的「最好一場」有幾個（bestList 由高到低，二分搜尋）
-  const above = (v: number) => {
-    let lo = 0
-    let hi = bestList.length
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1
-      if (bestList[mid] > v) lo = mid + 1
-      else hi = mid
-    }
-    return lo
-  }
-  // 每一場擊殺各自的 PR：勝過幾位其他玩家的最好一場（不和自己的最好一場比較）。
-  // 同一人較差的一場有自己的 PR，PR 範圍內的每一場都列出，找得到隨機機制與我相同的機率較高。
-  // 同一場戰鬥被不同人重複上傳只留一筆：FFLogs 沒有跨報告的戰鬥識別碼，以戰鬥的實際開始時間（報告開始＋戰鬥在報告中的開始）判斷，
-  // 同一場在不同報告中完全相同
-  // 名次為所有場次依 rDPS 的順位（PR 相同的場次 rDPS 仍不同，名次不重複）
-  const seen = new Set<string>()
-  const rankings: RankedParse[] = []
-  let rank = 0
-  for (const r of results) {
-    const duplicate = `${player(r)}|${r.report_start + r.fight_start}`
-    if (seen.has(duplicate)) continue
-    seen.add(duplicate)
-    rank++
-    const pr = percentile(1 + above(r.rdps) - (bests.get(player(r))! > r.rdps ? 1 : 0), count)
-    if (pr < minPr || pr > maxPr) continue
-    rankings.push({
-      rank,
-      pr,
-      report: r.report,
-      fight: r.fight,
-      actor: r.actor,
-      name: r.name,
-      server: r.server,
-      rdps: r.rdps,
-      fightStart: r.fight_start,
-      fightEnd: r.fight_end,
-      reportStart: r.report_start,
-    })
-    if (rankings.length >= limit) break
-  }
+  const above = aboveIn(bestList)
+  const rankings = rankParses(results, bests, bestList, minPr, maxPr, limit)
   if (!position) return { count, rankings }
   // 指定的 rDPS：和其他玩家各自最好的一場比較（不在資料庫中的玩家也算進總人數）
   const self = position.player !== undefined && bests.has(position.player) ? position.player : undefined
@@ -577,7 +622,7 @@ export async function tcRankings(
   let better = 0
   for (const r of results) {
     if (r.rdps <= position.rdps) break
-    const duplicate = `${player(r)}|${r.report_start + r.fight_start}`
+    const duplicate = `${playerOf(r)}|${r.report_start + r.fight_start}`
     if (counted.has(duplicate)) continue
     counted.add(duplicate)
     better++
