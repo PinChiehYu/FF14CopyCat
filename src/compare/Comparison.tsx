@@ -110,7 +110,7 @@ function useSide(selection: Selection | null) {
 // 普通攻擊（Action 7，繁中「攻擊」）
 const AUTO_ATTACK = 7
 // 冷卻技中不是輸出技能的分類（見 jobs/roleActions.ts）
-const NON_OFFENSIVE_CATEGORIES = new Set(['mitigation', 'partyMitigation', 'movement', 'utility'])
+const NON_OFFENSIVE_CATEGORIES = new Set(['mitigation', 'partyMitigation', 'movement', 'utility', 'heal'])
 
 /** 查詢兩邊出現過的技能的繁中名稱；查詢失敗時沿用 FFLogs 的英文名稱。 */
 function useAbilityNames(mine: SideData, reference: SideData | null): Map<number, AbilityName> {
@@ -691,6 +691,7 @@ function Loaded({
       abilityName,
       englishName,
       isGcd: job?.isGcd,
+      isHeal: (id) => !!mine.healOnly?.includes(id) || !!reference.healOnly?.includes(id),
       category,
       mineToRef: alignment.mineToRef,
       firstUse: (id) => mineInRange.playerCasts.find((c) => c.abilityId === id)?.t,

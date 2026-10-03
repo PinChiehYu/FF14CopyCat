@@ -10,6 +10,7 @@ import {
   deathAt,
   untargetableSpans,
   deaths,
+  healOnlyAbilities,
   incompatibility,
   playerCasts,
   unifyPotions,
@@ -152,6 +153,35 @@ function selection(encounterID: number, subType: string): Selection {
   const player = { id: 1, name: 'p', subType } as Actor
   return { report: {} as Report, fight, player }
 }
+
+describe('healOnlyAbilities', () => {
+  it('finds abilities that only heal, also when the heal is recorded on the effect of the same name', () => {
+    const names: Record<number, string> = {
+      189: 'Lustrate',
+      7434: 'Excogitation',
+      1001220: 'Excogitation',
+      167: 'Energy Drain',
+      7436: 'Chain Stratagem',
+    }
+    const ev = (type: string, abilityGameID: number, sourceID = 6) => ({ timestamp: 0, type, sourceID, abilityGameID }) as FFLogsEvent
+    const events = [
+      ev('cast', 189),
+      ev('heal', 189),
+      // 治療記在同名效果上
+      ev('cast', 7434),
+      ev('heal', 1001220),
+      // 有傷害也有治療：不算
+      ev('cast', 167),
+      ev('damage', 167),
+      ev('heal', 167),
+      // 不治療的團隊 Buff
+      ev('cast', 7436),
+      // 別人的治療不算
+      ev('heal', 7436, 9),
+    ]
+    expect(healOnlyAbilities(events, 6, (id) => names[id]).sort((a, b) => a - b)).toEqual([189, 7434])
+  })
+})
 
 describe('deaths', () => {
   it('finds deaths with the killing blow and the time the player acts again', () => {

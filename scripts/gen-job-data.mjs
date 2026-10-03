@@ -1,11 +1,11 @@
-// 從遊戲資料（Boilmaster 鏡像的 Action 表）產生 src/jobs/generated.ts：
+// 從遊戲資料（官方 XIVAPI v2 的 Action 表，英文名稱；Boilmaster 鏡像 xivcdn 自 2026-10 起只提供 tc／chs）產生 src/jobs/generated.ts：
 // - 所有 GCD 技能 ID：CooldownGroup 或 AdditionalCooldownGroup 為 58（公共冷卻）
 // - 各職業減傷／移動／不紀錄／輔助技能的 ID：以下方的英文名稱查表，找不到就報錯（避免憑記憶寫錯 ID）
 // 用法：node scripts/gen-job-data.mjs   （遊戲改版新增技能後重新執行）
 
 import { writeFileSync } from 'node:fs'
 
-const API = 'https://xivapi-v2.xivcdn.com/api/sheet/Action'
+const API = 'https://v2.xivapi.com/api/sheet/Action'
 const FIELDS = 'Name,CooldownGroup,AdditionalCooldownGroup,IsPvP,IsPlayerAction,ClassJobLevel,ClassJob.Abbreviation,ActionCategory,Cast100ms,Recast100ms'
 const GCD_GROUP = 58
 // ActionCategory 的極限技（9 與 15 都叫 Limit Break）
@@ -38,7 +38,8 @@ const JOBS = {
 
 // 職業專屬技能分類（7.x 英文名稱）。職能技能（Rampart、Sprint 等）在 src/jobs/roleActions.ts。
 // ignored：不需紀錄；mitigation：自身減傷（只保護自己）；partyMitigation：團隊減傷（可給隊友或降低敵人傷害：目標減傷、支援減傷）；
-// movement：移動；utility：其他輔助
+// movement：移動；utility：其他輔助；heal：不影響輸出的治療能力技中，從日誌判斷不出來的（治療記在不同名稱的效果上等；
+// 其餘治療技能由比較時依日誌判斷，見 src/compare/load.ts 的 healOnlyAbilities）
 const CATEGORIES = {
   Paladin: {
     ignored: ['Iron Will', 'Release Iron Will'],
@@ -64,6 +65,8 @@ const CATEGORIES = {
   WhiteMage: {
     partyMitigation: ['Temperance', 'Divine Caress', 'Aquaveil', 'Divine Benison'],
     movement: ['Aetherial Shift'],
+    // 治療記在「告解」（Confession）上，名稱與技能不同
+    heal: ['Plenary Indulgence'],
   },
   Scholar: {
     partyMitigation: ['Sacred Soil', 'Expedient', 'Fey Illumination', 'Deployment Tactics'],
@@ -210,6 +213,7 @@ export interface GeneratedCategories {
   partyMitigation?: ReadonlySet<number>
   movement?: ReadonlySet<number>
   utility?: ReadonlySet<number>
+  heal?: ReadonlySet<number>
 }
 
 /** 各職業（FFLogs subType）的專屬技能分類。 */

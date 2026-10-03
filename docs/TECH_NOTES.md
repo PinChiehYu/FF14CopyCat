@@ -166,13 +166,14 @@
 ## 職業資料（`src/jobs/`）
 
 - **`scripts/gen-job-data.mjs` → `src/jobs/generated.ts`**（不要手改；遊戲改版後重新執行，約 100 個請求）：
+  - 資料來源為官方 XIVAPI `https://v2.xivapi.com/api/sheet/Action`（`language=en`）；2026-10-04 起 Boilmaster 鏡像 `xivapi-v2.xivcdn.com` 對 `language=en` 回 400「unsupported language」（只剩 tc／chs），改用官方。
   - 分頁讀取整張 Action 表（`limit=500`、`after`，約 51,500 列）。
   - **GCD**：`CooldownGroup` 或 `AdditionalCooldownGroup` 為 58 的非 PvP 玩家技能（`IsPlayerAction` 或 `ClassJobLevel > 0`），共 735 個 ID，全職業共用。
-  - **職業專屬分類**：腳本中以 7.x 英文名稱列出各職業的 ignored／mitigation／movement／utility，依名稱在該職業與基本職業（例如 PLD 與 GLA）的技能中查 ID，找不到再找沒有 ClassJob 的變形技能；**名稱找不到就報錯**。
+  - **職業專屬分類**：腳本中以 7.x 英文名稱列出各職業的 ignored／mitigation／movement／utility／heal，依名稱在該職業與基本職業（例如 PLD 與 GLA）的技能中查 ID，找不到再找沒有 ClassJob 的變形技能；**名稱找不到就報錯**。
 - `jobs/index.ts`：依 generated.ts 建立 21 個職業的 `JobModule`（`isGcd` 共用 `GCD_IDS`）。之後的詳細分析可在 `jobs/` 另建檔案擴充。
-- `jobs/roleActions.ts`：職能技能分類（ignored：Provoke、Shirk、各坦姿與解除；mitigation：Rampart、Reprisal、Feint、Addle；movement：Sprint、Peloton；utility：其餘）與 `abilityCategory(id, job)`。
+- `jobs/roleActions.ts`：職能技能分類（ignored：Provoke、Shirk、各坦姿與解除；mitigation：Rampart、Reprisal、Feint、Addle；movement：Sprint、Peloton；utility：其餘；heal：補師的 Swiftcast）與 `abilityCategory(id, job)`。heal 分類只放日誌判斷不出來的治療能力技（白魔的 Plenary Indulgence：治療記在名稱不同的 Confession 效果上；補師的即刻詠唱多用在復活與移動）；其餘治療能力技由 `compare/load.ts` 的 `healOnlyAbilities()` 依日誌判斷（施放名稱在自己的 heal 事件中出現、不在 damage 事件中出現，以名稱比對才能涵蓋治療記在同名效果上的技能，例如深謀遠慮之策）。
 - `jobs/names.ts`：`jobName(subType)`，官方繁中職業名稱（ClassJob 表 `language=tc`）。
-- **驗證方法**：以實際日誌計算以 `begincast` 為起點的相鄰 GCD 間隔，分布應集中在該職業 GCD 附近；短間隔需確認是否為較短的 GCD（舞步、結印等）。技能 ID 以 `https://xivapi-v2.xivcdn.com/api/sheet/Action?rows=<ids>&fields=Name,ClassJob.Abbreviation&language=en` 查證，憑記憶寫入的 ID 都應先查證。
+- **驗證方法**：以實際日誌計算以 `begincast` 為起點的相鄰 GCD 間隔，分布應集中在該職業 GCD 附近；短間隔需確認是否為較短的 GCD（舞步、結印等）。技能 ID 以 `https://xivapi-v2.xivcdn.com/api/sheet/Action?rows=<ids>&fields=Name,ClassJob.Abbreviation&language=en`（官方 `v2.xivapi.com`）查證，憑記憶寫入的 ID 都應先查證。
 
 ## 技能繁中名稱（`worker/src/abilityNames.ts`）
 
@@ -580,6 +581,10 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-10-04 治療能力技不列為優先
+- 變更：`healOnlyAbilities()` 依日誌找出只治療的能力技（`SideData.healOnly`），`advice.ts` 對這些技能與 heal 分類的技能只在少用 ≥ 2 次時給「建議」（排除 GCD 與冷卻技規則已追蹤的技能）；新增 `AbilityCategory` 'heal'，`gen-job-data.mjs` 改用官方 XIVAPI。
+- 原因：學者的生命回生法被列為優先。檢查其他補師時，深謀遠慮之策（治療記在同名效果上）改用名稱比對；全大赦（治療記在告解上）與補師的即刻詠唱從日誌判斷不出來，改由職業資料標記。
 
 ### 2026-10-03 傷害數字不可信的場次
 - 發現：前輩平均樣本中 Kromi（吟遊詩人，M5S `yYd9VG6DNLx3PChg` #70）rDPS 50,754。該場整隊都偏高（毒蛇 48,754、忍者 45,494），Kromi 的原始 DPS 也是 47,229；與一般吟遊詩人（糖凝 `bKacN3xAvJ8HQRLq` #15）比，施放頻率相同（每分鐘約 64 次），但普通攻擊單下中位數 39,599 對 6,394、爆發射擊 50,815 對 18,648，DoT 只跳 14 次（一般約 180 次）；Boss 最大 HP 相同（105,549,682），這場還打得較久（602 對 548 秒）。全隊總傷害 165.5M ÷ Boss 最大 HP＝1.57（一般擊殺 1.00）：日誌的傷害數字錯誤（紀錄或合併上傳的問題）。

@@ -60,6 +60,12 @@ describe('abilityCategory', () => {
     expect(abilityCategory(7531)).toBe('mitigation') // 沒有職業模組時也適用
   })
 
+  it('classifies heals that do not affect damage', () => {
+    expect(abilityCategory(7561, job('Astrologian'))).toBe('heal') // 補師的即刻詠唱
+    expect(abilityCategory(7561, job('RedMage'))).toBe('normal') // 法系的即刻詠唱可能用在輸出
+    expect(abilityCategory(7433, job('WhiteMage'))).toBe('heal') // Plenary Indulgence
+  })
+
   it('classifies job mitigation and movement from generated data', () => {
     expect(abilityCategory(36920, job('Paladin'))).toBe('mitigation') // Guardian
     expect(abilityCategory(7385, job('Paladin'))).toBe('partyMitigation') // Passage of Arms

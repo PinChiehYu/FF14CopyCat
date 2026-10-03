@@ -38,7 +38,7 @@ npm run worker:dev                   # 本機 Worker 代理 http://localhost:878
 npm run worker:deploy                # 部署 Worker 到 Cloudflare（需先 npx wrangler login）
 npx wrangler deploy -c worker/wrangler.toml --dry-run --outdir <tmp>   # 不登入即可驗證 Worker 設定
 node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的冒煙測試（CI 部署後自動執行）
-node scripts/gen-job-data.mjs        # 從遊戲資料重新產生 src/jobs/generated.ts（GCD 集合、各職業技能分類；約 100 個請求）
+node scripts/gen-job-data.mjs        # 從遊戲資料（官方 XIVAPI v2.xivapi.com）重新產生 src/jobs/generated.ts（GCD 集合、各職業技能分類；約 100 個請求）
 node scripts/random-logs.mjs         # 從繁中服排名隨機挑同 Boss、同職業的兩筆擊殺（參考的 rDPS 比我的高），印出比較與只有我的日誌的正式站網址（隨機測試用）
 # scripts/ui-audit.js：在瀏覽器面板以 javascript_tool 執行，回傳版面檢查 JSON（橫向捲動、超出畫面、裁切、「?」大小、區塊標題）；桌面與 375 px 各跑一次比對
 node scripts/gen-mechanics.mjs       # 從 cactbot 零式時間軸重新產生 src/analysis/mechanicData.generated.ts（各 Boss 的主要機制；換季時更新腳本的 ENCOUNTERS）
@@ -84,7 +84,7 @@ node scripts/gen-mechanics.mjs       # 從 cactbot 零式時間軸重新產生 s
 
 - 演算法實作、實測數據與調整經過見 [docs/TECH_NOTES.md](docs/TECH_NOTES.md)，使用者看到的判定規則見 [docs/DESIGN.md](docs/DESIGN.md)；調整門檻（`maxOccurrences`、`dedupeMs` 等）前先用實際日誌驗證，並把結果記到 TECH_NOTES.md，規則有變時同步更新 DESIGN.md。
 - **遊戲版本**：`jobs/patch.ts` 依戰鬥日期對照繁中服的版本日期判斷版本（只處理繁中服日誌；FFLogs 報告沒有版本資訊），並對應到 xivanalysis 規則所用的**國際服版本**（繁中服 7.0～7.15 ＝ 國際服 7.2、繁中服 7.2 起 ＝ 國際服 7.3 的職業技能）；技能窗口規則依國際服版本分（`WindowRule.patches`），兩邊各自評分。**繁中服改版時更新 `TC_PATCHES`**。
-- 職業規則：所有 21 個戰鬥職業的基本模組由 `jobs/index.ts` 依 `jobs/generated.ts` 建立（**generated.ts 不要手改**，改 `scripts/gen-job-data.mjs` 的技能名稱後重新執行）；以 FFLogs `subType`（如 `Viper`）查找。之後的職業詳細分析可在 `src/jobs/` 另建檔案擴充。技能分類（ignored／mitigation 自身減傷／partyMitigation 團隊減傷／movement／utility）由 `jobs/roleActions.ts` 的 `abilityCategory()` 決定：職能技能內建，職業專屬技能由模組提供；ignored 的技能在比較開始時就移除。介面上的職業名稱一律用 `jobs/names.ts` 的 `jobName()`（官方繁中）。**憑記憶寫的技能 ID 要先用遊戲資料查證**（方法見 TECH_NOTES.md）。
+- 職業規則：所有 21 個戰鬥職業的基本模組由 `jobs/index.ts` 依 `jobs/generated.ts` 建立（**generated.ts 不要手改**，改 `scripts/gen-job-data.mjs` 的技能名稱後重新執行）；以 FFLogs `subType`（如 `Viper`）查找。之後的職業詳細分析可在 `src/jobs/` 另建檔案擴充。技能分類（ignored／mitigation 自身減傷／partyMitigation 團隊減傷／movement／utility／heal 日誌判斷不出來的治療能力技）由 `jobs/roleActions.ts` 的 `abilityCategory()` 決定：職能技能內建，職業專屬技能由模組提供；ignored 的技能在比較開始時就移除。介面上的職業名稱一律用 `jobs/names.ts` 的 `jobName()`（官方繁中）。**憑記憶寫的技能 ID 要先用遊戲資料查證**（方法見 TECH_NOTES.md）。
 - React 19 中 `ref` 是保留 prop，元件 prop 不要命名為 `ref`（比較雙方用 `mine` / `reference`）。
 - 本機測試可在 `.env.local` 設 `VITE_API_BASE=https://ff14-copycat-api.ff14-copycat.workers.dev` 直接連已部署的 Worker（`ALLOWED_ORIGINS` 已含 `http://localhost:5173`）。測試用公開報告：`WATKBdHRh7m8PNQt`（fight 10 滅團 / 11 擊殺 Sugar Riot，Viper 玩家 source=34）；**使用者指定的比較基準**（皆為 Howling Blade＝M8S 擊殺，驗證功能時兩組都要測）：
   - 武士：我的日誌 `https://www.fflogs.com/reports/FXLkqaK32PhQH8Ac?fight=1`（席德，source 6）、前輩 `https://www.fflogs.com/reports/pwTF16cgnB9G7fWM?fight=29`（安祖卡，source 13）。

@@ -56,6 +56,8 @@ export interface SideData {
   untargetable: TimeSpan[]
   /** 戰鬥長度（毫秒） */
   duration: number
+  /** 只有治療、沒有造成傷害的技能（依這場的治療與傷害事件判斷，例如學者的生命回生法）：不影響輸出，建議不列為優先 */
+  healOnly?: number[]
 }
 
 export interface TimeSpan {
@@ -342,6 +344,30 @@ export function castBars(events: FFLogsEvent[], fight: Fight, actorId: number): 
   return bars
 }
 
+/**
+ * 玩家施放後只產生治療、沒有造成傷害的技能。治療常記在技能附加的同名效果上（例如學者的深謀遠慮之策：
+ * 技能 #7434、治療記在效果 #1001220），所以依名稱比對：施放的技能名稱出現在治療事件（技能或效果）中、
+ * 且這個名稱沒有造成傷害（例如能量吸收同時有傷害與治療，不算）。
+ * @param nameOf 技能與效果的名稱（報告的 masterData）
+ */
+export function healOnlyAbilities(events: FFLogsEvent[], actorId: number, nameOf: (id: number) => string | undefined): number[] {
+  const heals = new Set<string>()
+  const damages = new Set<string>()
+  const casts = new Set<number>()
+  for (const e of events) {
+    if (e.sourceID !== actorId || e.abilityGameID === undefined) continue
+    if (e.type === 'cast') casts.add(e.abilityGameID)
+    const name = nameOf(e.abilityGameID)
+    if (name === undefined) continue
+    if (e.type === 'heal') heals.add(name)
+    else if (e.type === 'damage') damages.add(name)
+  }
+  return [...casts].filter((id) => {
+    const name = nameOf(id)
+    return name !== undefined && heals.has(name) && !damages.has(name)
+  })
+}
+
 export async function loadSide(selection: Selection, signal?: AbortSignal): Promise<SideData> {
   const { report, fight, player } = selection
   // 玩家取全部事件（約每 0.4 秒一筆位置），施放與位置都從中取得；只取施放時位置取樣太稀疏
@@ -351,6 +377,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     // 只用來標示，查詢失敗時不影響比較
     fetchTargetability(report.code, fight, signal).catch(() => []),
   ])
+  const names = abilityMap(report)
   return {
     selection,
     playerCasts: playerCasts(playerEvents, fight, player.id),
@@ -372,6 +399,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     damageTaken: damageTaken(playerEvents, fight, player.id, report.masterData.actors),
     untargetable: untargetableSpans(targetability, report.masterData.actors, fight),
     duration: fight.endTime - fight.startTime,
+    healOnly: healOnlyAbilities(playerEvents, player.id, (id) => names.get(id)?.name),
   }
 }
 

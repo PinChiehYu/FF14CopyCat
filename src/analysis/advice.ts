@@ -26,6 +26,7 @@ export type Severity = 'high' | 'medium' | 'low'
 
 /** 建議的類別：建議區依類別分組（見 ADVICE_GROUPS） */
 export type AdviceKind =
+  | 'heal'
   | 'death'
   | 'gcd'
   | 'cooldown'
@@ -75,7 +76,7 @@ export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[
   // 止損技（威力低的遠程 GCD）直接少了輸出，與技能使用放在同一組
   { key: 'usage', label: '技能與強化藥', kinds: ['potion', 'cooldown', 'filler', 'usage'] },
   { key: 'dot', label: 'DoT', kinds: ['dot'] },
-  { key: 'mitigation', label: '減傷與移動', kinds: ['partyMitigation', 'mitigation', 'movement'] },
+  { key: 'mitigation', label: '減傷、治療與移動', kinds: ['partyMitigation', 'mitigation', 'heal', 'movement'] },
   { key: 'prepull', label: '開打前', kinds: ['prepull'] },
   { key: 'position', label: '站位', kinds: ['position'] },
 ]
@@ -130,6 +131,8 @@ export interface AdviceInput {
   /** 英文名稱，供依名稱判斷的規則（例如藥水）使用；未提供時用 abilityName */
   englishName?: (id: number) => string
   isGcd?: (id: number) => boolean
+  /** 只有治療、沒有傷害的技能（見 load.ts 的 healOnlyAbilities）：少用不列為優先 */
+  isHeal?: (id: number) => boolean
   /** 技能分類（jobs/roleActions.ts）；未提供時全部視為一般技能 */
   category?: (id: number) => AbilityCategory
   /** 我的戰鬥時間換算成參考時間 */
@@ -314,7 +317,22 @@ function mitigationAdvice(u: AbilityUsage, name: string, kind: CooldownKind): Ad
   return null
 }
 
-function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUse, mineToRef, cooldowns }: AdviceInput): Advice[] {
+/**
+ * 治療技能少用：不影響輸出，依隊伍的受傷情況使用，次數不一定要與參考相同，列為建議。
+ * 少用不少於 2 次才提（與輸出能力技相同的門檻）。
+ */
+function healAdvice(u: AbilityUsage, name: string): Advice | null {
+  const fewer = u.ref - u.mine
+  if (fewer < 2 || u.ref > 30) return null
+  return {
+    kind: 'heal',
+    severity: 'medium',
+    title: `治療：${name} 少用 ${fewer} 次（你 ${u.mine} 次、參考 ${u.ref} 次）`,
+    detail: '治療技能不影響輸出，依隊伍的受傷情況使用，次數不一定要與參考相同；若這個技能消耗的資源（例如以太超流）沒有用在其他地方，可能代表資源浪費。',
+  }
+}
+
+function usageAdvice({ usage, abilityName, englishName, isGcd, isHeal, category, firstUse, mineToRef, cooldowns }: AdviceInput): Advice[] {
   const items: Advice[] = []
   // 已由冷卻技建議涵蓋的技能不再提「少用」
   const tracked = new Set((cooldowns ?? []).flatMap(({ mine, ref }) => (mine ?? ref)!.group.ids))
@@ -328,6 +346,12 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, category, firstUs
     if (kind === 'mitigation' || kind === 'partyMitigation' || kind === 'movement') {
       const advice = mitigationAdvice(u, name, kind)
       if (advice) items.push({ ...advice, kind })
+      continue
+    }
+    // 只有治療的能力技（依日誌判斷，或職業資料標記的）不影響輸出，列為建議；治療 GCD 與其他 GCD 一樣不比次數，已由冷卻技涵蓋的照舊不提
+    if (kind === 'heal' || isHeal?.(u.abilityId)) {
+      const advice = isGcd?.(u.abilityId) || tracked.has(u.abilityId) ? null : healAdvice(u, name)
+      if (advice) items.push(advice)
       continue
     }
     // 其他輔助技能依攻略使用，只合併為低優先

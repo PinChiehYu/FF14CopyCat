@@ -47,6 +47,18 @@ function input(overrides: Partial<AdviceInput> = {}): AdviceInput {
   }
 }
 
+describe('heal abilities', () => {
+  it('lists fewer uses of a heal-only oGCD as a suggestion, not a priority', () => {
+    // 1：只有治療的能力技（例如生命回生法）；2：治療 GCD（不比次數）；5：一般能力技
+    const advice = generateAdvice(input({ usage: [usage(1, 4, 7), usage(2, 4, 7), usage(5, 1, 4)], isHeal: (id) => id === 1 || id === 2 }))
+    const heal = advice.filter((a) => a.kind === 'heal')
+    expect(heal.map((a) => [a.severity, a.title])).toEqual([['medium', '治療：Ikishoten 少用 3 次（你 4 次、參考 7 次）']])
+    expect(advice.find((a) => a.title.startsWith('Meikyo Shisui'))?.severity).toBe('high')
+    // 少用 1 次不提
+    expect(generateAdvice(input({ usage: [usage(1, 6, 7)], isHeal: (id) => id === 1 })).some((a) => a.kind === 'heal')).toBe(false)
+  })
+})
+
 describe('generateAdvice', () => {
   it('returns nothing when there is nothing to improve', () => {
     expect(generateAdvice(input({ usage: [usage(1, 5, 5)] }))).toEqual([])
