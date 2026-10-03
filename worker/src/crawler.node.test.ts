@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
-import { crawl, MAX_PAGE, NEVER_CHECK, pageOutcome, pruneGoneReports, percentile, tcRankings, tcRankingsAbove, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
+import { backfillDamage, crawl, flagSuspectFights, MAX_PAGE, NEVER_CHECK, pageOutcome, pruneGoneReports, percentile, tcRankings, tcRankingsAbove, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
 
 /** 以 Node 內建的 SQLite 實作 D1 的最小介面，套用與正式環境相同的 schema.sql。 */
 function memoryDb(): DbLike {
@@ -79,6 +79,10 @@ describe('crawl', () => {
       { report: 'TC1', fight: 3, actor: 1, job: 'Samurai', rdps: 30_000 },
       { report: 'TC1', fight: 3, actor: 3, job: 'Paladin', rdps: 20_000 },
     ])
+    // 全隊總傷害：傷害表所有角色（含非繁中服與極限技）的 total 加總
+    expect(await db.prepare('SELECT report, fight, encounter, difficulty, total, suspect FROM fight_damage').all()).toEqual({
+      results: [{ report: 'TC1', fight: 3, encounter: 100, difficulty: 101, total: 6_600_000, suspect: 0 }],
+    })
 
     // 再掃一次：已處理過的報告不再查傷害表
     const again = fakeGraphql([tcReport, globalReport])
@@ -356,6 +360,72 @@ describe('pruneGoneReports', () => {
     checked.length = 0
     await pruneGoneReports(db, graphql, now + 3600_000)
     expect(checked).toEqual(['FLAKY'])
+  })
+})
+
+describe('fights with untrustworthy damage', () => {
+  const insertParse = (db: DbLike, report: string, rdps: number) =>
+    db
+      .prepare(
+        "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, 'Samurai', ?, '泰坦', ?, 0, 600000, 0)",
+      )
+      .bind(report, `p-${report}`, rdps)
+      .run()
+  const insertDamage = (db: DbLike, report: string, total: number) =>
+    db.prepare('INSERT INTO fight_damage (report, fight, encounter, difficulty, total) VALUES (?, 1, 100, 101, ?)').bind(report, total).run()
+
+  it('flags fights whose party damage is far above the median of the boss and leaves them out of the rankings', async () => {
+    const db = memoryDb()
+    for (let i = 0; i < 24; i++) {
+      await insertParse(db, `OK${i}`, 30_000 + i * 10)
+      await insertDamage(db, `OK${i}`, 105_000_000 + i * 100_000)
+    }
+    // 傷害數字錯誤的日誌：全隊總傷害為 Boss 血量的 1.6 倍，rDPS 也虛高
+    await insertParse(db, 'BAD', 50_000)
+    await insertDamage(db, 'BAD', 168_000_000)
+    expect((await tcRankings(db, 100, 101, 'Samurai', 0, 100)).rankings[0].report).toBe('BAD')
+
+    expect(await flagSuspectFights(db, 100, 101)).toMatchObject({ flagged: 1, cleared: 0 })
+    expect(await db.prepare("SELECT suspect FROM parses WHERE report = 'BAD'").first()).toEqual({ suspect: 1 })
+    const { count, rankings } = await tcRankings(db, 100, 101, 'Samurai', 0, 100)
+    expect(rankings.map((r) => r.report)).not.toContain('BAD')
+    expect(count).toBe(24)
+    expect((await tcRankingsAbove(db, 100, 101, 'Samurai', 0)).map((r) => r.report)).not.toContain('BAD')
+    // 再跑一次沒有變動就不寫入
+    expect(await flagSuspectFights(db, 100, 101)).toMatchObject({ flagged: 0, cleared: 0 })
+
+    // 中位數變高（例如換了血量更多的版本）後不再超過：取消標記
+    for (let i = 0; i < 30; i++) await insertDamage(db, `HIGH${i}`, 150_000_000)
+    expect(await flagSuspectFights(db, 100, 101)).toMatchObject({ flagged: 0, cleared: 1 })
+    expect(await db.prepare("SELECT suspect FROM parses WHERE report = 'BAD'").first()).toEqual({ suspect: 0 })
+  })
+
+  it('does not flag anything while the boss has too few kills', async () => {
+    const db = memoryDb()
+    for (let i = 0; i < 5; i++) await insertDamage(db, `OK${i}`, 100_000_000)
+    await insertDamage(db, 'BAD', 300_000_000)
+    expect(await flagSuspectFights(db, 100, 101)).toEqual({ median: null, flagged: 0, cleared: 0 })
+  })
+
+  it('backfills the party damage of fights stored before, one report per call', async () => {
+    const db = memoryDb()
+    await insertParse(db, 'OLD', 30_000)
+    await db.prepare("INSERT INTO damage_queue (report, fight, report_start) VALUES ('OLD', 1, 0), ('GONE', 1, 1)").run()
+    await db
+      .prepare(
+        "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES ('GONE', 1, 1, 100, 101, 'Samurai', 'g', '泰坦', 1, 0, 1, 1)",
+      )
+      .run()
+    const graphql: Graphql = async <T>(_query: string, vars: Record<string, unknown>) => {
+      if (vars.code === 'GONE') throw new Error('This report does not exist.')
+      return { reportData: { report: { f1: { data: { entries: [{ total: 60_000_000 }, { total: 45_000_000 }] } } } } } as T
+    }
+    // 最新的報告先（GONE）：已不公開，移出佇列
+    expect(await backfillDamage(db, graphql)).toEqual({ fights: 0, failed: 1 })
+    expect(await backfillDamage(db, graphql)).toEqual({ fights: 1, failed: 0 })
+    expect(await db.prepare('SELECT report, total FROM fight_damage').all()).toEqual({ results: [{ report: 'OLD', total: 105_000_000 }] })
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM damage_queue').first()).toEqual({ n: 0 })
+    expect(await backfillDamage(db, graphql)).toEqual({ fights: 0, failed: 0 })
   })
 })
 

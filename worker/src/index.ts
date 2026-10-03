@@ -1,4 +1,4 @@
-import { crawl, CRAWL_ZONES, pruneGoneReports } from './crawler'
+import { CRAWL_DIFFICULTY, crawl, CRAWL_ZONES, CURRENT_ENCOUNTERS, flagSuspectFights, pruneGoneReports } from './crawler'
 import { graphqlFor, handleRequest, setTokenStore, type CacheLike, type Context, type Env } from './handler'
 import { processTimelines, timelineWork } from './timelines'
 
@@ -32,6 +32,12 @@ export default {
       (async () => {
         if (controller.cron === PRUNE_CRON) {
           console.log('prune', JSON.stringify(await pruneGoneReports(db, graphqlFor(env))))
+          // 每小時一次（5 分）標記一個本季 Boss 傷害數字不可信的場次，依小時輪流（讀整個 Boss 的全隊總傷害）
+          if (minute < 10) {
+            const hour = new Date(controller.scheduledTime ?? Date.now()).getUTCHours()
+            const encounter = CURRENT_ENCOUNTERS[hour % CURRENT_ENCOUNTERS.length]
+            console.log(`suspect ${encounter}`, JSON.stringify(await flagSuspectFights(db, encounter, CRAWL_DIFFICULTY)))
+          }
           return
         }
         // 其餘觸發一律預處理：改排程後 Cloudflare 可能還會以舊的排程字串觸發一段時間（2026-10-02 實測超過 15 分鐘），

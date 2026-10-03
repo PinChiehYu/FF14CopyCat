@@ -249,7 +249,7 @@ describe('processTimelines', () => {
       }
       throw new Error('unexpected query')
     }
-    const result = await processTimelines(db, graphql, NOW, { combos: 4, samples: 2, pulls: 3 })
+    const result = await processTimelines(db, graphql, NOW, { combos: 4, samples: 2, pulls: 3, damage: 0 })
     expect([...filters].sort()).toEqual([
       "type = 'cast'",
       "type in ('cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death')",
@@ -317,7 +317,7 @@ describe('processTimelines', () => {
     const db = memoryDb()
     await addParse(db, 'AAA', 3, 1, 'Samurai')
     const graphql: Graphql = async <T>() => ({ rateLimitData: { pointsSpentThisHour: 3000 } }) as T
-    expect(await processTimelines(db, graphql, NOW, { combos: 0, samples: 2, pulls: 3 })).toEqual({ skipped: 'points', selected: 0, pulls: 0, samples: 0, failed: 0, hourPoints: 3000 })
+    expect(await processTimelines(db, graphql, NOW, { combos: 0, samples: 2, pulls: 3, damage: 0 })).toEqual({ skipped: 'points', selected: 0, pulls: 0, samples: 0, failed: 0, hourPoints: 3000 })
   })
 
   it('does not store a sample when the query returns no casts of the player', async () => {
@@ -329,7 +329,7 @@ describe('processTimelines', () => {
     }
     const warn = console.warn
     console.warn = () => {}
-    expect(await processTimelines(db, graphql, NOW, { combos: 1, samples: 1, pulls: 0 })).toMatchObject({ samples: 0, failed: 1 })
+    expect(await processTimelines(db, graphql, NOW, { combos: 1, samples: 1, pulls: 0, damage: 0 })).toMatchObject({ samples: 0, failed: 1 })
     console.warn = warn
     // 沒有寫入，樣本仍待處理
     expect(await db.prepare('SELECT COUNT(*) AS n FROM sample_data').first()).toEqual({ n: 0 })
@@ -337,8 +337,8 @@ describe('processTimelines', () => {
   })
 
   it('splits the work: selecting samples every 10 minutes, processing otherwise', async () => {
-    expect(timelineWork(0)).toEqual({ combos: 1, samples: 0, pulls: 0 })
-    expect(timelineWork(12)).toEqual({ combos: 0, samples: 1, pulls: 2 })
+    expect(timelineWork(0)).toEqual({ combos: 1, samples: 0, pulls: 0, damage: 0 })
+    expect(timelineWork(12)).toEqual({ combos: 0, samples: 1, pulls: 2, damage: 1 })
     // 只選樣本的那次不查 FFLogs
     const db = memoryDb()
     await addParse(db, 'AAA', 3, 1, 'Samurai')

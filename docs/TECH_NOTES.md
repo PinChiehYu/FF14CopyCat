@@ -581,6 +581,13 @@
 
 ## 技術變更紀錄
 
+### 2026-10-03 傷害數字不可信的場次
+- 發現：前輩平均樣本中 Kromi（吟遊詩人，M5S `yYd9VG6DNLx3PChg` #70）rDPS 50,754。該場整隊都偏高（毒蛇 48,754、忍者 45,494），Kromi 的原始 DPS 也是 47,229；與一般吟遊詩人（糖凝 `bKacN3xAvJ8HQRLq` #15）比，施放頻率相同（每分鐘約 64 次），但普通攻擊單下中位數 39,599 對 6,394、爆發射擊 50,815 對 18,648，DoT 只跳 14 次（一般約 180 次）；Boss 最大 HP 相同（105,549,682），這場還打得較久（602 對 548 秒）。全隊總傷害 165.5M ÷ Boss 最大 HP＝1.57（一般擊殺 1.00）：日誌的傷害數字錯誤（紀錄或合併上傳的問題）。
+- 規模：本季 5,124 場中，收錄玩家 rDPS 相對同 Boss 同職業中位數的「整場中位數比值」≥ 1.4 的有 16 場、≥ 1.6 的 10 場；抽查 M5S 的可疑場次全隊總傷害 ÷ Boss HP 都在 1.47～1.68、戰鬥都約 600 秒。其中包括 M5S 對齊測試日誌 `3hCzxvn79fRTbQGP` #30、`2HVnbyKxLYpcq739` #15（只用來測施放與對齊，不受影響）與隨機測試抽到的 M6S 機工士 `wj7AdgBkRq6MftrW` #52（2.41）。以 Boss 最大 HP 判斷不可行：M8S 這類換階段的戰鬥讀到的只是第一階段的 HP（基準日誌也算出 2.20）。
+- 修正（使用者選方案 1）：`fight_damage` 存每場的全隊總傷害（傷害表所有角色 total 加總，掃描時順便記下；之前收錄的放進 `damage_queue`，每分鐘的預處理順便補查一份報告，一個查詢涵蓋該報告排隊的所有場次）。`flagSuspectFights()` 每小時（報告確認的 5 分那次）輪流處理一個本季 Boss：同 Boss 至少 20 場時取中位數，超過 1.3 倍的標記 `fight_damage.suspect` 與該場的 `parses.suspect`（只寫變動的，中位數變動後不再超過的取消）。`tcRankings()`／`tcRankingsAbove()` 只讀 `suspect = 0`（排名、PR、前輩平均的選樣本）；已選的可疑樣本在下次重選該組時換掉。
+- 讀寫量：標記每次讀一個 Boss 的全隊總傷害約 2,000 列（COUNT＋中位數的 OFFSET），每天約 5 萬列；補查佇列約 5,000 場、3,500 份報告，約 2.5 天補完。
+- 正式資料庫的遷移：`ALTER TABLE parses ADD COLUMN suspect INTEGER NOT NULL DEFAULT 0`、套用 `schema.sql`、`INSERT OR IGNORE INTO damage_queue SELECT report, fight, MAX(report_start) FROM parses GROUP BY report, fight`（一次約 4 萬列讀取）。
+
 ### 2026-10-02 排名掃描不再翻超過第 25 頁
 - 變更：報告列表翻到第 25 頁仍有下一頁時，依這一頁報告的開始時間把時間範圍縮到還沒列出的那一側，從第 1 頁重新列出（`crawler.ts` 的 `pageOutcome()`；補舊資料存 `window_end`／`list_start`／`list_end`，最近兩天存 `recent_end`）；舊版存下的頁碼超過 25 時退回第 25 頁。不假設列表的排序（新到舊或舊到新都可）。
 - 原因：FFLogs 的報告列表最多只能翻到第 25 頁（第 26 頁回錯誤「The maximum allowed page is 25 until the performance of paginated queries can be improved.」）。補舊資料的某一天超過 625 份報告，存下的頁碼到了 26，之後每小時的掃描一開始就失敗，排名停在 38,035 筆擊殺、超過一天沒有新增。

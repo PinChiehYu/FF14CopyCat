@@ -132,6 +132,20 @@ export function parsesFromDamage(report: ListedReport, fight: ListedReport['figh
     })
 }
 
+/** 全隊總傷害：傷害表所有角色（含極限技、寵物）的 total 加總，與同 Boss 其他擊殺比較用（見 flagSuspectFights） */
+export function partyDamage(entries: { total: number }[]): number {
+  return entries.reduce((sum, e) => sum + (e.total ?? 0), 0)
+}
+
+/** 存一場的全隊總傷害（重新寫入時保留標記） */
+const fightDamageRow = (db: DbLike, report: string, fight: { id: number; encounterID: number; difficulty: number | null }, total: number) =>
+  db
+    .prepare(
+      `INSERT INTO fight_damage (report, fight, encounter, difficulty, total) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (report, fight) DO UPDATE SET total = excluded.total`,
+    )
+    .bind(report, fight.id, fight.encounterID, fight.difficulty ?? 0, total)
+
 /** 一份報告多場戰鬥的傷害表合成一個查詢（以別名區分）。 */
 function damageQuery(fightIds: number[]): string {
   const tables = fightIds.map((id) => `f${id}: table(fightIDs: [${id}], dataType: DamageDone)`).join('\n')
@@ -213,10 +227,11 @@ async function scanPage(
       for (const fight of kills) {
         const entries = tables?.reportData?.report?.[`f${fight.id}`]?.data?.entries ?? []
         const parses = parsesFromDamage(report, fight, entries)
-        // 有收錄玩家的場次排入預處理（timelines.ts）
+        // 有收錄玩家的場次排入預處理（timelines.ts），並記下全隊總傷害（判斷傷害數字是否可信）
         if (parses.length > 0) {
           writes.push(
             db.prepare('INSERT OR IGNORE INTO pull_queue (report, fight, report_start) VALUES (?, ?, ?)').bind(parses[0].report, parses[0].fight, parses[0].reportStart),
+            fightDamageRow(db, report.code, fight, partyDamage(entries)),
           )
         }
         for (const p of parses) {
@@ -327,6 +342,8 @@ export async function pruneGoneReports(db: DbLike, graphql: Graphql, now = Date.
       // 預處理的資料一併刪除（timelines.ts）
       writes.push(db.prepare('DELETE FROM pull_timelines WHERE report = ?').bind(code))
       writes.push(db.prepare('DELETE FROM pull_queue WHERE report = ?').bind(code))
+      writes.push(db.prepare('DELETE FROM fight_damage WHERE report = ?').bind(code))
+      writes.push(db.prepare('DELETE FROM damage_queue WHERE report = ?').bind(code))
       writes.push(db.prepare('DELETE FROM tank_slots WHERE report = ?').bind(code))
       // 前輩平均的樣本：下次選樣本時以其他擊殺補上
       writes.push(db.prepare('DELETE FROM average_samples WHERE report = ?').bind(code))
@@ -472,13 +489,13 @@ interface ParseRow {
 
 const playerOf = (r: { name: string; server: string }) => `${r.name}@${r.server}`
 
-/** 一個 Boss×職業的擊殺，依 rDPS 由高到低；minRdps 時只讀 rDPS 不低於它的 */
+/** 一個 Boss×職業的擊殺（傷害數字不可信的場次除外），依 rDPS 由高到低；minRdps 時只讀 rDPS 不低於它的 */
 async function parseRows(db: DbLike, encounter: number, difficulty: number, job: string, minRdps?: number): Promise<ParseRow[]> {
   const above = minRdps === undefined ? '' : ' AND rdps >= ?'
   const { results } = await db
     .prepare(
       `SELECT report, fight, actor, name, server, rdps, fight_start, fight_end, report_start
-       FROM parses WHERE encounter = ? AND difficulty = ? AND job = ?${above}
+       FROM parses WHERE encounter = ? AND difficulty = ? AND job = ? AND suspect = 0${above}
        ORDER BY rdps DESC, report_start, report`,
     )
     .bind(...[encounter, difficulty, job, ...(minRdps === undefined ? [] : [minRdps])])
@@ -546,7 +563,7 @@ function rankParses(rows: ParseRow[], bests: Map<string, number>, bestList: numb
 export async function tcRankingsAbove(db: DbLike, encounter: number, difficulty: number, job: string, minPr: number): Promise<RankedParse[]> {
   const { results: bestRows } = await db
     .prepare(
-      `SELECT name, server, MAX(rdps) AS best FROM parses WHERE encounter = ? AND difficulty = ? AND job = ?
+      `SELECT name, server, MAX(rdps) AS best FROM parses WHERE encounter = ? AND difficulty = ? AND job = ? AND suspect = 0
        GROUP BY name, server ORDER BY best DESC`,
     )
     .bind(encounter, difficulty, job)
@@ -558,6 +575,88 @@ export async function tcRankingsAbove(db: DbLike, encounter: number, difficulty:
   while (maxRank < bestList.length && percentile(maxRank + 1, bestList.length) >= minPr) maxRank++
   const rows = await parseRows(db, encounter, difficulty, job, maxRank < bestList.length ? bestList[maxRank] : undefined)
   return rankParses(rows, bests, bestList, minPr, 100, Number.MAX_SAFE_INTEGER)
+}
+
+// ---- 傷害數字不可信的場次 ----
+
+// 全隊總傷害超過同 Boss 中位數的這個倍數視為不可信。正常擊殺約為中位數的 0.9～1.1 倍（Boss 血量固定），
+// 2026-10-03 找到的錯誤日誌為 1.5～2.4 倍
+export const SUSPECT_RATIO = 1.3
+// 同 Boss 的擊殺少於這麼多場時中位數不可靠，不標記
+export const MIN_FIGHTS_FOR_SUSPECT = 20
+
+/**
+ * 補查加上 fight_damage 前已收錄的場次的全隊總傷害：每次一份報告（該報告所有排隊的場次一個查詢）。
+ * 報告已不公開時移出佇列（pruneGoneReports 會移除其排名）。
+ */
+export async function backfillDamage(db: DbLike, graphql: Graphql): Promise<{ fights: number; failed: number }> {
+  const next = await db.prepare('SELECT report FROM damage_queue ORDER BY report_start DESC LIMIT 1').first<{ report: string }>()
+  if (!next) return { fights: 0, failed: 0 }
+  const { results: queued } = await db
+    .prepare(
+      `SELECT q.fight AS id, p.encounter AS encounterID, p.difficulty FROM damage_queue q JOIN parses p ON p.report = q.report AND p.fight = q.fight
+       WHERE q.report = ? GROUP BY q.fight`,
+    )
+    .bind(next.report)
+    .all<{ id: number; encounterID: number; difficulty: number }>()
+  const done = db.prepare('DELETE FROM damage_queue WHERE report = ?').bind(next.report)
+  if (queued.length === 0) {
+    await db.batch([done])
+    return { fights: 0, failed: 0 }
+  }
+  let tables: { reportData?: { report?: Record<string, { data?: { entries?: DamageEntry[] } }> } } | undefined
+  try {
+    tables = await graphql(damageQuery(queued.map((f) => f.id)), { code: next.report })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (GONE_REPORT.test(message)) await db.batch([done])
+    else console.warn(`damage ${next.report} failed: ${message}`)
+    return { fights: 0, failed: 1 }
+  }
+  const writes: StatementLike[] = [done]
+  for (const fight of queued) {
+    const entries = tables?.reportData?.report?.[`f${fight.id}`]?.data?.entries ?? []
+    if (entries.length > 0) writes.push(fightDamageRow(db, next.report, fight, partyDamage(entries)))
+  }
+  await db.batch(writes)
+  return { fights: writes.length - 1, failed: 0 }
+}
+
+/**
+ * 標記一個 Boss 傷害數字不可信的場次：全隊總傷害超過同 Boss 所有擊殺中位數的 SUSPECT_RATIO 倍。
+ * 結果寫到 fight_damage.suspect 與該場的 parses.suspect（只寫有變動的；中位數變動後不再超過的取消標記）。
+ */
+export async function flagSuspectFights(db: DbLike, encounter: number, difficulty: number): Promise<{ median: number | null; flagged: number; cleared: number }> {
+  const scope = [encounter, difficulty]
+  const count = (await db.prepare('SELECT COUNT(*) AS n FROM fight_damage WHERE encounter = ? AND difficulty = ?').bind(...scope).first<{ n: number }>())?.n ?? 0
+  if (count < MIN_FIGHTS_FOR_SUSPECT) return { median: null, flagged: 0, cleared: 0 }
+  const median = (
+    await db
+      .prepare('SELECT total FROM fight_damage WHERE encounter = ? AND difficulty = ? ORDER BY total LIMIT 1 OFFSET ?')
+      .bind(...scope, Math.floor(count / 2))
+      .first<{ total: number }>()
+  )!.total
+  const key = (r: { report: string; fight: number }) => `${r.report}:${r.fight}`
+  const above = (
+    await db
+      .prepare('SELECT report, fight FROM fight_damage WHERE encounter = ? AND difficulty = ? AND total > ?')
+      .bind(...scope, median * SUSPECT_RATIO)
+      .all<{ report: string; fight: number }>()
+  ).results
+  const marked = (
+    await db.prepare('SELECT report, fight FROM fight_damage WHERE encounter = ? AND difficulty = ? AND suspect = 1').bind(...scope).all<{ report: string; fight: number }>()
+  ).results
+  const aboveKeys = new Set(above.map(key))
+  const markedKeys = new Set(marked.map(key))
+  const set = (r: { report: string; fight: number }, value: 0 | 1) => [
+    db.prepare('UPDATE fight_damage SET suspect = ? WHERE report = ? AND fight = ?').bind(value, r.report, r.fight),
+    db.prepare('UPDATE parses SET suspect = ? WHERE report = ? AND fight = ?').bind(value, r.report, r.fight),
+  ]
+  const flag = above.filter((r) => !markedKeys.has(key(r)))
+  const clear = marked.filter((r) => !aboveKeys.has(key(r)))
+  const writes = [...flag.flatMap((r) => set(r, 1)), ...clear.flatMap((r) => set(r, 0))]
+  if (writes.length > 0) await db.batch(writes)
+  return { median, flagged: flag.length, cleared: clear.length }
 }
 
 export interface RankedParse {

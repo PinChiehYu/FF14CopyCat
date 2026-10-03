@@ -6,7 +6,7 @@ import { encodeApplications, encodeCasts, encodeWindows, type EncodedCast } from
 import { enemyDebuffApplications, enemyDebuffWindows, selfBuffWindows } from '../../src/analysis/buffs'
 import { patchAt } from '../../src/jobs/patch'
 import type { FFLogsEvent, Fight } from '../../src/fflogs/types'
-import { CURRENT_ENCOUNTERS, GONE_REPORT, tcRankingsAbove, type DbLike, type Graphql, type StatementLike } from './crawler'
+import { backfillDamage, CURRENT_ENCOUNTERS, GONE_REPORT, tcRankingsAbove, type DbLike, type Graphql, type StatementLike } from './crawler'
 import { AUTO_ATTACKS_TAKEN_QUERY, CRON_EVENTS_QUERY } from './queries'
 
 // Workers 免費方案每次執行最多 50 個對外請求（含權杖與點數查詢），預留幾個
@@ -324,6 +324,8 @@ export interface TimelineResult {
   /** 處理的樣本（全部施放、效果與死亡） */
   samples: number
   failed: number
+  /** 補查全隊總傷害的場次 */
+  damage?: number
   /** 開始時這小時已用掉的 FFLogs 點數（所有訪客與定時工作合計）。不再於結束時重查一次算這次的用量：每個對外請求都佔免費方案有限的 CPU */
   hourPoints?: number
 }
@@ -413,6 +415,8 @@ export interface TimelineWork {
   /** 預處理的樣本與新場次數上限 */
   samples: number
   pulls: number
+  /** 補查全隊總傷害的報告數（crawler.ts 的 backfillDamage） */
+  damage: number
 }
 
 /**
@@ -420,7 +424,7 @@ export interface TimelineWork {
  * 分開執行是為了讓每次的 CPU 時間都在免費方案的 10 ms 內。
  */
 export function timelineWork(minute: number): TimelineWork {
-  return minute % 10 === 0 ? { combos: COMBOS_PER_RUN, samples: 0, pulls: 0 } : { combos: 0, samples: SAMPLES_PER_RUN, pulls: PULLS_PER_RUN }
+  return minute % 10 === 0 ? { combos: COMBOS_PER_RUN, samples: 0, pulls: 0, damage: 0 } : { combos: 0, samples: SAMPLES_PER_RUN, pulls: PULLS_PER_RUN, damage: 1 }
 }
 
 /**
@@ -431,7 +435,7 @@ export async function processTimelines(
   db: DbLike,
   query: Graphql,
   now = Date.now(),
-  work: TimelineWork = { combos: COMBOS_PER_RUN, samples: SAMPLES_PER_RUN, pulls: PULLS_PER_RUN },
+  work: TimelineWork = { combos: COMBOS_PER_RUN, samples: SAMPLES_PER_RUN, pulls: PULLS_PER_RUN, damage: 0 },
 ): Promise<TimelineResult> {
   const result: TimelineResult = { selected: 0, pulls: 0, samples: 0, failed: 0 }
   let requests = 0
@@ -440,7 +444,7 @@ export async function processTimelines(
     return query(q, v)
   }
   result.selected = work.combos > 0 ? await refreshSamples(db, now, work.combos) : 0
-  if (work.samples + work.pulls === 0) return result
+  if (work.samples + work.pulls + work.damage === 0) return result
   const points = await graphql<{ rateLimitData?: { pointsSpentThisHour: number } }>(POINTS_QUERY, {})
   result.hourPoints = points?.rateLimitData?.pointsSpentThisHour
   if ((result.hourPoints ?? 0) > POINTS_CEILING) {
@@ -526,6 +530,12 @@ export async function processTimelines(
     }
   }
   if (writes.length > 0) await db.batch(writes)
+  // 補查已收錄場次的全隊總傷害（加上 fight_damage 前收錄的；佇列空了就只是一次 D1 查詢）
+  for (let i = 0; i < work.damage && requests < SUBREQUEST_BUDGET; i++) {
+    const damage = await backfillDamage(db, graphql)
+    result.damage = (result.damage ?? 0) + damage.fights
+    result.failed += damage.failed
+  }
   return result
 }
 

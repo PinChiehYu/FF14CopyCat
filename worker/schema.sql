@@ -18,9 +18,36 @@ CREATE TABLE IF NOT EXISTS parses (
   fight_end INTEGER NOT NULL,
   -- 報告開始時間（Unix 毫秒）
   report_start INTEGER NOT NULL,
+  -- 1：這場的傷害數字不可信（全隊總傷害遠高於同 Boss 的其他擊殺，見 fight_damage），不列入排名、PR 與前輩平均的樣本。
+  -- 正式資料庫以 ALTER TABLE parses ADD COLUMN suspect INTEGER NOT NULL DEFAULT 0 加上
+  suspect INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (report, fight, actor)
 );
 CREATE INDEX IF NOT EXISTS parses_rdps ON parses (encounter, difficulty, job, rdps DESC);
+
+-- 每場擊殺的全隊總傷害（傷害表所有角色的 total 加總）：Boss 血量固定，正常擊殺的全隊總傷害應相近；
+-- 遠高於同 Boss 中位數的場次傷害數字不可信（日誌紀錄錯誤，2026-10-03 實測有單下傷害高 2～6 倍、DoT 跳數過少的日誌）。
+-- suspect 為標記結果（crawler.ts 的 flagSuspectFights），同步寫到該場的 parses.suspect
+CREATE TABLE IF NOT EXISTS fight_damage (
+  report TEXT NOT NULL,
+  fight INTEGER NOT NULL,
+  encounter INTEGER NOT NULL,
+  difficulty INTEGER NOT NULL,
+  total REAL NOT NULL,
+  suspect INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (report, fight)
+);
+CREATE INDEX IF NOT EXISTS fight_damage_total ON fight_damage (encounter, difficulty, total);
+CREATE INDEX IF NOT EXISTS fight_damage_suspect ON fight_damage (encounter, difficulty) WHERE suspect = 1;
+
+-- 還沒有全隊總傷害的場次（加上 fight_damage 前已收錄的；逐一補查傷害表後刪除）
+CREATE TABLE IF NOT EXISTS damage_queue (
+  report TEXT NOT NULL,
+  fight INTEGER NOT NULL,
+  report_start INTEGER NOT NULL,
+  PRIMARY KEY (report, fight)
+);
+CREATE INDEX IF NOT EXISTS damage_queue_order ON damage_queue (report_start DESC);
 
 -- 已處理過的報告（避免重複計算）
 CREATE TABLE IF NOT EXISTS scanned_reports (
