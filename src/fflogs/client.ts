@@ -127,6 +127,44 @@ export function fetchTcRankings(
   return get(`/tc-rankings?${params}`, signal)
 }
 
+/** 前輩平均的 PR 區間（固定三組，與 worker/src/timelines.ts 的 TIERS 相同） */
+export type AverageTier = 'top' | 'upper' | 'mid'
+export const AVERAGE_TIERS: { tier: AverageTier; label: string; range: [number, number] }[] = [
+  { tier: 'top', label: 'PR 95+', range: [95, 100] },
+  { tier: 'upper', label: '75–94', range: [75, 94] },
+  { tier: 'mid', label: '50–74', range: [50, 74] },
+]
+
+/** 前輩平均的一筆樣本（castCodec.ts 的編碼） */
+export interface AverageSampleData {
+  name: string
+  server: string
+  report: string
+  fight: number
+  actor: number
+  pr: number
+  rdps: number
+  patch: string
+  /** 戰鬥長度（毫秒） */
+  duration: number
+  boss: string
+  casts: string
+  buffs: string
+  applications: string
+}
+
+/**
+ * 一個 Boss×職業（坦克再分 MT／ST）×PR 區間的前輩平均樣本：count 為區間內的擊殺數，updatedAt 為最近一次選樣本的時間。
+ */
+export function fetchAverageSamples(
+  query: { encounter: number; difficulty: number; job: string; tier: AverageTier; slot?: 'MT' | 'ST' },
+  signal?: AbortSignal,
+): Promise<{ count: number; updatedAt: number | null; samples: AverageSampleData[] }> {
+  const params = new URLSearchParams({ encounter: String(query.encounter), difficulty: String(query.difficulty), job: query.job, tier: query.tier })
+  if (query.slot) params.set('slot', query.slot)
+  return get(`/average-samples?${params}`, signal)
+}
+
 /** 每位玩家承受的敵方普通攻擊總傷害（角色 ID → 傷害），用來判斷誰在坦 Boss。 */
 export async function fetchAutoAttacksTaken(code: string, fightId: number, signal?: AbortSignal): Promise<Map<number, number>> {
   const result: Record<string, unknown> = await get(

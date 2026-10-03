@@ -885,6 +885,21 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
   return sortAdvice(items)
 }
 
+/**
+ * 參考為前輩平均時的建議：前輩平均只有施放（沒有逐場的效果、死亡、站位），只比較停手、GCD 速度與技能使用次數，
+ * 其餘（死亡、技能窗口、冷卻技、DoT、穿插、止損技…）與只有我的日誌相同；文字中的「參考」改稱「前輩平均」。
+ */
+export function generateAverageAdvice(solo: SoloAdviceInput, compare: AdviceInput): Advice[] {
+  const items = [
+    // 停手改與前輩平均比較（少打的 GCD），不另列自己估計的停手
+    ...generateSoloAdvice({ ...solo, stops: [] }),
+    ...tag('gcd', lostGcdAdvice(compare)),
+    ...tag('gcd', gcdSpeedAdvice(compare)),
+    ...tag('usage', usageAdvice(compare)),
+  ].map((a) => ({ ...a, title: a.title.replaceAll('參考', '前輩平均'), detail: a.detail.replaceAll('參考', '前輩平均') }))
+  return sortAdvice(items)
+}
+
 /** 依各階段的分析結果產生規則式建議，依重要性排序。 */
 export function generateAdvice(input: AdviceInput): Advice[] {
   const items = [

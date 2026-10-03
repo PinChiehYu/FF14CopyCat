@@ -7,6 +7,9 @@ import { isStandardParty, sortByPartySlot } from './jobs/names'
 import { JobBadge } from './ui/JobBadge'
 import { Comparison } from './compare/Comparison'
 import { ReferenceFinder } from './compare/ReferenceFinder'
+import { AveragePicker } from './compare/AveragePicker'
+import { AVERAGE_ENABLED } from './compare/averageSide'
+import { AVERAGE_TIERS, type AverageTier } from './fflogs/client'
 import { ShareLink } from './compare/ShareLink'
 import type { Selection } from './compare/load'
 import type { Actor, Fight, Report } from './fflogs/types'
@@ -185,7 +188,7 @@ function LogPicker({
   picked,
   action,
 }: {
-  label: string
+  label: ReactNode
   /** 保存在本頁網址的參數名稱 */
   storageKey: LogKey
   preferred?: Preference
@@ -257,9 +260,21 @@ function LogPicker({
   )
 }
 
+/** 網址參數 avg 的 PR 區間（前輩平均未開放時一律為單一日誌） */
+function readAverageTier(): AverageTier | null {
+  const value = readLogParam('avg')
+  return AVERAGE_ENABLED && AVERAGE_TIERS.some((t) => t.tier === value) ? (value as AverageTier) : null
+}
+
 export default function App() {
   const [mine, setMine] = useState<Selection | null>(null)
   const [reference, setReference] = useState<Selection | null>(null)
+  // 參考改用前輩平均（PR 區間）；null 為貼參考日誌
+  const [average, setAverageState] = useState<AverageTier | null>(readAverageTier)
+  const setAverage = (tier: AverageTier | null) => {
+    setAverageState(tier)
+    writeLogParam('avg', tier ?? '')
+  }
   // 從繁中服排名選的參考日誌連結
   const [picked, setPicked] = useState<{ url: string } | null>(null)
   // 參考日誌依我選的 Boss 與職業自動選擇戰鬥與角色
@@ -274,32 +289,55 @@ export default function App() {
 
       <div className="logs">
         <LogPicker label="我的日誌" storageKey="mine" onChange={setMine} />
-        <LogPicker
-          label="參考日誌（前輩）"
-          storageKey="ref"
-          preferred={preferred}
-          onChange={setReference}
-          picked={picked}
-          action={
-            <ReferenceFinder
-              mine={mine}
-              onPick={(url) => {
-                writeLogParam('ref', url)
-                setPicked({ url })
-              }}
-            />
-          }
-        />
+        {average ? (
+          <AveragePicker tier={average} onChange={setAverage} onSingle={() => setAverage(null)} />
+        ) : (
+          <LogPicker
+            // 前輩平均開放時標題列多一個按鈕：手機上標題縮成「參考日誌」
+            label={AVERAGE_ENABLED ? <>參考日誌<span className="wide-only">（前輩）</span></> : '參考日誌（前輩）'}
+            storageKey="ref"
+            preferred={preferred}
+            onChange={setReference}
+            picked={picked}
+            action={
+              <span className="log-actions">
+                {AVERAGE_ENABLED && (
+                  <button type="button" className="average-switch" onClick={() => setAverage('top')} disabled={!mine} title="參考改用前輩平均">
+                    <span className="wide-only">前輩</span>平均
+                  </button>
+                )}
+                <ReferenceFinder
+                  mine={mine}
+                  onPick={(url) => {
+                    writeLogParam('ref', url)
+                    setPicked({ url })
+                  }}
+                />
+              </span>
+            }
+          />
+        )}
       </div>
 
       {/* 選好我的日誌就先顯示我的分析，選了參考日誌再補上比較 */}
       {mine && (
         <section className="comparison">
           <div className="comparison-head">
-            <h2>{reference ? '比較結果' : '我的分析'}</h2>
-            {reference && <ShareLink mine={mine} reference={reference} />}
+            <h2>{reference || average ? '比較結果' : '我的分析'}</h2>
+            {reference && !average && <ShareLink mine={mine} reference={reference} />}
           </div>
-          <Comparison mine={mine} reference={reference} />
+          <Comparison
+            mine={mine}
+            reference={average ? null : reference}
+            average={average}
+            onPickSample={(s) => {
+              // 改以這一場為參考（單一日誌）
+              const url = reportUrl(s.report, s.fight, s.actor)
+              writeLogParam('ref', url)
+              setAverage(null)
+              setPicked({ url })
+            }}
+          />
         </section>
       )}
 

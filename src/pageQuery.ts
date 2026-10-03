@@ -4,7 +4,8 @@
 import type { Selection } from './compare/load'
 import { reportUrl } from './fflogs/url'
 
-export type LogKey = 'mine' | 'ref'
+// avg：參考改用前輩平均時的 PR 區間（見 compare/averageSide.ts）
+export type LogKey = 'mine' | 'ref' | 'avg'
 
 export function readLogParam(key: LogKey): string {
   return new URLSearchParams(window.location.search).get(key) ?? ''

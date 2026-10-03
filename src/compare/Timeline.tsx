@@ -8,6 +8,7 @@ import type { JobModule } from '../jobs'
 import type { SideData } from './load'
 import type { TimelineWindow } from '../analysis/windows'
 import { HelpTip } from './HelpTip'
+import { useRefLabel } from './refLabel'
 import { isRangedFiller, lossFillerTimes } from '../jobs/rangedFillers'
 
 const ZOOM_LEVELS = [10, 20, 40, 80] // 每秒像素
@@ -37,8 +38,8 @@ export interface DotMark {
 interface Lane {
   label: string
   side: 'mine' | 'ref'
-  /** t：顯示時間；original：該側自己的戰鬥時間；aligned：對齊後的參考時間 */
-  casts: { t: number; original: number; aligned: number; abilityId: number }[]
+  /** t：顯示時間；original：該側自己的戰鬥時間；aligned：對齊後的參考時間；consistency：前輩平均的一致度（0～1） */
+  casts: { t: number; original: number; aligned: number; abilityId: number; consistency?: number }[]
 }
 
 function lanes(
@@ -49,7 +50,13 @@ function lanes(
   toDisplay: (t: number) => number,
   toRef: (t: number) => number,
 ): Lane[] {
-  const casts = side.playerCasts.map((c) => ({ t: toDisplay(c.t), original: c.t, aligned: toRef(c.t), abilityId: c.abilityId }))
+  const casts = side.playerCasts.map((c) => ({
+    t: toDisplay(c.t),
+    original: c.t,
+    aligned: toRef(c.t),
+    abilityId: c.abilityId,
+    consistency: (c as TimedCast & { consistency?: number }).consistency,
+  }))
   if (!job) return [{ label, side: key, casts }]
   return [
     { label: `${label} GCD`, side: key, casts: casts.filter((c) => job.isGcd(c.abilityId)) },
@@ -84,6 +91,7 @@ export function Timeline({
   follow = false,
   onSeek,
   compareEnd,
+  averaged = false,
 }: {
   mine: SideData
   /** 還沒有參考日誌時為 null：Boss 列用我的 Boss 施放、只畫我的技能列（alignment 應為恆等對應） */
@@ -113,7 +121,10 @@ export function Timeline({
   onSeek?: (t: number) => void
   /** 比較範圍結束（參考時間）；之後的部分標示為範圍外 */
   compareEnd?: number
+  /** 參考為前輩平均（已在我的時間、Boss 列為我的；圖示透明度表示一致度） */
+  averaged?: boolean
 }) {
+  const refLabel = useRefLabel()
   const [pxPerSec, setPxPerSec] = useState(20)
   // 時間尺與 Boss 列的依據：參考日誌；還沒有參考時用我的
   const ref = reference ?? mine
@@ -149,10 +160,11 @@ export function Timeline({
   }, [mine, reference, job])
   const allLanes = useMemo(
     () => [
-      ...(reference ? lanes(reference, '參考', 'ref', job, axis.ref, (t) => t) : []),
+      // 列名欄窄：前輩平均簡稱「平均」
+      ...(reference ? lanes(reference, averaged ? '平均' : refLabel, 'ref', job, axis.ref, (t) => t) : []),
       ...lanes(mine, '我', 'mine', job, axis.mine, alignment.mineToRef),
     ],
-    [reference, mine, job, alignment, axis],
+    [reference, mine, job, alignment, axis, refLabel, averaged],
   )
 
   return (
@@ -170,8 +182,10 @@ export function Timeline({
         </label>
         <HelpTip
           text={[
-            reference && '時間軸以參考日誌為準；我的施放已依 Boss 機制對齊。',
-            reference && '一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。',
+            reference && !averaged && '時間軸以參考日誌為準；我的施放已依 Boss 機制對齊。',
+            reference && !averaged && '一方推進較慢時兩邊照實際長度排開，較快的一方以斜線補上空白。',
+            averaged &&
+              '前輩平均：每位前輩的施放依 Boss 機制換算成你的時間，GCD 取每個位置最常見的技能、能力技取過半數前輩有用的時間（中位數）。圖示越淡代表前輩之間越不一致（該位置用這個技能的比例），滑鼠停在圖示上可看比例。',
             '灰底為 Boss 無法選中。滑鼠停在圖示上可看技能與原始時間。',
             '能力技列頂部的紅線：穿插過多，下一個 GCD 被延後（從前一個 GCD 到被延後的 GCD）。',
             dotMarks.length > 0 && `GCD 列頂部的金黃線：DoT 斷掉（Boss 可選中但 DoT 不在敵人身上，1 秒以上）；金黃短直線：DoT 提早續上（覆蓋掉 ${DOT_CLIP_MARK_MIN_MS / 1000} 秒以上）。`,
@@ -187,7 +201,7 @@ export function Timeline({
         <div className="timeline-labels">
           <div className="lane-label ruler-label">時間</div>
           {/* 與「參考 GCD」等列名同格式（手機的列名欄窄，「Boss（參考）」會超出） */}
-          <div className="lane-label">{reference ? '參考 Boss' : 'Boss'}</div>
+          <div className="lane-label">{reference && !averaged ? `${refLabel} Boss` : 'Boss'}</div>
           {allLanes.map((lane) => (
             <div key={lane.label} className={`lane-label ${lane.side}`}>
               {lane.label}
@@ -388,18 +402,21 @@ function TimelineLanesImpl({
                       ? `${formatFightTime(c.original)}（對齊後 ${formatFightTime(c.aligned)}）`
                       : formatFightTime(c.original)
                   const filler = isRangedFiller(c.abilityId) && fillers[lane.side].has(c.original)
+                  // 前輩平均：一致度越低越淡（最淡 25%），滑鼠提示附上比例
+                  const consistency = c.consistency === undefined ? '' : `・${Math.round(c.consistency * 100)}% 前輩`
+                  const style = { left: x(c.t), ...(c.consistency === undefined ? {} : { opacity: 0.25 + 0.75 * c.consistency }) }
                   return ability ? (
                     <img
                       key={i}
                       className={filler ? 'cast filler' : 'cast'}
                       src={abilityIconUrl(ability.icon)}
                       alt={ability.name}
-                      title={`${ability.name}${ability.englishName ? `（${ability.englishName}）` : ''}${filler ? '・止損技' : ''} ${time}`}
+                      title={`${ability.name}${ability.englishName ? `（${ability.englishName}）` : ''}${filler ? '・止損技' : ''} ${time}${consistency}`}
                       loading="lazy"
-                      style={{ left: x(c.t) }}
+                      style={style}
                     />
                   ) : (
-                    <span key={i} className="cast unknown" title={`${name(c.abilityId)} ${time}`} style={{ left: x(c.t) }} />
+                    <span key={i} className="cast unknown" title={`${name(c.abilityId)} ${time}${consistency}`} style={style} />
                   )
                 })}
                 {/* 死亡：每側第一列標 ✕，死亡到恢復行動之間畫斜線區段 */}

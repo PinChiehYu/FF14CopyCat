@@ -8,7 +8,7 @@ import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
 import { buildAlignment, pushDifferences, pushTitle, type Alignment } from '../analysis/alignment'
-import { generateAdvice, generateSoloAdvice } from '../analysis/advice'
+import { generateAdvice, generateAverageAdvice, generateSoloAdvice } from '../analysis/advice'
 import { deathRecap, RECAP_WINDOW_MS } from '../analysis/damageTaken'
 import { mergeOverlapping } from '../analysis/buffs'
 import { mainMechanicDifferences, mainMechanicGroups, mechanicOccurrences } from '../analysis/mainMechanics'
@@ -48,6 +48,10 @@ import { evaluateDot, type DotSummary } from '../analysis/dots'
 import { Metrics } from './Metrics'
 import { Positions } from './Positions'
 import { DOT_CLIP_MARK_MIN_MS, Timeline, type DotMark } from './Timeline'
+import { FEW_SAMPLES, tierLabel, useAverageReference, type AverageInfo } from './averageSide'
+import { RefLabelContext } from './refLabel'
+import type { AverageSampleData, AverageTier } from '../fflogs/client'
+import { AverageSummary } from './AveragePicker'
 
 // 錨點太少時對齊結果不可靠
 const MIN_ANCHORS = 5
@@ -162,10 +166,13 @@ function SummaryTable({
   abilityName,
   mineToRef,
   onJump,
+  average,
 }: {
   mine: SideData
   /** 還沒有參考日誌時為 null：只有我的一欄，不列比較範圍 */
   reference: SideData | null
+  /** 參考為前輩平均：rDPS 為樣本的中位數、PR 為區間、版本為樣本中最常見的；死亡與開打前沒有 */
+  average?: AverageInfo
   /** 整場的 DPS／rDPS 與繁中服 PR；查詢中為 undefined */
   damage: { mine: SideDamage | undefined; ref: SideDamage | undefined }
   /** 兩邊日誌的遊戲版本 */
@@ -179,7 +186,7 @@ function SummaryTable({
 }) {
   const sides = [
     { key: 'mine', label: '我', side: mine, end: mineEnd },
-    ...(reference ? [{ key: 'ref', label: '參考', side: reference, end: refEnd }] : []),
+    ...(reference ? [{ key: 'ref', label: average ? '前輩平均' : '參考', side: reference, end: refEnd }] : []),
   ]
   const damageOf = (s: SideData) => (s === mine ? damage.mine : damage.ref)
   // 兩邊都有的開打前效果（放在「開打前」的說明裡）
@@ -216,12 +223,21 @@ function SummaryTable({
       label: 'rDPS',
       help: `整場的 rDPS（FFLogs 計算）＝DPS − 隊友 Buff 加成 ＋ 自己 Buff 貢獻，比 DPS 更能反映個人表現。${reference ? '紅字為比參考少的差距。' : ''}滑鼠停在數字上可看各項數值與 aDPS。`,
       cell: (s) => {
+        const round = (v: number) => Math.round(v).toLocaleString()
+        if (average && s !== mine) {
+          return average.rdps === null ? (
+            <span className="hint-inline">—</span>
+          ) : (
+            <span className="rdps" title={`${average.samples.length} 位前輩的 rDPS 中位數`}>
+              <strong>{round(average.rdps)}</strong>
+            </span>
+          )
+        }
         const side = damageOf(s)
         if (side === undefined) return <span className="hint-inline">…</span>
         const d = side.summary
         if (!d) return <span className="hint-inline">—</span>
-        const other = s === mine ? damage.ref?.summary : undefined
-        const round = (v: number) => Math.round(v).toLocaleString()
+        const other = s === mine ? (average ? (average.rdps === null ? undefined : { rdps: average.rdps }) : damage.ref?.summary) : undefined
         return (
           <span
             className="rdps"
@@ -238,6 +254,7 @@ function SummaryTable({
       label: 'PR',
       help: `繁中服 PR：這場的 rDPS 與本站收錄的繁中服${prCount ? ` ${prCount} 位` : ''}同職業玩家各自最好的一場比較（自己已在排名中時不和自己比），同「搜尋前輩日誌」的 PR。未擊殺、沒有這個職業的排名資料或排名資料庫暫時無法使用時為「—」。`,
       cell: (s) => {
+        if (average && s !== mine) return <strong>{tierLabel(average.tier)}</strong>
         const side = damageOf(s)
         if (side === undefined) return <span className="hint-inline">…</span>
         if (!side.pr) return <span className="hint-inline">—</span>
@@ -249,9 +266,9 @@ function SummaryTable({
       label: '版本',
       help: `依戰鬥日期對照繁中服的版本上線日期（FFLogs 的報告沒有記錄遊戲版本）。${reference ? '兩邊不同時變色，技能窗口依各自版本的規則評分。' : ''}`,
       cell: (s) => {
-        const p = s === mine ? patches.mine : patches.ref
-        const differs = patches.mine.key !== patches.ref.key
-        return <span className={differs ? 'patch-differs' : undefined}>{p.key}</span>
+        const refKey = average ? average.patch : patches.ref.key
+        const differs = refKey !== null && patches.mine.key !== refKey
+        return <span className={differs ? 'patch-differs' : undefined}>{s === mine ? patches.mine.key : (refKey ?? '—')}</span>
       },
     },
     ...(reference === null ? [] : [{
@@ -291,7 +308,8 @@ function SummaryTable({
           </span>
         )
         if (s.prepull.length === 0) return <span className="hint-inline">—</span>
-        if (!reference) return names(s.prepull, 'prepull-name')
+        // 前輩平均沒有開打前的效果：只列我的
+        if (!reference || average) return names(s.prepull, 'prepull-name')
         const other = s === mine ? reference : mine
         const only = s.prepull.filter((id) => !other.prepull.includes(id))
         if (only.length === 0) {
@@ -340,32 +358,45 @@ const IDENTITY: Alignment = { anchors: [], mineToRef: (t) => t, refToMine: (t) =
  * 以我自己代替參考計算（參考時間＝我的時間），需要比較的部分（機制差異、站位差異、GCD 差距等）不顯示。
  * @param notice 顯示在摘要下方的狀態（參考日誌載入中、無法比較的原因等）
  */
-function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: SideData; reference: SideData | null; notice?: ReactNode }) {
+function Loaded({
+  mine: mineLoaded,
+  reference: refLoaded,
+  notice,
+  average,
+}: {
+  mine: SideData
+  reference: SideData | null
+  notice?: ReactNode
+  /** 參考為前輩平均（refLoaded 為合成的參考，見 averageSide.ts） */
+  average?: AverageInfo
+}) {
   const solo = refLoaded === null
+  // 前輩平均只有施放（已換成我的時間）：需要逐場資料的比較（機制、站位、技能窗口、DoT…）比照只有我的日誌
+  const partial = solo || !!average
   const job = getJob(mineLoaded.selection.player.subType)
   // 兩邊日誌的遊戲版本（依戰鬥時間對照繁中服的版本日期）
   const patches = useMemo(
     () => ({ mine: sidePatch(mineLoaded.selection), ref: sidePatch((refLoaded ?? mineLoaded).selection) }),
     [mineLoaded, refLoaded],
   )
-  const damage = { mine: useSideDamage(mineLoaded.selection), ref: useSideDamage(refLoaded?.selection ?? null) }
+  const damage = { mine: useSideDamage(mineLoaded.selection), ref: useSideDamage(average ? null : (refLoaded?.selection ?? null)) }
   // 不需紀錄的技能（挑釁、退避、坦姿開關）一開始就移除
   const category = useMemo(() => (id: number) => abilityCategory(id, job), [job])
   // 只在一邊日誌中有施放紀錄的敵人（例如只被一邊記錄的雜兵）不比較，也不用來對齊
   const [mineShared, refShared] = useMemo(
-    () => (refLoaded ? withSharedCasters(mineLoaded, refLoaded) : [mineLoaded, mineLoaded]),
-    [mineLoaded, refLoaded],
+    () => (refLoaded && !average ? withSharedCasters(mineLoaded, refLoaded) : [mineLoaded, refLoaded ?? mineLoaded]),
+    [mineLoaded, refLoaded, average],
   )
   // 沒有名稱的 Boss 技能（Boss 的演出動作等）只用來對齊時間軸，其餘都不顯示
   // cactbot 同一條目的不同版本（放入 A／B 面等）從第一次對齊就當成同一個機制
   const alignment = useMemo(
     () =>
-      solo
+      partial
         ? IDENTITY
         : buildAlignment(mineShared.bossCasts, refShared.bossCasts, {
             knownGroups: mainMechanicGroups(mineShared.selection.fight.encounterID) ?? undefined,
           }),
-    [mineShared, refShared, solo],
+    [mineShared, refShared, partial],
   )
   // 兩邊的強化藥統一成同一個 ID（依使用後得到的強化藥效果判斷，見 unifyPotions）
   // 沒有參考時 reference 是我自己（各項計算的參考時間＝我的時間）；顯示時用 shownRef 判斷有沒有參考
@@ -444,21 +475,24 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
     const lost = attachControl(windows, controlWindows(mineInRange.bossDebuffs, control)).map((w) =>
       w.control ? { ...w, control: w.control.filter(namedStatus) } : w,
     )
-    return { gcd: solo ? { mine: stats.mine, ref: null } : stats, lost }
-  }, [mineInRange, refInRange, alignment, job, control, namedStatus, solo])
+    // 前輩平均：GCD 數、間隔與空檔為每位前輩各自計算的中位數
+    const ref = average?.gcd ?? stats.ref
+    return { gcd: solo ? { mine: stats.mine, ref: null } : { mine: stats.mine, ref }, lost }
+  }, [mineInRange, refInRange, alignment, job, control, namedStatus, solo, average])
   // 技能使用次數含普通攻擊（時間軸不畫）；次數多寡可反映是否離 Boss 太遠或停手
   const usage = useMemo(
     () =>
       abilityUsage(
-        [...mineInRange.playerCasts, ...mineInRange.autoAttacks],
+        // 前輩平均沒有普通攻擊：兩邊都不列
+        [...mineInRange.playerCasts, ...(average ? [] : mineInRange.autoAttacks)],
         solo ? [] : [...refInRange.playerCasts, ...refInRange.autoAttacks],
         alignment.mineToRef,
       ),
-    [mineInRange, refInRange, alignment, solo],
+    [mineInRange, refInRange, alignment, solo, average],
   )
   const mechanics = useMemo(
     () =>
-      solo
+      partial
         ? []
         : mechanicDifferences(
         mine.bossCasts,
@@ -468,12 +502,12 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         reference.duration,
         { pushes },
       ),
-    [mine, reference, alignment, pushes, solo],
+    [mine, reference, alignment, pushes, partial],
   )
   // 機制差異表只列主要機制（cactbot 時間軸列出的技能）；站位與建議仍用全部低頻技能
   const mainMechanics = useMemo(
     () =>
-      solo
+      partial
         ? []
         : mainMechanicDifferences(
         mine.selection.fight.encounterID,
@@ -484,14 +518,14 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         reference.duration,
         { pushes },
       ),
-    [mine, reference, alignment, pushes, solo],
+    [mine, reference, alignment, pushes, partial],
   )
   const positions = useMemo(() => {
     const mineSamples = mineInRange.playerPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
     // 我的 Boss 位置換算成參考時間（以 Boss 為中心、兩個 Boss 的俯視圖與對齊用）
     const mineBossSamples = mineInRange.bossPositions.map((p) => ({ ...p, t: alignment.mineToRef(p.t) }))
-    if (solo) {
-      // 沒有參考：軌跡只有我，沒有站位差異
+    if (partial) {
+      // 沒有參考（或前輩平均，沒有位置）：軌跡只有我，沒有站位差異
       const track = compareTracks(mineSamples, [], mineBossSamples, compareEnd)
       return { mineSamples, mineAlignedSamples: mineSamples, mineBossSamples, track, divergences: [] }
     }
@@ -521,7 +555,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
     ]
     const found = attachUntargetable(attachVariants(withMechanics, mechanics), untargetable)
     return { mineSamples, mineAlignedSamples, mineBossSamples, track, divergences: found }
-  }, [mineInRange, refInRange, reference, alignment, compareEnd, mechanics, solo])
+  }, [mineInRange, refInRange, reference, alignment, compareEnd, mechanics, partial])
   // 報告技能清單中沒有的（兩邊都沒用過）也用查到的繁中名稱
   const abilityName = useCallback(
     (id: number) => {
@@ -545,15 +579,15 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       const reason = (p: GamePatch) => `${p.key} 版本沒有這條規則`
       return {
         mine: m ? evaluate(m, mineInRange, gcd?.mine.gcdMs ?? null, mine.duration) : inapplicableSummary(r!, reason(patches.mine)),
-        // 沒有參考時兩邊版本相同，m 一定有
-        ref: solo
+        // 沒有參考時兩邊版本相同，m 一定有；前輩平均沒有效果時段
+        ref: partial
           ? null
           : r
             ? evaluate(r, refInRange, gcd?.ref?.gcdMs ?? null, reference.duration)
             : inapplicableSummary(m!, reason(patches.ref)),
       }
     })
-  }, [job, mineInRange, refInRange, abilityName, gcd, patches, mine.duration, reference.duration, solo])
+  }, [job, mineInRange, refInRange, abilityName, gcd, patches, mine.duration, reference.duration, partial])
   // 兩邊版本的規則不同的技能窗口（版本不同時列在摘要下方）
   const patchDiffs = useMemo(
     () =>
@@ -581,18 +615,18 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
       !!g.suggestionOnly || g.ids.some((id) => NON_OFFENSIVE_CATEGORIES.has(abilityCategory(id, job)))
     return pairRulesByPatch(COOLDOWN_RULES[job.subType] ?? [], patches.mine.rules, patches.ref.rules).map(({ mine: m, ref: r }) => ({
       mine: m ? evaluate(m, mineInRange) : null,
-      ref: r && !solo ? evaluate(r, refInRange) : null,
+      ref: r && !partial ? evaluate(r, refInRange) : null,
       nonOffensive: nonOffensive((m ?? r)!),
     }))
-  }, [job, patches, mineInRange, refInRange, abilities, solo])
+  }, [job, patches, mineInRange, refInRange, abilities, partial])
   // DoT 覆蓋率與提早續上：兩邊各自、只看比較範圍內
   const dots = useMemo(
     () =>
       (DOT_RULES[mine.selection.player.subType] ?? []).map((rule) => ({
         mine: evaluateDot(rule, mineInRange),
-        ref: solo ? null : evaluateDot(rule, refInRange),
+        ref: partial ? null : evaluateDot(rule, refInRange),
       })),
-    [mine, mineInRange, refInRange, solo],
+    [mine, mineInRange, refInRange, partial],
   )
   // 止損技：兩邊算止損的施放時間（各自的時間、比較範圍內；開場起手與強化效果中的不算）
   const fillerId = RANGED_FILLERS[mine.selection.player.subType]
@@ -600,8 +634,8 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
     if (fillerId === undefined) return null
     const isGcd = (id: number) => (job ? job.isGcd(id) : true)
     const times = (side: SideData) => [...lossFillerTimes(side, isGcd)].sort((a, b) => a - b)
-    return { mine: times(mineInRange), ref: solo ? null : times(refInRange) }
-  }, [fillerId, job, mineInRange, refInRange, solo])
+    return { mine: times(mineInRange), ref: partial ? null : times(refInRange) }
+  }, [fillerId, job, mineInRange, refInRange, partial])
   // 穿插過多導致 GCD 延後（xivanalysis 的 Weaving）：兩邊各自、比較範圍內
   const weaving = useMemo(() => {
     if (!job) return null
@@ -609,9 +643,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
     const find = (side: SideData, gcdMs: number | null) => badWeaves(side, subType, job.isGcd, isItemId, gcdMs)
     return {
       mine: find(mineInRange, gcd?.mine.gcdMs ?? null),
-      ref: solo ? null : find(refInRange, gcd?.ref?.gcdMs ?? null),
+      ref: partial ? null : find(refInRange, gcd?.ref?.gcdMs ?? null),
     }
-  }, [job, mine, mineInRange, refInRange, gcd, solo])
+  }, [job, mine, mineInRange, refInRange, gcd, partial])
   const englishName = useCallback(
     (id: number) => {
       const a = abilities.get(id)
@@ -621,14 +655,13 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
   )
   // 死亡回顧（死亡建議的說明）：死前幾擊與參考在同一時間吃同一招的情形
   const deathRecaps = useMemo(() => {
-    const refHits = solo ? null : refInRange.damageTaken
+    const refHits = partial ? null : refInRange.damageTaken
     return mineInRange.deaths.map((d) =>
       deathRecap(d, mineInRange.damageTaken, refHits && { hits: refHits, deaths: refInRange.deaths }, alignment.mineToRef),
     )
-  }, [mineInRange, refInRange, solo, alignment])
+  }, [mineInRange, refInRange, partial, alignment])
   const advice = useMemo(() => {
-    if (solo) {
-      return generateSoloAdvice({
+    const soloInput: Parameters<typeof generateSoloAdvice>[0] = {
         abilityName,
         deaths: mineInRange.deaths,
         durationMs: mineInRange.duration,
@@ -645,9 +678,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         subType: mine.selection.player.subType,
         fillerId,
         deathRecaps,
-      })
     }
-    return generateAdvice({
+    if (solo) return generateSoloAdvice(soloInput)
+    const compareInput: Parameters<typeof generateAdvice>[0] = {
       mechanics,
       durationMs: compareEnd,
       gcd: gcd?.ref ? { mine: gcd.mine, ref: gcd.ref } : null,
@@ -676,8 +709,9 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         mine: mergeOverlapping(mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')),
         ref: mergeOverlapping(refInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')),
       },
-    })
-  }, [deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving])
+    }
+    return average ? generateAverageAdvice(soloInput, compareInput) : generateAdvice(compareInput)
+  }, [average, deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)
@@ -773,7 +807,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
             <Dots dots={dots} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
           </>
         )}
-        {!solo && (
+        {!partial && (
           <>
             <MechanicsHeading main={mainMechanicGroups(mine.selection.fight.encounterID) !== null} />
             <Mechanics
@@ -818,11 +852,11 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         />
       </>
     ),
-    [solo, advice, jumpTo, windows, dots, fillers, fillerId, weaving, isFocused, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
+    [solo, partial, advice, jumpTo, windows, dots, fillers, fillerId, weaving, isFocused, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
   )
 
   return (
-    <>
+    <RefLabelContext.Provider value={average ? '前輩平均' : '參考'}>
       <SummaryTable
         mine={mine}
         reference={shownRef}
@@ -833,6 +867,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         abilityName={abilityName}
         mineToRef={alignment.mineToRef}
         onJump={jumpTo}
+        average={average}
       />
       {patchDiffs.length > 0 && (
         <p className="hint patch-note">
@@ -846,7 +881,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         </p>
       )}
       {notice}
-      {!solo && (
+      {!partial && (
       <p className="hint">
         時間軸以 Boss 技能對齊：錨點 {alignment.anchors.length} 個
         {drifts.length > 0 &&
@@ -870,17 +905,17 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         。兩場都在進行的時段才列入統計。
       </p>
       )}
-      {!solo && alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
+      {!partial && alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
       {staticSections}
       <h3>站位與當下狀態</h3>
       <Positions
-        solo={solo}
+        solo={partial}
         abilityName={abilityName}
         track={positions.track}
         divergences={positions.divergences}
         mineSamples={positions.mineSamples}
-        refSamples={solo ? [] : refInRange.playerPositions}
+        refSamples={partial ? [] : refInRange.playerPositions}
         bossSamples={refInRange.bossPositions}
         mineBossSamples={positions.mineBossSamples}
         mineAlignedSamples={positions.mineAlignedSamples}
@@ -895,7 +930,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         status={
           <StatusPanel
             mine={mine}
-            reference={shownRef}
+            reference={average ? null : shownRef}
             cursor={cursor}
             refToMine={alignment.refToMine}
             isFocused={isFocused}
@@ -925,6 +960,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         follow={playing}
         onSeek={setCursor}
         compareEnd={solo ? undefined : compareEnd}
+        averaged={!!average}
       />
       {/* 固定在畫面底部的播放列：捲到哪裡都能操作 */}
       <Playback
@@ -936,7 +972,7 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
         onPlayingChange={setPlaying}
         onSpeedChange={setSpeed}
       />
-    </>
+    </RefLabelContext.Provider>
   )
 }
 
@@ -944,18 +980,58 @@ function Loaded({ mine: mineLoaded, reference: refLoaded, notice }: { mine: Side
  * 比較結果（同一頁漸進顯示）：我的日誌載入後先顯示只用我的日誌能做的分析，參考日誌載入後補上比較。
  * 參考日誌與我的不能比較（不同 Boss／職業）時仍顯示我的分析，並說明原因。
  */
-export function Comparison({ mine, reference }: { mine: Selection; reference: Selection | null }) {
-  const problem = reference ? incompatibility(mine, reference) : null
+export function Comparison({
+  mine,
+  reference,
+  average = null,
+  onPickSample,
+}: {
+  mine: Selection
+  reference: Selection | null
+  /** 參考改用前輩平均（PR 區間）；此時 reference 不用 */
+  average?: AverageTier | null
+  /** 在前輩平均的樣本清單中選了一場：改以那一場為參考 */
+  onPickSample?: (sample: AverageSampleData) => void
+}) {
+  const problem = reference && !average ? incompatibility(mine, reference) : null
   const mineResult = useSide(mine)
-  const refResult = useSide(problem ? null : reference)
+  const refResult = useSide(problem || average ? null : reference)
   // 事件只依選擇的 ID 載入一次；顯示用的名稱（Boss 繁中名稱可能晚到）取目前的選擇
   const mineSide = useMemo(() => mineResult?.side && { ...mineResult.side, selection: mine }, [mineResult, mine])
   const refSide = useMemo(
     () => (reference && refResult?.side ? { ...refResult.side, selection: reference } : null),
     [refResult, reference],
   )
+  const averageState = useAverageReference(mineSide ?? undefined, average)
   if (!mineResult) return <p>載入戰鬥事件中…</p>
   if (mineResult.error || !mineSide) return <p className="error">{mineResult.error}</p>
+  if (average) {
+    const ready = averageState?.status === 'ready' ? averageState : null
+    const averageNotice =
+      averageState === null || averageState.status === 'loading' ? (
+        <p className="hint">載入前輩樣本中…</p>
+      ) : averageState.status === 'error' ? (
+        <p className="error">前輩樣本載入失敗：{averageState.message}</p>
+      ) : !averageState.side ? (
+        <p className="hint">這個區間還沒有可用的前輩樣本（樣本仍在整理中），請換其他區間或貼參考日誌。</p>
+      ) : averageState.info.used < FEW_SAMPLES ? (
+        <p className="hint">樣本只有 {averageState.info.used} 筆，結果接近單一前輩，僅供參考。</p>
+      ) : null
+    return (
+      <Loaded
+        key={`average-${average}-${ready?.side ? "ready" : "waiting"}`}
+        mine={mineSide}
+        reference={ready?.side ?? null}
+        average={ready?.side ? ready.info : undefined}
+        notice={
+          <>
+            {ready?.side && <AverageSummary info={ready.info} job={mine.player.subType} onPick={(s) => onPickSample?.(s)} />}
+            {averageNotice}
+          </>
+        }
+      />
+    )
+  }
   const notice = problem ? (
     <p className="error">{problem}</p>
   ) : !reference ? (

@@ -947,6 +947,101 @@ button:disabled {
   cursor: default;
 }
 
+/* 前輩平均（開發中，只在本機出現）：參考欄位標題列的切換按鈕、PR 區間、樣本資訊與清單 */
+.log-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 外框膠囊按鈕：與「搜尋前輩日誌」同高，不搶主要按鈕的視覺 */
+.average-switch {
+  padding: 1px 10px;
+  font: inherit;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* 標題列的按鈕不換行（手機上標題列較窄） */
+.log-actions .average-switch,
+.log-actions .finder-toggle {
+  white-space: nowrap;
+}
+
+.average-switch:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.average-switch:disabled {
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: transparent;
+  cursor: default;
+}
+
+.average-tiers {
+  align-items: center;
+  margin: 4px 0 8px;
+}
+
+.average-summary .hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.average-summary .hint > span {
+  white-space: nowrap;
+}
+
+.average-samples {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 16em;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.average-samples button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5em 5em 3.5em;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 10px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.average-samples li:last-child button {
+  border-bottom: none;
+}
+
+.average-samples button:hover {
+  background: var(--surface);
+}
+
+.average-sample-name {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .finder-icon {
   width: 1em;
   height: 1em;
@@ -2653,6 +2748,11 @@ h3 {
 
 /* ---- 手機（窄螢幕）版面：放在檔案最後，才能覆寫前面同權重的規則 ---- */
 @media (max-width: 560px) {
+  /* 手機上「前輩平均」縮成「平均」，標題列放得下兩個按鈕 */
+  .wide-only {
+    display: none;
+  }
+
   /* DoT：覆蓋率與提早續上分兩行、名稱欄可換行，兩欄（我／參考）放得進手機寬度 */
   .dots-table {
     table-layout: fixed;
