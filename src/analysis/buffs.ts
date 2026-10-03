@@ -14,10 +14,12 @@ export interface BuffWindow {
 }
 
 /**
- * 不顯示、不比較的效果：只延長食物效果時間、與戰鬥表現無關（不影響爆發藥等其他效果）。
- * 1084 食物效果時間延長（Rationing）、360 部隊特效：食物效果時間延長。
+ * 不顯示、不比較的效果：與戰鬥表現無關的戰鬥外加成（不影響進食、爆發藥等其他效果）。
+ * 1078～1086 冒險者分隊的手冊（軍票、金碟幣、經驗值、精煉度、食物效果時間延長、裝備損耗降低、志願兵出現率提高）、
+ * 353～368 部隊特效（公會特效：鼓勵新人、經驗值、食物效果時間延長、傳送優惠…）。
  */
-const HIDDEN_STATUSES: ReadonlySet<number> = new Set([1_001_084, 1_000_360])
+const statusRange = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => 1_000_000 + from + i)
+const HIDDEN_STATUSES: ReadonlySet<number> = new Set([...statusRange(1078, 1086), ...statusRange(353, 368)])
 
 function isHiddenStatus(statusId: number): boolean {
   return HIDDEN_STATUSES.has(statusId)
