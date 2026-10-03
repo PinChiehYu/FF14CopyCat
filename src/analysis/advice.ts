@@ -228,11 +228,13 @@ function lostGcdAdvice(input: AdviceInput): Advice[] {
   ]
 }
 
-/** 死亡：最優先的改進。列出每次死亡的時間與致命技能，並與參考比較。 */
+/**
+ * 死亡：最優先的改進。列出每次死亡的時間與致命技能；本來就不該死亡，不比較參考的死亡次數
+ * （死亡回顧仍列出參考在同一時間吃同一招的傷害與減傷，供學習怎麼活下來）。
+ */
 function deathAdvice(input: AdviceInput): Advice[] {
   const mine = input.deaths?.mine ?? []
   if (mine.length === 0) return []
-  const refCount = input.deaths?.ref.length ?? 0
   const list = mine
     .map((d) => `${formatFightTime(d.t)}${d.abilityId !== null ? `（${input.abilityName(d.abilityId)}）` : ''}`)
     .join('、')
@@ -244,7 +246,7 @@ function deathAdvice(input: AdviceInput): Advice[] {
       detail:
         `死亡時間與致命技能：${list}。` +
         (unable > 0 ? `死亡到恢復行動共 ${seconds(unable)} 秒無法輸出，` : '死亡期間無法輸出，') +
-        `還會消耗隊友的復活與資源、增加全隊的壓力。${refCount === 0 ? '參考在同一場沒有死亡。' : `參考死亡 ${refCount} 次。`}` +
+        '還會消耗隊友的復活與資源、增加全隊的壓力。' +
         recapText(input.deathRecaps?.[0], input.abilityName) +
         '先對照站位與時間軸，確認參考怎麼避開這些機制或用了哪些減傷，不要死亡。',
       at: input.mineToRef(mine[0].t),
@@ -729,16 +731,21 @@ function recapText(recap: DeathRecap | undefined, abilityName: (id: number) => s
   return (hits.length ? `第一次死亡前 10 秒：${hits.join('、')}。` : '') + ref
 }
 
-/** 傷害降低（機制失誤的懲罰）：比較模式中我比參考多時提出 */
+// 持續不到這麼久的傷害降低不列入：施加後立刻移除（實測 40 毫秒）對輸出沒有影響，例如緊接著死亡前的判定
+const MIN_PENALTY_MS = 1000
+const lasting = (penalties: { start: number; end: number }[]) => penalties.filter((p) => p.end - p.start >= MIN_PENALTY_MS)
+
+/** 傷害降低（機制失誤的懲罰）：本來就不該被施加，有就提出、不比較參考的次數 */
 function penaltyAdvice(input: Pick<AdviceInput, 'penalties' | 'mineToRef'>): Advice[] {
-  const p = input.penalties
-  if (!p || p.mine.length === 0 || p.mine.length <= p.ref.length) return []
+  const mine = lasting(input.penalties?.mine ?? [])
+  if (mine.length === 0) return []
+  const p = { mine }
   const total = p.mine.reduce((sum, x) => sum + (x.end - x.start), 0)
   return [
     {
       // 懲罰效果與死亡同為機制失誤的直接結果，列為優先
       severity: 'high',
-      title: `被施加傷害降低 ${p.mine.length} 次，共 ${seconds(total)} 秒（參考 ${p.ref.length} 次）`,
+      title: `被施加傷害降低 ${p.mine.length} 次，共 ${seconds(total)} 秒`,
       detail: `${byTime(p.mine, (x) => x.start).map((x) => formatFightTime(input.mineToRef(x.start))).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
       at: input.mineToRef(Math.min(...p.mine.map((x) => x.start))),
     },
@@ -862,14 +869,15 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
     })
   }
 
-  if (input.penalties.length > 0) {
-    const total = input.penalties.reduce((sum, p) => sum + (p.end - p.start), 0)
+  const penalties = lasting(input.penalties)
+  if (penalties.length > 0) {
+    const total = penalties.reduce((sum, p) => sum + (p.end - p.start), 0)
     items.push({
       kind: 'penalty',
       severity: 'high',
-      title: `被施加傷害降低 ${input.penalties.length} 次，共 ${seconds(total)} 秒`,
-      detail: `${byTime(input.penalties, (p) => p.start).map((p) => formatFightTime(p.start)).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
-      at: Math.min(...input.penalties.map((p) => p.start)),
+      title: `被施加傷害降低 ${penalties.length} 次，共 ${seconds(total)} 秒`,
+      detail: `${byTime(penalties, (p) => p.start).map((p) => formatFightTime(p.start)).join('、')}：傷害降低通常是機制處理失誤的懲罰，期間輸出下降。對照時間軸看是哪個機制。`,
+      at: Math.min(...penalties.map((p) => p.start)),
     })
   }
 

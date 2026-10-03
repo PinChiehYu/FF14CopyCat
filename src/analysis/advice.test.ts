@@ -66,7 +66,8 @@ describe('generateAdvice', () => {
     expect(advice[0]).toMatchObject({ severity: 'high', title: '你死亡了 1 次：避免死亡是最優先的改進', at: 120_000 })
     expect(advice[0].detail).toContain('2:00.0（Enpi）')
     expect(advice[0].detail).toContain('20.0 秒無法輸出')
-    expect(advice[0].detail).toContain('參考在同一場沒有死亡')
+    // 本來就不該死亡：不比較參考的死亡次數
+    expect(advice[0].detail).not.toContain('參考在同一場')
     expect(advice[0].detail).toContain('不要死亡')
     // 停手總結註明其中幾段是死亡期間
     const lost = advice.find((a) => a.title.includes('段你停手'))
@@ -464,15 +465,18 @@ describe('death recap and penalty advice', () => {
     expect(death.detail).toContain('參考在同一時間吃「Enpi」受到 31,005（減傷 38%），沒有死亡。')
   })
 
-  it('reports Damage Down only when I got more than the reference', () => {
+  it('reports any Damage Down without comparing with the reference', () => {
     const penalties = (mine: number, ref: number) => ({
       mine: Array.from({ length: mine }, (_, i) => ({ start: i * 10_000, end: i * 10_000 + 5000 })),
       ref: Array.from({ length: ref }, (_, i) => ({ start: i * 10_000, end: i * 10_000 + 5000 })),
     })
-    expect(generateAdvice(input({ penalties: penalties(1, 1) })).some((a) => a.kind === 'penalty')).toBe(false)
-    expect(generateAdvice(input({ penalties: penalties(2, 1) })).find((a) => a.kind === 'penalty')?.title).toBe(
-      '被施加傷害降低 2 次，共 10.0 秒（參考 1 次）',
-    )
+    expect(generateAdvice(input({ penalties: penalties(0, 1) })).some((a) => a.kind === 'penalty')).toBe(false)
+    // 本來就不該被施加：參考也有時照樣提出，不列參考的次數
+    expect(generateAdvice(input({ penalties: penalties(1, 1) })).find((a) => a.kind === 'penalty')?.title).toBe('被施加傷害降低 1 次，共 5.0 秒')
+    expect(generateAdvice(input({ penalties: penalties(2, 1) })).find((a) => a.kind === 'penalty')?.title).toBe('被施加傷害降低 2 次，共 10.0 秒')
+    // 施加後立刻移除（不到 1 秒）的不列入
+    const blip = { mine: [{ start: 1000, end: 1040 }], ref: [] }
+    expect(generateAdvice(input({ penalties: blip })).some((a) => a.kind === 'penalty')).toBe(false)
   })
 })
 
