@@ -19,24 +19,24 @@ const fflogsUrl = (r) => `https://www.fflogs.com/reports/${r.report}#fight=${r.f
 
 // 找到就印出；不用 process.exit()（Windows 上連線還在關閉時結束行程會觸發 libuv 斷言）
 async function main() {
-for (let attempt = 0; attempt < 10; attempt++) {
+for (let attempt = 0; attempt < 20; attempt++) {
   const encounter = pick(ENCOUNTERS)
   const job = pick(JOBS)
   const res = await fetch(`${API}/tc-rankings?encounter=${encounter}&difficulty=101&job=${job}&minPr=0&maxPr=100`, { headers: HEADERS })
   if (!res.ok) continue
   const { rankings } = await res.json()
-  // 兩筆不同報告：我的日誌取任一筆，參考取另一份報告的一筆
+  // 兩筆不同報告：我的日誌取任一筆，參考取另一份報告中 rDPS 比我高的一筆（像向前輩學習）
   if (rankings.length < 2) continue
   const mine = pick(rankings)
-  const others = rankings.filter((r) => r.report !== mine.report)
+  const others = rankings.filter((r) => r.report !== mine.report && r.rdps > mine.rdps)
   if (others.length === 0) continue
   const ref = pick(others)
   const params = (extra) => new URLSearchParams({ mine: fflogsUrl(mine), ...extra }).toString()
   console.log(JSON.stringify({
     encounter,
     job,
-    mine: `${mine.name} @ ${mine.server} PR ${mine.pr}`,
-    ref: `${ref.name} @ ${ref.server} PR ${ref.pr}`,
+    mine: `${mine.name} @ ${mine.server} PR ${mine.pr} rDPS ${Math.round(mine.rdps)}`,
+    ref: `${ref.name} @ ${ref.server} PR ${ref.pr} rDPS ${Math.round(ref.rdps)}`,
     compare: `${SITE}?${params({ ref: fflogsUrl(ref) })}`,
     solo: `${SITE}?${params({})}`,
   }, null, 2))
