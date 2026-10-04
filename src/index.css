@@ -3200,9 +3200,15 @@ h3 {
   min-width: 0;
 }
 
+/* 名稱過長時只縮名稱（省略號），標籤、職業與戰鬥不縮 */
+.picked-log > * {
+  flex-shrink: 0;
+}
+
 .picked-label {
   font-weight: 600;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 /* Boss 名稱（兩邊相同）：放在最前面 */
@@ -3211,6 +3217,11 @@ h3 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.picked-log > .picked-name {
+  flex-shrink: 1;
   min-width: 0;
 }
 

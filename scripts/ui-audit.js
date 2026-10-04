@@ -40,8 +40,9 @@
 
   // 不自然的換行：8 字以內的短文字（技能名、標籤）被拆成兩行，例如「自生II」變成「自生／II」。
   // 瀏覽器面板的手機截圖有時停在舊畫面，用這項取代目視
-  if (section) {
-    const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT)
+  // 比較結果與收合的日誌選擇（名稱過長時標籤被擠成直排）
+  for (const root of [section, document.querySelector('.picked-logs')].filter(Boolean)) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
     while (walker.nextNode()) {
       const node = walker.currentNode
       const text = node.textContent.trim()
