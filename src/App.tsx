@@ -159,7 +159,8 @@ function ReportSelector({
         options={fights.map(fightOption)}
         value={fight?.id ?? null}
         placeholder={fightNote ?? '請選擇戰鬥'}
-        disabled={fightNote !== null}
+        // 沒有可選的戰鬥（參考日誌沒有同一個 Boss）才停用；連結指定的戰鬥不存在時仍可選
+        disabled={fights.length === 0}
         disabledTitle={fightNote ?? undefined}
         showLock={false}
         // 換戰鬥時角色回到自動選擇
@@ -266,6 +267,11 @@ function readAverageTier(): AverageTier | null {
   return AVERAGE_ENABLED && AVERAGE_TIERS.some((t) => t.tier === value) ? (value as AverageTier) : null
 }
 
+/** 兩個選擇是同一份報告的同一場、同一位玩家 */
+function isSameLog(a: Selection | null, b: Selection | null): boolean {
+  return !!a && !!b && a.report.code === b.report.code && a.fight.id === b.fight.id && a.player.id === b.player.id
+}
+
 /** 收合後的一側：「我的／參考」＋玩家、職業、戰鬥 */
 function PickedLog({ label, selection }: { label: string; selection: Selection }) {
   const { player, fight } = selection
@@ -320,7 +326,10 @@ function PickedLogs({
 
 export default function App() {
   const [mine, setMine] = useState<Selection | null>(null)
-  const [reference, setReference] = useState<Selection | null>(null)
+  const [pickedReference, setReference] = useState<Selection | null>(null)
+  // 參考與我的日誌是同一場同一位（例如改過的分享連結）：比較沒有意義，視為只有我的日誌
+  const sameAsMine = isSameLog(mine, pickedReference)
+  const reference = sameAsMine ? null : pickedReference
   // 參考改用前輩平均（PR 區間）；null 為貼參考日誌
   const [average, setAverageState] = useState<AverageTier | null>(readAverageTier)
   const setAverage = (tier: AverageTier | null) => {
@@ -401,6 +410,7 @@ export default function App() {
           <Comparison
             mine={mine}
             reference={average ? null : reference}
+            sameAsMine={sameAsMine && !average}
             average={average}
             onPickSample={(s) => {
               // 改以這一場為參考（單一日誌）

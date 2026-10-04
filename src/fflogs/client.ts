@@ -72,8 +72,17 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T
 }
 
+/** FFLogs 對報告的錯誤訊息（英文）換成說明 */
+export function reportErrorMessage(message: string): string {
+  if (/report does not exist/i.test(message)) return '找不到這份報告：連結可能有誤，或報告已刪除'
+  if (/permission to view this report/i.test(message)) return '這份報告不公開（設為私人），無法讀取'
+  return message
+}
+
 export function fetchReport(code: string, signal?: AbortSignal): Promise<Report> {
-  return get(`/reports/${encodeURIComponent(code)}`, signal)
+  return get<Report>(`/reports/${encodeURIComponent(code)}`, signal).catch((err: unknown) => {
+    throw err instanceof ApiError ? new ApiError(err.status, reportErrorMessage(err.message)) : err
+  })
 }
 
 /** 繁中服排名（Worker 定時掃描公開報告自建）中的一筆擊殺；名次與 PR 為這一場的 rDPS 和其他玩家各自最好的一場比較。 */

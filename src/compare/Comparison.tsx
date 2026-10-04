@@ -1018,9 +1018,12 @@ export function Comparison({
   reference,
   average = null,
   onPickSample,
+  sameAsMine = false,
 }: {
   mine: Selection
   reference: Selection | null
+  /** 參考日誌選了與我同一場同一位（reference 為 null）：說明為何只有我的分析 */
+  sameAsMine?: boolean
   /** 參考改用前輩平均（PR 區間）；此時 reference 不用 */
   average?: AverageTier | null
   /** 在前輩平均的樣本清單中選了一場：改以那一場為參考 */
@@ -1067,6 +1070,8 @@ export function Comparison({
   }
   const notice = problem ? (
     <p className="error">{problem}</p>
+  ) : sameAsMine ? (
+    <p className="error">參考日誌與我的日誌是同一場同一位玩家，只顯示我的分析；請改貼前輩的日誌。</p>
   ) : !reference ? (
     <p className="hint">選擇參考日誌後可比較時間軸、站位、機制與技能時機。</p>
   ) : !refResult ? (

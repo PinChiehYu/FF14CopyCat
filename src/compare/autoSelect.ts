@@ -21,7 +21,9 @@ export interface Resolved {
   /** 戰鬥選單的選項：參考日誌只列與我同一個 Boss 的戰鬥 */
   fights: Fight[]
   fight: Fight | undefined
-  /** 參考日誌沒有同一個 Boss 時的說明（戰鬥選單顯示並停用） */
+  /**
+   * 戰鬥選單上的說明：參考日誌沒有同一個 Boss（選單停用），或連結指定的戰鬥不在報告中（打錯或改過的連結；不自動改選其他場，由使用者選）
+   */
   fightNote: string | null
   players: Actor[]
   player: Actor | undefined
@@ -57,8 +59,16 @@ export function resolveSelection(
   preferred?: Preference,
 ): Resolved {
   const fights = preferred ? report.fights.filter((f) => f.encounterID === preferred.encounterID) : report.fights
-  const fightNote = preferred && fights.length === 0 ? `這份報告沒有${preferred.bossName}` : null
-  const fight = pickFight(fights, urlRef, overrides, preferred)
+  // 連結指定的戰鬥編號不在報告中：自動改選別場會讓分享連結開出與連結不同的戰鬥，改為說明並等使用者選
+  const missingFight =
+    overrides.fightId === null && typeof urlRef.fight === 'number' && !report.fights.some((f) => f.id === urlRef.fight) ? urlRef.fight : null
+  const fightNote =
+    preferred && fights.length === 0
+      ? `這份報告沒有${preferred.bossName}`
+      : missingFight !== null
+        ? `連結指定的戰鬥 #${missingFight} 不在這份報告中，請選擇戰鬥`
+        : null
+  const fight = missingFight !== null ? undefined : pickFight(fights, urlRef, overrides, preferred)
   const players = fight ? playersInFight(report, fight) : []
   const byId = (id: number | null | undefined) => (id == null ? undefined : players.find((p) => p.id === id))
   const base = { fights, fight, fightNote }

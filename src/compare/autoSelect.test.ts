@@ -39,6 +39,21 @@ describe('resolveSelection', () => {
     })
   })
 
+  it('does not replace a fight the link names but the report does not have', () => {
+    // 打錯或改過的分享連結：不自動改選其他場，說明後由使用者選（選單不停用）
+    const mine = resolveSelection(report, { reportCode: 'x', fight: 99, sourceId: 3 }, none)
+    expect(mine).toMatchObject({ fight: undefined, player: undefined, fightNote: '連結指定的戰鬥 #99 不在這份報告中，請選擇戰鬥' })
+    expect(mine.fights).toHaveLength(5)
+    const pref = { encounterID: 100, bossName: '呼嘯之劍', subType: 'Samurai' }
+    expect(resolveSelection(report, { reportCode: 'x', fight: 99 }, none, pref)).toMatchObject({ fight: undefined, player: undefined })
+    // 使用者選了戰鬥後照常
+    expect(resolveSelection(report, { reportCode: 'x', fight: 99 }, { fightId: 2, playerId: null }, pref)).toMatchObject({
+      fight: { id: 2 },
+      player: { id: 1 },
+      fightNote: null,
+    })
+  })
+
   it('picks the last kill of the same encounter and the only same-job player', () => {
     const r = resolveSelection(report, { reportCode: 'x' }, none, { encounterID: 100, bossName: 'B100', subType: 'Samurai' })
     expect(r).toMatchObject({ fight: { id: 2 }, player: { id: 1 }, note: null })

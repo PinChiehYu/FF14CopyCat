@@ -1,6 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DB_UNAVAILABLE_MESSAGE, dbStatus, fetchReport, fetchTcRankings, fightNameParts, translateFightName } from './client'
 
+describe('report errors', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('explains reports that do not exist or are private in Chinese', async () => {
+    const fail = (error: string) => vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error }, { status: 400 })))
+    fail('This report does not exist.')
+    await expect(fetchReport('abc')).rejects.toThrow('找不到這份報告：連結可能有誤，或報告已刪除')
+    fail('You do not have permission to view this report.')
+    await expect(fetchReport('abc')).rejects.toThrow('這份報告不公開（設為私人），無法讀取')
+    fail('Something else')
+    await expect(fetchReport('abc')).rejects.toThrow('Something else')
+  })
+})
+
 describe('translateFightName', () => {
   const names = new Map([
     ['Howling Blade', '呼嘯之劍'],
