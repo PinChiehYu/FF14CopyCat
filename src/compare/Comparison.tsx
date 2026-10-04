@@ -727,16 +727,8 @@ function Loaded({
     setCursor(t)
     setFocus({ t })
   }, [setCursor, setFocus])
-  // 建議以下的詳細區塊分頁顯示（輸出循環／機制與站位／時間軸），避免整頁過長
+  // 建議與時間軸之間的詳細區塊分頁顯示（輸出循環／機制與站位），避免整頁過長；時間軸一直顯示在下方，方便配合播放
   const [detail, setDetail] = useState<string>('rotation')
-  // 「查看」某個時間點：切到時間軸並捲到那裡（站位分頁內的跳轉只移動游標，留在俯視圖）
-  const showAt = useCallback(
-    (t: number) => {
-      jumpTo(t)
-      setDetail('timeline')
-    },
-    [jumpTo, setDetail],
-  )
   // 「查看」頁面上的區塊：切到區塊所在的分頁（分頁都保持掛載，可直接找到），顯示後再捲動
   const showSection = useCallback((id: string) => {
     const tab = document.getElementById(id)?.closest<HTMLElement>('[data-detail]')?.dataset.detail
@@ -807,10 +799,10 @@ function Loaded({
     () => (
       <>
         <h3>建議</h3>
-        <AdviceList advice={advice} onJump={showAt} onSection={showSection} />
+        <AdviceList advice={advice} onJump={jumpTo} onSection={showSection} />
       </>
     ),
-    [advice, showAt, showSection],
+    [advice, jumpTo, showSection],
   )
   const rotationSection = useMemo(
     () => (
@@ -823,14 +815,14 @@ function Loaded({
               abilities={abilities}
               abilityName={abilityName}
               mineToRef={alignment.mineToRef}
-              onJump={showAt}
+              onJump={jumpTo}
             />
           </>
         )}
         {dots.length > 0 && (
           <>
             <DotsHeading />
-            <Dots dots={dots} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={showAt} />
+            <Dots dots={dots} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
           </>
         )}
         <Metrics
@@ -841,14 +833,14 @@ function Loaded({
           job={job}
           category={category}
           lost={lost}
-          onFocus={showAt}
+          onFocus={jumpTo}
           cooldowns={cooldowns}
           mineToRef={alignment.mineToRef}
           abilityName={abilityName}
           afterGcd={
             <>
               {weaving && weaving.mine.length > 0 && (
-                <Weaving weaving={weaving} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={showAt} />
+                <Weaving weaving={weaving} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
               )}
               {fillers && fillerId !== undefined && (
                 <Fillers
@@ -857,7 +849,7 @@ function Loaded({
                   abilities={abilities}
                   abilityName={abilityName}
                   mineToRef={alignment.mineToRef}
-                  onJump={showAt}
+                  onJump={jumpTo}
                 />
               )}
             </>
@@ -865,7 +857,7 @@ function Loaded({
         />
       </>
     ),
-    [solo, showAt, windows, dots, fillers, fillerId, weaving, abilities, abilityName, alignment, gcd, usage, job, category, lost, cooldowns],
+    [solo, jumpTo, windows, dots, fillers, fillerId, weaving, abilities, abilityName, alignment, gcd, usage, job, category, lost, cooldowns],
   )
   const mechanicsSection = useMemo(
     () =>
@@ -876,13 +868,13 @@ function Loaded({
             differences={mainMechanics}
             main={mainMechanicGroups(mine.selection.fight.encounterID) !== null}
             abilityName={abilityName}
-            onJump={showAt}
+            onJump={jumpTo}
             isFocused={isFocused}
             refToMine={alignment.refToMine}
           />
         </>
       ),
-    [partial, mine, mainMechanics, abilityName, showAt, isFocused, alignment],
+    [partial, mine, mainMechanics, abilityName, jumpTo, isFocused, alignment],
   )
 
   return (
@@ -896,7 +888,7 @@ function Loaded({
         refEnd={compareEnd}
         abilityName={abilityName}
         mineToRef={alignment.mineToRef}
-        onJump={showAt}
+        onJump={jumpTo}
         average={average}
       />
       {patchDiffs.length > 0 && (
@@ -924,7 +916,7 @@ function Loaded({
                 key={p.refEnd}
                 type="button"
                 className={`push-chip ${p.deltaMs > 0 ? 'slower' : 'faster'}`}
-                onClick={() => showAt(p.refEnd)}
+                onClick={() => jumpTo(p.refEnd)}
                 title={pushTitle(p)}
               >
                 {formatFightTime(p.refEnd)} 我{p.deltaMs > 0 ? '慢' : '快'} {(Math.abs(p.deltaMs) / 1000).toFixed(1)} 秒
@@ -989,35 +981,27 @@ function Loaded({
               </div>
             ),
           },
-          {
-            key: 'timeline',
-            label: '時間軸',
-            content: (
-              <div data-detail="timeline">
-                <Timeline
-                  active={detail === 'timeline'}
-                  mine={mine}
-                  reference={shownRef}
-                  alignment={alignment}
-                  abilities={abilities}
-                  job={job}
-                  highlights={timelineHighlights}
-                  windows={timelineWindows}
-                  weaveMarks={weaveMarks}
-                  dotMarks={dotMarks}
-                  isFocused={isFocused}
-                  pushes={pushes}
-                  focus={focus}
-                  cursor={cursor}
-                  follow={playing}
-                  onSeek={setCursor}
-                  compareEnd={solo ? undefined : compareEnd}
-                  averaged={!!average}
-                />
-              </div>
-            ),
-          },
         ]}
+      />
+      <h3>時間軸</h3>
+      <Timeline
+        mine={mine}
+        reference={shownRef}
+        alignment={alignment}
+        abilities={abilities}
+        job={job}
+        highlights={timelineHighlights}
+        windows={timelineWindows}
+        weaveMarks={weaveMarks}
+        dotMarks={dotMarks}
+        isFocused={isFocused}
+        pushes={pushes}
+        focus={focus}
+        cursor={cursor}
+        follow={playing}
+        onSeek={setCursor}
+        compareEnd={solo ? undefined : compareEnd}
+        averaged={!!average}
       />
       {/* 固定在畫面底部的播放列：捲到哪裡都能操作 */}
       <Playback

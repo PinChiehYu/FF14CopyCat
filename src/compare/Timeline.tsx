@@ -92,7 +92,6 @@ export function Timeline({
   onSeek,
   compareEnd,
   averaged = false,
-  active = true,
 }: {
   mine: SideData
   /** 還沒有參考日誌時為 null：Boss 列用我的 Boss 施放、只畫我的技能列（alignment 應為恆等對應） */
@@ -124,8 +123,6 @@ export function Timeline({
   compareEnd?: number
   /** 參考為前輩平均（已在我的時間、Boss 列為我的；圖示透明度表示一致度） */
   averaged?: boolean
-  /** 時間軸所在的分頁正在顯示（預設是） */
-  active?: boolean
 }) {
   const refLabel = useRefLabel()
   const [pxPerSec, setPxPerSec] = useState(20)
@@ -137,14 +134,13 @@ export function Timeline({
   const axis = useMemo(() => displayAxis(pushes, alignment.mineToRef), [pushes, alignment])
 
   useEffect(() => {
-    // 在隱藏的分頁中無法捲動：切到時間軸分頁時再捲到最後一次跳轉的時間
-    if (!focus || !scrollRef.current || !active) return
+    if (!focus || !scrollRef.current) return
     // 內層立即捲動：同時對外層做平滑捲動時，瀏覽器會中斷內層的平滑捲動
     scrollRef.current.scrollLeft = Math.max(0, (axis.ref(focus.t) / 1000) * pxPerSec - 120)
     rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    // 只在 focus 改變或切到時間軸分頁時捲動；縮放時不重捲
+    // 只在 focus 改變時捲動；縮放時不重捲
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus, active])
+  }, [focus])
 
   // 播放中游標固定在左側四分之一處，時間軸跟著連續捲動（原本碰到右緣才一次跳回，手機上時間軸窄，約 10 秒就跳一大段）
   useEffect(() => {
