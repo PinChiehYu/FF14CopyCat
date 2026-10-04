@@ -4,6 +4,21 @@ import { DB_UNAVAILABLE_MESSAGE, dbStatus, fetchReport, fetchTcRankings, fightNa
 describe('report errors', () => {
   afterEach(() => vi.unstubAllGlobals())
 
+  it('fetches a report again when its fight list comes back empty', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ code: 'abc', fights: [] }))
+      .mockResolvedValueOnce(Response.json({ code: 'abc', fights: [{ id: 1 }] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const pending = fetchReport('abc')
+    await vi.advanceTimersByTimeAsync(2000)
+    await expect(pending).resolves.toEqual({ code: 'abc', fights: [{ id: 1 }] })
+    // 第二次加上參數，避開 Worker 可能快取的空結果
+    expect(String(fetchMock.mock.calls[1][0])).toMatch(/\/reports\/abc\?retry=1$/)
+    vi.useRealTimers()
+  })
+
   it('explains reports that do not exist or are private in Chinese', async () => {
     const fail = (error: string) => vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error }, { status: 400 })))
     fail('This report does not exist.')

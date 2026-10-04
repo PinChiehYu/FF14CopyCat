@@ -320,6 +320,7 @@
 
 ## FFLogs 資料特性
 
+- **第一次載入報告時戰鬥清單可能是空的**（2026-10-05 實測）：同一份沒查過的報告同時查詢時，部分回應的 `fights` 為空，稍後再查就正常；Worker 與前端都會重查，空的不快取（見技術變更紀錄）。
 - **沒有裝備與品級資料**（2026-10-02 驗證，6 份不同上傳者的繁中服日誌：黑魔、鐮刀、暗騎、騎士等）：事件的 `combatantinfo` 只有 `gear`（空陣列）、`auras`、`level`、`simulatedCrit`、`simulatedDirectHit`；GraphQL `report.playerDetails(fightIDs)` 每位玩家只有 `name, id, guid, type, server, icon, potionUse, healthstoneUse, combatantInfo`，`combatantInfo` 為空陣列，沒有 `minItemLevel`／`maxItemLevel`。ACT 上傳的 FFXIV 日誌不含裝備，無法比較品級（使用者 2026-10-01 提議在摘要比較品級，驗證後放棄；驗證用的端點已移除）。
 - **時間**：事件 `timestamp` 相對於整份報告開始；需減去 fight 的 `startTime`。
 - **連結格式**：`fight`、`source` 可能在 hash（`#fight=5`）或 query string（`?fight=29`）；`fight=last` 代表最後一場；區域子網域（`tw.`、`cn.`）也會出現在網址中；匿名報告代碼以 `a:` 開頭。
@@ -581,6 +582,11 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-10-05 報告的戰鬥清單偶爾是空的
+- 現象：隨機日誌測試中，瀏覽器面板開啟後第一次載入時，「我的／參考日誌」顯示「這份報告沒有戰鬥紀錄」，重新載入就正常（四輪出現三次）。
+- 原因：FFLogs 第一次載入一份報告時，同時的其他查詢可能拿到空的 `fights`（其餘欄位正常）。實測對兩份沒查過的報告各同時送 4 個 `/reports/:code`，各有 2～3 個回傳 0 場、之後再查都正常。測試時面板開啟後立刻重新載入，同一份報告送出兩次請求；使用者快速重新整理或兩邊貼同一份報告也會遇到。Worker 把回應快取 10 分鐘，若最後寫入的是空的，10 分鐘內都會顯示沒有戰鬥。
+- 修正：Worker 拿到空的戰鬥清單時等 1.5 秒重查（最多 2 次），仍是空的不快取；前端 `fetchReport()` 拿到空的清單等 2 秒、加 `?retry=1`（避開 Worker 可能快取的空結果）重查一次。
 
 ### 2026-10-04 Boss 名稱改以官方 XIVAPI 搜尋英文名稱
 - 原因：`/npc-names` 一律回傳空的（Boss 名稱全站顯示英文）。Boilmaster 鏡像 `xivapi-v2.xivcdn.com` 的 `/search` 對 `language=en` 回 400「unsupported language」（與職業資料產生腳本同一原因），`npcNames.ts` 以英文名稱找 BNpcName 列號的搜尋全部失敗。

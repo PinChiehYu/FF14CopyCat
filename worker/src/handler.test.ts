@@ -46,11 +46,11 @@ describe('handleRequest', () => {
   })
 
   it('returns the report and reuses the token', async () => {
-    const fetchMock = mockFflogs({ data: { reportData: { report: { code: 'abc', fights: [] } } } })
+    const fetchMock = mockFflogs({ data: { reportData: { report: { code: 'abc', fights: [{ id: 1 }] } } } })
 
     const res = await handleRequest(get('/reports/abc'), env, ctx, null)
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ code: 'abc', fights: [] })
+    expect(await res.json()).toEqual({ code: 'abc', fights: [{ id: 1 }] })
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN)
 
     await handleRequest(get('/reports/abc'), env, ctx, null)
@@ -59,7 +59,7 @@ describe('handleRequest', () => {
   })
 
   it('shares the token across isolates through the cache', async () => {
-    const fetchMock = mockFflogs({ data: { reportData: { report: { code: 'abc', fights: [] } } } })
+    const fetchMock = mockFflogs({ data: { reportData: { report: { code: 'abc', fights: [{ id: 1 }] } } } })
     // 以 Map 模擬 Cloudflare 快取（同一個資料中心共用）
     const stored = new Map<string, Response>()
     const store = {
@@ -78,7 +78,7 @@ describe('handleRequest', () => {
   })
 
   it('still fetches a token when the cache fails', async () => {
-    mockFflogs({ data: { reportData: { report: { code: 'abc', fights: [] } } } })
+    mockFflogs({ data: { reportData: { report: { code: 'abc', fights: [{ id: 1 }] } } } })
     setTokenStore({
       match: async () => {
         throw new Error('cache down')
@@ -91,6 +91,31 @@ describe('handleRequest', () => {
     const res = await handleRequest(get('/reports/abc'), env, ctx, null)
     expect(res.status).toBe(200)
     expect(warn).toHaveBeenCalledWith('token cache read failed', expect.any(Error))
+  })
+
+  it('retries a report whose fight list comes back empty and does not cache an empty one', async () => {
+    // FFLogs 第一次載入報告時，同時的查詢可能拿到空的戰鬥清單
+    vi.useFakeTimers()
+    const report = (fights: unknown[]) => ({ data: { reportData: { report: { code: 'abc', fights } } } })
+    const bodies = [report([]), report([{ id: 1 }])]
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith('/oauth/token') ? Response.json({ access_token: 'tok', expires_in: 3600 }) : Response.json(bodies.shift() ?? report([])),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const put = vi.fn(async () => {})
+    const cache = { match: async () => undefined, put }
+    const pending = handleRequest(get('/reports/abc'), env, { waitUntil: (p: Promise<unknown>) => void p }, cache)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await (await pending).json()).toEqual({ code: 'abc', fights: [{ id: 1 }] })
+    expect(put).toHaveBeenCalledTimes(1)
+
+    // 重查後仍是空的：照樣回傳，但不快取
+    put.mockClear()
+    const empty = handleRequest(get('/reports/def'), env, { waitUntil: (p: Promise<unknown>) => void p }, cache)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(await (await empty).json()).toEqual({ code: 'abc', fights: [] })
+    expect(put).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 
   it('passes validated event parameters to the GraphQL query', async () => {

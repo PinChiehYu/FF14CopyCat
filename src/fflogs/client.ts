@@ -79,10 +79,21 @@ export function reportErrorMessage(message: string): string {
   return message
 }
 
-export function fetchReport(code: string, signal?: AbortSignal): Promise<Report> {
-  return get<Report>(`/reports/${encodeURIComponent(code)}`, signal).catch((err: unknown) => {
+// FFLogs 第一次載入一份報告時，同時的查詢可能拿到空的戰鬥清單（Worker 也會重查，見 handler.ts 的 EMPTY_REPORT_RETRIES）；
+// 前端再等一下重查一次，加上參數避開 Worker 可能快取的空結果
+const EMPTY_REPORT_RETRY_MS = 2000
+
+export async function fetchReport(code: string, signal?: AbortSignal): Promise<Report> {
+  const path = `/reports/${encodeURIComponent(code)}`
+  try {
+    const report = await get<Report>(path, signal)
+    if (!Array.isArray(report.fights) || report.fights.length > 0) return report
+    await new Promise((resolve) => setTimeout(resolve, EMPTY_REPORT_RETRY_MS))
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError')
+    return await get<Report>(`${path}?retry=1`, signal)
+  } catch (err) {
     throw err instanceof ApiError ? new ApiError(err.status, reportErrorMessage(err.message)) : err
-  })
+  }
 }
 
 /** 繁中服排名（Worker 定時掃描公開報告自建）中的一筆擊殺；名次與 PR 為這一場的 rDPS 和其他玩家各自最好的一場比較。 */

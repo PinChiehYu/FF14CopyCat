@@ -314,7 +314,21 @@ async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds:
       throw new HttpError(502, `Ability name lookup failed: ${err instanceof Error ? err.message : err}`)
     }
   }
-  return { data: await reportRoute(url, env), cacheSeconds: CACHE_SECONDS }
+  const data = await reportRoute(url, env)
+  // 戰鬥清單是空的報告不快取（見 EMPTY_REPORT_RETRIES）
+  return { data, cacheSeconds: hasNoFights(data) ? 0 : CACHE_SECONDS }
+}
+
+/**
+ * FFLogs 第一次載入一份報告時，同時的其他查詢可能拿到空的戰鬥清單（2026-10-05 實測：同一份報告同時查 4 次，2～3 次 fights 為空，
+ * 之後再查都正常）。拿到空的就稍等重查，仍是空的也不快取，避免 10 分鐘內都顯示「沒有戰鬥紀錄」。
+ */
+const EMPTY_REPORT_RETRIES = 2
+const EMPTY_REPORT_RETRY_MS = 1500
+
+function hasNoFights(report: unknown): boolean {
+  const fights = (report as { fights?: unknown[] } | null)?.fights
+  return Array.isArray(fights) && fights.length === 0
 }
 
 async function reportRoute(url: URL, env: Env): Promise<unknown> {
@@ -324,7 +338,14 @@ async function reportRoute(url: URL, env: Env): Promise<unknown> {
   const code = decodeURIComponent(match[1])
   if (!REPORT_CODE.test(code)) throw new HttpError(400, 'Invalid report code')
 
-  if (!match[2]) return queryReport(env, REPORT_QUERY, { code })
+  if (!match[2]) {
+    let report = await queryReport(env, REPORT_QUERY, { code })
+    for (let i = 0; i < EMPTY_REPORT_RETRIES && hasNoFights(report); i++) {
+      await new Promise((resolve) => setTimeout(resolve, EMPTY_REPORT_RETRY_MS))
+      report = await queryReport(env, REPORT_QUERY, { code })
+    }
+    return report
+  }
 
   const params = url.searchParams
   if (match[2] === '/auto-attacks-taken') {
@@ -424,7 +445,7 @@ export async function handleRequest(
   try {
     const { data, cacheSeconds } = await route(url, env)
     const body = JSON.stringify(data)
-    if (cache) {
+    if (cache && cacheSeconds > 0) {
       const toCache = new Response(body, {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${cacheSeconds}` },
       })
