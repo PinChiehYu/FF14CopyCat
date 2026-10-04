@@ -3205,7 +3205,7 @@ h3 {
   color: var(--text-muted);
 }
 
-/* Boss 名稱：兩邊相同時列一次，放在最前面 */
+/* Boss 名稱（兩邊相同）：放在最前面 */
 .picked-boss {
   font-weight: 600;
   white-space: nowrap;
