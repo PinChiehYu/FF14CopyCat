@@ -20,6 +20,8 @@ const REQUESTS_PER_SAMPLE = 3
 // 每次最多處理幾位樣本與幾場新場次
 export const SAMPLES_PER_RUN = 1
 export const PULLS_PER_RUN = 2
+// 沒有待處理的場次時，改多處理幾位樣本（本機 workerd 實測：第 2 位樣本只多約 0.9 ms CPU，比 2 場的開銷少）
+export const IDLE_PULL_SAMPLES = 1
 // 樣本只用到這些事件（playerCasts、selfBuffWindows、enemyDebuffWindows、enemyDebuffApplications 與死亡次數）；
 // 只抓這些，存下的資料與抓全部事件時逐字相同（以 6 份日誌驗證，見 docs/TECH_NOTES.md）
 const SAMPLE_EVENT_TYPES = ['cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death']
@@ -453,8 +455,11 @@ export async function processTimelines(
   }
 
   const writes: StatementLike[] = []
+  // 先取待處理的場次：沒有時把場次的額度改給樣本
+  const pulls = work.pulls > 0 ? await pendingPulls(db, Math.min(work.pulls, Math.floor((SUBREQUEST_BUDGET - requests) / REQUESTS_PER_PULL))) : []
+  const sampleCount = work.samples + (work.pulls > 0 && pulls.length === 0 ? IDLE_PULL_SAMPLES : 0)
   // 樣本：該玩家的全部事件（施放、自身效果、對敵人施加的效果、死亡）
-  for (const s of await pendingSamples(db, Math.min(work.samples, Math.floor((SUBREQUEST_BUDGET - requests) / REQUESTS_PER_SAMPLE)))) {
+  for (const s of await pendingSamples(db, Math.min(sampleCount, Math.floor((SUBREQUEST_BUDGET - requests) / REQUESTS_PER_SAMPLE)))) {
     if (requests + REQUESTS_PER_SAMPLE > SUBREQUEST_BUDGET) {
       result.skipped = 'subrequests'
       break
@@ -498,7 +503,7 @@ export async function processTimelines(
   }
 
   // 新場次：Boss 施放，有坦克時判斷 MT／ST
-  for (const pull of await pendingPulls(db, Math.min(work.pulls, Math.floor((SUBREQUEST_BUDGET - requests) / REQUESTS_PER_PULL)))) {
+  for (const pull of pulls) {
     if (requests + REQUESTS_PER_PULL > SUBREQUEST_BUDGET) {
       result.skipped = 'subrequests'
       break

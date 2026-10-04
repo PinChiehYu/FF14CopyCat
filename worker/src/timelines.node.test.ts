@@ -324,6 +324,23 @@ describe('processTimelines', () => {
     expect(await db.prepare('SELECT pending FROM average_samples').first()).toEqual({ pending: 1 })
   })
 
+  it('processes one more sample when no pulls are waiting', async () => {
+    const db = memoryDb()
+    await addParse(db, 'AAA', 1, 1, 'Samurai', 30000)
+    await addParse(db, 'BBB', 1, 2, 'Samurai', 20000)
+    await addParse(db, 'CCC', 1, 3, 'Samurai', 10000)
+    const graphql: Graphql = async <T>(query: string, variables: Record<string, unknown>) => {
+      if (query.includes('rateLimitData')) return { rateLimitData: { pointsSpentThisHour: 0 } } as T
+      const data = [{ timestamp: 21_000, type: 'cast', sourceID: variables.sourceID, abilityGameID: 7477 }]
+      return { reportData: { report: { events: { data, nextPageTimestamp: null } } } } as T
+    }
+    await refreshSamples(db, NOW)
+    expect((await db.prepare('SELECT COUNT(*) AS n FROM average_samples WHERE pending = 1').first<{ n: number }>())!.n).toBeGreaterThanOrEqual(2)
+    // 場次都處理完了：2 場的額度改給樣本
+    await db.prepare('DELETE FROM pull_queue').run()
+    expect(await processTimelines(db, graphql, NOW, { combos: 0, samples: 1, pulls: 2, damage: 0 })).toMatchObject({ samples: 2, pulls: 0 })
+  })
+
   it('backfills the party damage of collected fights', async () => {
     const db = memoryDb()
     await addParse(db, 'DMG', 3, 1, 'Samurai')
