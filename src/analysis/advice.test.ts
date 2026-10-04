@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { getJob } from '../jobs'
 import { abilityCategory } from '../jobs/roleActions'
-import { generateAdvice, generateSoloAdvice, groupAdvice, LOST_GCD_SECTION, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
+import { generateAdvice, generateAverageAdvice, generateSoloAdvice, groupAdvice, LOST_GCD_SECTION, type Advice, type AdviceInput, type SoloAdviceInput } from './advice'
 import { DOT_RULES } from '../jobs/dotRules'
 import { COOLDOWN_RULES } from '../jobs/cooldownRules'
+import { isNonOffensiveCooldown } from './cooldowns'
 import type { WindowRule } from '../jobs/windows'
 import type { AbilityUsage } from './metrics'
 
@@ -57,6 +58,24 @@ describe('heal abilities', () => {
     // 少用 1 次不提
     expect(generateAdvice(input({ usage: [usage(1, 6, 7)], isHeal: (id) => id === 1 })).some((a) => a.kind === 'heal')).toBe(false)
   })
+
+  it('treats abilities the job data marks as heals the same way', () => {
+    // 補師的即刻詠唱（7561）：日誌判斷不出來，由職業資料分類
+    const ast = getJob('Astrologian')!
+    const advice = generateAdvice(input({ usage: [usage(7561, 0, 3)], category: (id) => abilityCategory(id, ast) }))
+    expect(advice.map((a) => [a.kind, a.severity, a.title])).toEqual([['heal', 'medium', '治療：#7561 少用 3 次（你 0 次、參考 3 次）']])
+  })
+
+  it('skips heals used very often and heals already reviewed as cooldowns', () => {
+    const isHeal = (id: number) => id === 1
+    // 參考用了 30 次以上（例如每次都用的治療）：次數依隊伍受傷情況，不比較
+    expect(generateAdvice(input({ usage: [usage(1, 20, 31)], isHeal })).some((a) => a.kind === 'heal')).toBe(false)
+    expect(generateAdvice(input({ usage: [usage(1, 20, 30)], isHeal })).some((a) => a.kind === 'heal')).toBe(true)
+    // 已由冷卻技規則追蹤的不另提
+    const [, , liturgy] = COOLDOWN_RULES.WhiteMage
+    const tracked = { group: { ...liturgy, ids: [1] }, uses: 2, max: 5, late: [] }
+    expect(generateAdvice(input({ usage: [usage(1, 2, 5)], isHeal, cooldowns: [{ mine: tracked, ref: tracked }] })).some((a) => a.kind === 'heal')).toBe(false)
+  })
 })
 
 describe('generateAdvice', () => {
@@ -69,7 +88,6 @@ describe('generateAdvice', () => {
       input({
         deaths: {
           mine: [{ t: 120_000, abilityId: 2, revivedAt: 140_000 }],
-          ref: [],
         },
         // 死亡期間的停手：註明是因為死亡
         lost: [{ mineStart: 121_000, mineEnd: 139_000, refStart: 121_000, refEnd: 139_000, refGcds: 7 }],
@@ -78,8 +96,6 @@ describe('generateAdvice', () => {
     expect(advice[0]).toMatchObject({ severity: 'high', title: '你死亡了 1 次：避免死亡是最優先的改進', at: 120_000 })
     expect(advice[0].detail).toContain('2:00.0（Enpi）')
     expect(advice[0].detail).toContain('20.0 秒無法輸出')
-    // 本來就不該死亡：不比較參考的死亡次數
-    expect(advice[0].detail).not.toContain('參考在同一場')
     expect(advice[0].detail).toContain('不要死亡')
     // 停手總結註明其中幾段是死亡期間
     const lost = advice.find((a) => a.title.includes('段你停手'))
@@ -462,7 +478,7 @@ describe('death recap and penalty advice', () => {
   it('adds a death recap to the death advice', () => {
     const [death] = generateAdvice(
       input({
-        deaths: { mine: [{ t: 100_000, abilityId: 2, revivedAt: null }], ref: [] },
+        deaths: { mine: [{ t: 100_000, abilityId: 2, revivedAt: null }] },
         deathRecaps: [
           {
             death: { t: 100_000, abilityId: 2, revivedAt: null },
@@ -478,17 +494,31 @@ describe('death recap and penalty advice', () => {
   })
 
   it('reports any Damage Down without comparing with the reference', () => {
-    const penalties = (mine: number, ref: number) => ({
-      mine: Array.from({ length: mine }, (_, i) => ({ start: i * 10_000, end: i * 10_000 + 5000 })),
-      ref: Array.from({ length: ref }, (_, i) => ({ start: i * 10_000, end: i * 10_000 + 5000 })),
+    const penalties = (count: number) => ({ mine: Array.from({ length: count }, (_, i) => ({ start: i * 10_000, end: i * 10_000 + 5000 })) })
+    expect(generateAdvice(input({ penalties: penalties(0) })).some((a) => a.kind === 'penalty')).toBe(false)
+    // 本來就不該被施加：不列參考的次數
+    expect(generateAdvice(input({ penalties: penalties(1) })).find((a) => a.kind === 'penalty')?.title).toBe('被施加傷害降低 1 次，共 5.0 秒')
+    expect(generateAdvice(input({ penalties: penalties(2) })).find((a) => a.kind === 'penalty')?.title).toBe('被施加傷害降低 2 次，共 10.0 秒')
+  })
+
+  it('ignores Damage Down removed within a second, with or without a reference', () => {
+    // 施加後立刻移除（實測 40 毫秒）的不列入；滿 1 秒的列入
+    const blip = [{ start: 1000, end: 1040 }]
+    const second = [{ start: 1000, end: 2000 }]
+    expect(generateAdvice(input({ penalties: { mine: blip } })).some((a) => a.kind === 'penalty')).toBe(false)
+    expect(generateAdvice(input({ penalties: { mine: second } })).find((a) => a.kind === 'penalty')?.title).toBe('被施加傷害降低 1 次，共 1.0 秒')
+    const solo = (penalties: { start: number; end: number }[]): SoloAdviceInput => ({
+      abilityName: (id) => `#${id}`,
+      deaths: [],
+      durationMs: 600_000,
+      stops: [],
+      windows: [],
+      cooldowns: [],
+      penalties,
+      potionUses: 1,
     })
-    expect(generateAdvice(input({ penalties: penalties(0, 1) })).some((a) => a.kind === 'penalty')).toBe(false)
-    // 本來就不該被施加：參考也有時照樣提出，不列參考的次數
-    expect(generateAdvice(input({ penalties: penalties(1, 1) })).find((a) => a.kind === 'penalty')?.title).toBe('被施加傷害降低 1 次，共 5.0 秒')
-    expect(generateAdvice(input({ penalties: penalties(2, 1) })).find((a) => a.kind === 'penalty')?.title).toBe('被施加傷害降低 2 次，共 10.0 秒')
-    // 施加後立刻移除（不到 1 秒）的不列入
-    const blip = { mine: [{ start: 1000, end: 1040 }], ref: [] }
-    expect(generateAdvice(input({ penalties: blip })).some((a) => a.kind === 'penalty')).toBe(false)
+    expect(generateSoloAdvice(solo(blip))).toEqual([])
+    expect(generateSoloAdvice(solo([...blip, ...second])).map((a) => a.title)).toEqual(['被施加傷害降低 1 次，共 1.0 秒'])
   })
 })
 
@@ -500,8 +530,7 @@ describe('advice kinds', () => {
         lost: [{ mineStart: 10_000, mineEnd: 16_000, refStart: 10_000, refEnd: 16_000, refGcds: 3 }],
       }),
     )
-    expect(advice.length).toBeGreaterThan(0)
-    expect(advice.every((x) => x.kind !== undefined)).toBe(true)
+    expect(advice.map((x) => x.kind)).toEqual(['gcd', 'usage', 'movement'])
   })
 })
 describe('groupAdvice', () => {
@@ -571,11 +600,55 @@ describe('cooldown advice', () => {
       solo([
         { mine: usageOf(assize, 10, 14), ref: null },
         // 治療技能（禮儀之鈴）：不以最多可用次數檢討
-        { mine: usageOf(liturgy, 2, 5), ref: null, nonOffensive: true },
+        { mine: usageOf(liturgy, 2, 5), ref: null, nonOffensive: isNonOffensiveCooldown(liturgy, getJob('WhiteMage')) },
       ]),
     )
     expect(advice.map((a) => a.title)).toEqual(['#3571：最多可用 14 次，你用了 10 次'])
-    expect(presence.suggestionOnly).toBeUndefined()
-    expect(liturgy.suggestionOnly).toBe(true)
+  })
+
+  it('marks heal, mitigation and movement cooldowns as not offensive', () => {
+    const whm = getJob('WhiteMage')
+    // 法令（輸出）；神速詠唱（xivanalysis 只在建議提）；禮儀之鈴（治療，xivanalysis 只在建議提）
+    expect(isNonOffensiveCooldown(assize, whm)).toBe(false)
+    expect(isNonOffensiveCooldown(presence, whm)).toBe(false)
+    expect(isNonOffensiveCooldown(liturgy, whm)).toBe(true)
+    // 分類為治療／減傷的技能：職業資料的全大赦、職能技能的雪仇
+    expect(isNonOffensiveCooldown({ ...assize, ids: [7433] }, whm)).toBe(true)
+    expect(isNonOffensiveCooldown({ ...assize, ids: [7535] }, getJob('Paladin'))).toBe(true)
+  })
+})
+describe('generateAverageAdvice', () => {
+  const solo: SoloAdviceInput = {
+    abilityName: (id) => names[id] ?? `#${id}`,
+    deaths: [{ t: 120_000, abilityId: 2, revivedAt: 140_000 }],
+    durationMs: 600_000,
+    stops: [],
+    windows: [],
+    cooldowns: [],
+    penalties: [],
+    potionUses: 0,
+  }
+
+  it('words only the comparisons as against the peer average', () => {
+    const compare = input({
+      usage: [usage(4, 0, 2)],
+      lost: [{ mineStart: 10_000, mineEnd: 16_000, refStart: 10_000, refEnd: 16_000, refGcds: 3 }],
+    })
+    const advice = generateAverageAdvice(solo, compare)
+    // 只看自己的建議（死亡、沒用強化藥）照只有我的日誌的文字
+    const own = generateSoloAdvice({ ...solo, stops: [] })
+    for (const a of own) expect(advice).toContainEqual(a)
+    // 與前輩平均比較的建議改稱「前輩平均」
+    const compared = advice.filter((a) => !own.includes(a) && !own.some((o) => o.title === a.title))
+    expect(compared.length).toBeGreaterThan(0)
+    for (const a of compared) expect(`${a.title}${a.detail}`).not.toContain('參考')
+    expect(compared.some((a) => `${a.title}${a.detail}`.includes('前輩平均'))).toBe(true)
+    // 整場沒用強化藥已有一則，不再列「爆發藥少用」
+    expect(advice.filter((a) => a.kind === 'potion').map((a) => a.title)).toEqual(['整場沒有使用強化藥'])
+  })
+
+  it('compares potions with the peer average when some were used', () => {
+    const advice = generateAverageAdvice({ ...solo, deaths: [], potionUses: 1 }, input({ usage: [usage(4, 1, 2)] }))
+    expect(advice.map((a) => a.title)).toEqual(['爆發藥少用 1 次（你 1 次、前輩平均 2 次）'])
   })
 })

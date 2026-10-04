@@ -145,8 +145,8 @@ export interface AdviceInput {
   windows?: { mine: WindowSummary; ref: WindowSummary }[]
   /** 開打當下身上已有的自身效果（推知開打前用過的技能） */
   prepull?: { mine: number[]; ref: number[] }
-  /** 死亡（各自的戰鬥時間） */
-  deaths?: { mine: Death[]; ref: Death[] }
+  /** 我的死亡（我的戰鬥時間）；本來就不該死亡，不與參考比較 */
+  deaths?: { mine: Death[] }
   /** 我的戰鬥長度（我的時間；死亡到戰鬥結束都沒恢復時計算無法行動的時間） */
   mineDurationMs?: number
   /** 冷卻技是否好了就用（xivanalysis 的 CooldownDowntime） */
@@ -163,8 +163,8 @@ export interface AdviceInput {
   subType?: string
   /** 我每次死亡的死亡回顧 */
   deathRecaps?: DeathRecap[]
-  /** 傷害降低（各自的時間）：我比參考多時提出 */
-  penalties?: { mine: { start: number; end: number }[]; ref: { start: number; end: number }[] }
+  /** 我被施加的傷害降低（我的時間）；本來就不該被施加，不與參考比較 */
+  penalties?: { mine: { start: number; end: number }[] }
 }
 
 /** 同一條 DoT 規則兩邊的結果；沒有參考時 ref 為 null */
@@ -922,14 +922,18 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
  * 其餘（死亡、技能窗口、冷卻技、DoT、穿插、止損技…）與只有我的日誌相同；文字中的「參考」改稱「前輩平均」。
  */
 export function generateAverageAdvice(solo: SoloAdviceInput, compare: AdviceInput): Advice[] {
-  const items = [
-    // 停手改與前輩平均比較（少打的 GCD），不另列自己估計的停手
-    ...generateSoloAdvice({ ...solo, stops: [] }),
+  // 只有與前輩平均比較的建議改稱「前輩平均」；只看自己的建議中的「參考」（例如「選了參考日誌後…」）照舊
+  const compared = [
     ...tag('gcd', lostGcdAdvice(compare)),
     ...tag('gcd', gcdSpeedAdvice(compare)),
     ...tag('usage', usageAdvice(compare)),
   ].map((a) => ({ ...a, title: a.title.replaceAll('參考', '前輩平均'), detail: a.detail.replaceAll('參考', '前輩平均') }))
-  return sortAdvice(items)
+  return sortAdvice([
+    // 停手改與前輩平均比較（少打的 GCD），不另列自己估計的停手
+    ...generateSoloAdvice({ ...solo, stops: [] }),
+    // 整場沒用強化藥時已有一則，不再列「爆發藥少用」
+    ...(solo.potionUses === 0 ? compared.filter((a) => a.kind !== 'potion') : compared),
+  ])
 }
 
 /** 依各階段的分析結果產生規則式建議，依重要性排序。 */

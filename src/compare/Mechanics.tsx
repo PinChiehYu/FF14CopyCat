@@ -51,7 +51,7 @@ export function Mechanics({
     return <p className="hint">兩場戰鬥的 Boss {scope}在對齊後相同，沒有隨機變化的差異。</p>
   }
   // 名稱只列一次、不附技能 ID；ID 放在滑鼠提示
-  const label = (ids: number[]) => (ids.length === 0 ? '—' : mechanicLabel(ids, [], abilityName, { withIds: false }))
+  const label = (ids: number[]) => (ids.length === 0 ? '—' : mechanicLabel(ids, [], abilityName))
   // 同一招連續結算的多個時間點合併成一列（顯示第一個時間點）
   const rows = mergeRepeats(differences, abilityName)
 

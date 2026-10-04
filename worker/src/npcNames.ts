@@ -2,7 +2,10 @@ import { toTraditional } from './traditional'
 
 // FFLogs 的戰鬥名稱是 Boss 的英文名稱；NPC 的 gameID 是 BNpcBase，與名稱表（BNpcName）沒有對應，
 // 因此以英文名稱搜尋 BNpcName，再取該列的繁中名稱
+// 繁中／簡中名稱：Boilmaster 鏡像
 const XIVAPI = 'https://xivapi-v2.xivcdn.com/api'
+// 英文名稱的搜尋：官方 XIVAPI（2026-10 起鏡像不再支援 language=en，回 400；兩邊的列號相同）
+const XIVAPI_EN = 'https://v2.xivapi.com/api'
 // 單一請求的逾時；逾時的名稱視為查不到，不拖住整個回應
 const TIMEOUT_MS = 8000
 
@@ -12,7 +15,7 @@ function usable(name: unknown): name is string {
 
 async function findRow(name: string): Promise<number | null> {
   const query = encodeURIComponent(`Singular="${name}"`)
-  const res = await fetch(`${XIVAPI}/search?sheets=BNpcName&query=${query}&fields=Singular&language=en&limit=1`, {
+  const res = await fetch(`${XIVAPI_EN}/search?sheets=BNpcName&query=${query}&fields=Singular&language=en&limit=1`, {
     signal: AbortSignal.timeout(TIMEOUT_MS),
   })
   if (!res.ok) throw new Error(`xivapi search ${res.status}`)

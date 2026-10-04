@@ -1,26 +1,7 @@
 // Node 環境的測試（使用 node:sqlite）：由 tsconfig.node.json 檢查，Worker 的 tsconfig 不含 Node 型別
-import { readFileSync } from 'node:fs'
-import { DatabaseSync } from 'node:sqlite'
+import { memoryDb } from './testDb.node.ts'
 import { describe, expect, it } from 'vitest'
-import { backfillDamage, crawl, flagSuspectFights, MAX_PAGE, NEVER_CHECK, pageOutcome, pruneGoneReports, percentile, tcRankings, tcRankingsAbove, type DbLike, type Graphql, type StatementLike } from './crawler.ts'
-
-/** 以 Node 內建的 SQLite 實作 D1 的最小介面，套用與正式環境相同的 schema.sql。 */
-function memoryDb(): DbLike {
-  const sqlite = new DatabaseSync(':memory:')
-  sqlite.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'))
-  const statement = (sql: string, values: unknown[] = []): StatementLike => ({
-    bind: (...next) => statement(sql, next),
-    first: async <T>() => (sqlite.prepare(sql).get(...(values as never[])) as T) ?? null,
-    all: async <T>() => ({ results: sqlite.prepare(sql).all(...(values as never[])) as T[] }),
-    run: async () => sqlite.prepare(sql).run(...(values as never[])),
-  })
-  return {
-    prepare: (sql) => statement(sql),
-    batch: async (statements) => {
-      for (const s of statements) await s.run()
-    },
-  }
-}
+import { backfillDamage, crawl, flagSuspectFights, MAX_PAGE, NEVER_CHECK, pageOutcome, pruneGoneReports, percentile, tcRankings, tcRankingsAbove, type DbLike, type Graphql } from './crawler.ts'
 
 const tcReport = {
   code: 'TC1',
@@ -90,7 +71,8 @@ describe('crawl', () => {
     expect(again.calls.filter((c) => c === 'damage')).toHaveLength(0)
   })
 
-  it('stops before the per-run request limit and resumes the same page next time', async () => {
+  // 以下未指定選項的測試是預設值（每次 6 頁、最多 47 個請求）；正式排程每次 1 頁、2 份報告（index.ts，見下方「production options」）
+  it('stops before the per-run request limit and resumes the same page next time (default options)', async () => {
     const db = memoryDb()
     const now = 100 * 24 * 3600_000
     await db.prepare("INSERT INTO crawl_state (key, value) VALUES ('zone68:cursor', ?)").bind(String(now - 2 * 24 * 3600_000 - 3600_000)).run()
@@ -151,7 +133,7 @@ describe('crawl', () => {
     expect(await crawl(db, first.graphql, now, 68)).toMatchObject({ pages: 6, recentPages: 3 })
     expect(await state(db, 'recent_page')).toBe(4)
 
-    // 下一小時：同一輪繼續第 4、5 頁（起點不變），掃完後剩下的頁數補舊資料
+    // 下一次執行：同一輪繼續第 4、5 頁（起點不變），掃完後剩下的頁數補舊資料
     const second = listingGraphql(recent)
     expect(await crawl(db, second.graphql, now + 3600_000, 68)).toMatchObject({ pages: 6, recentPages: 2 })
     expect(second.lists.slice(0, 2).map((l) => [l.startTime, l.page])).toEqual([
@@ -171,6 +153,21 @@ describe('crawl', () => {
     const second = listingGraphql(recent)
     expect(await crawl(db, second.graphql, now, 68, { pages: 1, backfillOnly: true })).toMatchObject({ pages: 1, recentPages: 0 })
     expect(second.lists).toEqual([{ startTime: now - 60 * DAY, endTime: now - 59 * DAY, page: 1 }])
+  })
+
+  it('queries two reports per run with the production options and resumes the same page', async () => {
+    const db = memoryDb()
+    const now = 100 * DAY
+    const reports = Array.from({ length: 5 }, (_, i) => ({ ...tcReport, code: `P${i}` }))
+    const { graphql, calls } = fakeGraphql(reports)
+    // 正式排程：1 頁，1 個清單請求＋2 份報告的傷害表（index.ts 的 CRAWL_REPORTS_PER_RUN）
+    const result = await crawl(db, graphql, now, 68, { pages: 1, maxRequests: 3 })
+    expect(result).toMatchObject({ skipped: 'subrequests', tcReports: 2 })
+    expect(calls).toEqual(['list', 'damage', 'damage'])
+    // 頁碼不推進：下次同一頁從第 3 份報告繼續
+    expect(await db.prepare("SELECT value FROM crawl_state WHERE key = 'zone68:recent_page'").first()).toBeNull()
+    const next = fakeGraphql(reports)
+    expect(await crawl(db, next.graphql, now + 300_000, 68, { pages: 1, maxRequests: 3 })).toMatchObject({ tcReports: 2 })
   })
 
   it('gives every page to the last two days once the backfill has caught up', async () => {
@@ -228,11 +225,13 @@ describe('tcRankings', () => {
       const player = Math.floor(rand() * 120)
       const rdps = Math.round(20_000 + rand() * 15_000)
       const start = rand() < 0.05 ? 7_000_000 + player : i * 3_600_000
+      // 約 5% 是傷害數字不可信的場次：兩種查法都要排除
+      const suspect = rand() < 0.05 ? 1 : 0
       await db
         .prepare(
-          "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start) VALUES (?, 1, 1, 100, 101, 'Samurai', ?, '泰坦', ?, 0, 600000, ?)",
+          "INSERT INTO parses (report, fight, actor, encounter, difficulty, job, name, server, rdps, fight_start, fight_end, report_start, suspect) VALUES (?, 1, 1, 100, 101, 'Samurai', ?, '泰坦', ?, 0, 600000, ?, ?)",
         )
-        .bind(`R${i}`, `p${player}`, rdps, start)
+        .bind(`R${i}`, `p${player}`, rdps, start, suspect)
         .run()
     }
     for (const minPr of [0, 1, 47, 50, 75, 95, 100]) {
@@ -336,6 +335,18 @@ describe('pruneGoneReports', () => {
         .run()
       // NEW 剛收錄，還不用確認
       await db.prepare('INSERT INTO scanned_reports (code, scanned_at) VALUES (?, ?)').bind(code, code === 'NEW' ? now : 0).run()
+      // 預處理、傷害與前輩平均樣本的資料
+      for (const sql of [
+        "INSERT INTO pull_timelines (report, fight, boss, processed_at) VALUES (?, 1, '', 0)",
+        'INSERT INTO pull_queue (report, fight, report_start) VALUES (?, 1, 0)',
+        'INSERT INTO fight_damage (report, fight, encounter, difficulty, total) VALUES (?, 1, 100, 101, 1)',
+        'INSERT INTO damage_queue (report, fight, report_start) VALUES (?, 1, 0)',
+        "INSERT INTO tank_slots (report, fight, actor, slot) VALUES (?, 1, 1, 'MT')",
+        "INSERT INTO average_samples (encounter, difficulty, job, slot, tier, report, fight, actor, name, server, rdps, pr, patch, selected_at) VALUES (100, 101, 'Samurai', '', 'top', ?, 1, 1, '席德', '泰坦', 1, 99, '7.2', 0)",
+        "INSERT INTO sample_data (report, fight, actor, casts, buffs, applications, deaths, processed_at) VALUES (?, 1, 1, '', '', '', 0, 0)",
+      ]) {
+        await db.prepare(sql).bind(code).run()
+      }
     }
     // 沒有收錄擊殺的舊報告：不查 FFLogs，標為不必確認
     await db.prepare('INSERT INTO scanned_reports (code, scanned_at) VALUES (?, 0)').bind('EMPTY').run()
@@ -351,8 +362,11 @@ describe('pruneGoneReports', () => {
     }
     expect(await pruneGoneReports(db, graphql, now)).toEqual({ checkedReports: 3, removedReports: 2, failedReports: 1 })
     expect(checked.sort()).toEqual(['FLAKY', 'GONE', 'OK', 'PRIV'])
-    const left = await db.prepare('SELECT report FROM parses ORDER BY report').all<{ report: string }>()
-    expect(left.results.map((r) => r.report)).toEqual(['FLAKY', 'NEW', 'OK'])
+    // 不再公開的報告的所有資料一併刪除，其他報告的保留
+    for (const table of ['parses', 'pull_timelines', 'pull_queue', 'fight_damage', 'damage_queue', 'tank_slots', 'average_samples', 'sample_data']) {
+      const left = await db.prepare(`SELECT report FROM ${table} ORDER BY report`).all<{ report: string }>()
+      expect([table, left.results.map((r) => r.report)]).toEqual([table, ['FLAKY', 'NEW', 'OK']])
+    }
     const empty = await db.prepare("SELECT checked_at FROM scanned_reports WHERE code = 'EMPTY'").first<{ checked_at: number }>()
     expect(empty?.checked_at).toBe(NEVER_CHECK)
 

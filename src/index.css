@@ -3205,6 +3205,15 @@ h3 {
   color: var(--text-muted);
 }
 
+/* Boss 名稱：兩邊相同時列一次，放在最前面 */
+.picked-boss {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .picked-name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3245,7 +3254,8 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* 每側各佔一行，名稱過長時省略 */
+  /* Boss 與每側各佔一行，名稱過長時省略 */
+  .picked-boss,
   .picked-log {
     flex: 1 1 100%;
   }

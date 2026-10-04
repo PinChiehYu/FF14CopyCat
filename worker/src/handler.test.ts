@@ -27,7 +27,10 @@ function mockFflogs(graphqlBody: unknown) {
 }
 
 beforeEach(() => resetTokenCache())
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 describe('handleRequest', () => {
   it('rejects disallowed origins', async () => {
@@ -87,7 +90,7 @@ describe('handleRequest', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const res = await handleRequest(get('/reports/abc'), env, ctx, null)
     expect(res.status).toBe(200)
-    warn.mockRestore()
+    expect(warn).toHaveBeenCalledWith('token cache read failed', expect.any(Error))
   })
 
   it('passes validated event parameters to the GraphQL query', async () => {
@@ -288,6 +291,22 @@ describe('handleRequest', () => {
     const res = await handleRequest(get('/npc-names?name=Howling%20Blade&name=Unknown%20Boss'), env, ctx, null)
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ 'Howling Blade': { name: '呼嘯之劍', source: 'tc' } })
+    // 英文搜尋用官方 XIVAPI（鏡像不支援 language=en），繁中名稱用鏡像
+    const hosts = fetchMock.mock.calls.map(([u]) => new URL(String(u))).map((u) => `${u.host}${u.pathname.endsWith('/search') ? ' search' : ' sheet'}`)
+    expect(new Set(hosts)).toEqual(new Set(['v2.xivapi.com search', 'xivapi-v2.xivcdn.com sheet']))
+  })
+
+  it('converts the Simplified Chinese boss name when there is no Traditional Chinese one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input))
+        if (url.pathname.endsWith('/search')) return Response.json({ results: [{ row_id: 13843 }] })
+        return Response.json({ fields: { Singular: url.searchParams.get('language') === 'chs' ? '啸月之剑' : '' } })
+      }),
+    )
+    const res = await handleRequest(get('/npc-names?name=Howling%20Blade'), env, ctx, null)
+    expect(await res.json()).toEqual({ 'Howling Blade': { name: '嘯月之劍', source: 'chs' } })
   })
 
   it('falls back to English when the name lookup fails, caching only briefly', async () => {
@@ -408,7 +427,9 @@ describe('handleRequest', () => {
 
   it('validates npc names', async () => {
     const fetchMock = mockFflogs({})
-    for (const path of ['/npc-names', '/npc-names?name=a%22%20OR%201', `/npc-names?${'name=x&'.repeat(1)}${Array.from({ length: 21 }, (_, i) => `name=n${i}`).join('&')}`]) {
+    // 沒有名稱、含引號（搜尋語法注入）、超過 20 個名稱（MAX_NPC_NAMES）
+    const tooMany = `/npc-names?${Array.from({ length: 21 }, (_, i) => `name=n${i}`).join('&')}`
+    for (const path of ['/npc-names', '/npc-names?name=a%22%20OR%201', tooMany]) {
       expect((await handleRequest(get(path), env, ctx, null)).status, path).toBe(400)
     }
     expect(fetchMock).not.toHaveBeenCalled()

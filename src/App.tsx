@@ -266,8 +266,8 @@ function readAverageTier(): AverageTier | null {
   return AVERAGE_ENABLED && AVERAGE_TIERS.some((t) => t.tier === value) ? (value as AverageTier) : null
 }
 
-/** 收合後的一側：「我的／參考」＋玩家、職業、戰鬥 */
-function PickedLog({ label, selection }: { label: string; selection: Selection }) {
+/** 收合後的一側：「我的／參考」＋玩家、職業、戰鬥（Boss 不同時附上這一側的 Boss） */
+function PickedLog({ label, selection, boss = false }: { label: string; selection: Selection; boss?: boolean }) {
   const { player, fight } = selection
   return (
     <span className="picked-log" title={`${player.name}${player.server ? ` @ ${player.server}` : ''}・#${fight.id} ${fight.name}`}>
@@ -278,7 +278,8 @@ function PickedLog({ label, selection }: { label: string; selection: Selection }
       </span>
       <JobBadge subType={player.subType} />
       <span className="picked-fight">
-        #{fight.id} {formatFightTime(fight.endTime - fight.startTime)}
+        #{fight.id}
+        {boss && ` ${fight.name}`} {formatFightTime(fight.endTime - fight.startTime)}
       </span>
     </span>
   )
@@ -296,16 +297,23 @@ function PickedLogs({
   average: AverageTier | null
   onExpand: () => void
 }) {
+  // 兩邊同一個 Boss（通常如此）時 Boss 名稱只列一次；不同時（不能比較）各自列出
+  const sameBoss = !reference || average !== null || reference.fight.encounterID === mine.fight.encounterID
   return (
     <div className="picked-logs">
-      <PickedLog label="我的" selection={mine} />
+      {sameBoss && (
+        <span className="picked-boss" title={mine.fight.englishName}>
+          {mine.fight.name}
+        </span>
+      )}
+      <PickedLog label="我的" selection={mine} boss={!sameBoss} />
       {average ? (
         <span className="picked-log">
           <span className="picked-label">參考</span>
           <span className="picked-name">前輩平均 {AVERAGE_TIERS.find((t) => t.tier === average)?.label}</span>
         </span>
       ) : (
-        reference && <PickedLog label="參考" selection={reference} />
+        reference && <PickedLog label="參考" selection={reference} boss={!sameBoss} />
       )}
       <button type="button" className="picked-change" onClick={onExpand}>
         更換日誌

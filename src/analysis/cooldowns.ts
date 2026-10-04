@@ -1,6 +1,8 @@
 // 冷卻技是否好了就用：移植 xivanalysis 的 CooldownDowntime（calculateMaxUsages）算出理論最多可用次數，
 // 並列出每次使用比冷卻好的時間晚了多久。Boss 無法選取（沒有 Boss 位置）的時段視為停機，不算浪費。
 import type { CooldownGroup } from '../jobs/cooldownRules'
+import type { JobModule } from '../jobs'
+import { abilityCategory, type AbilityCategory } from '../jobs/roleActions'
 import type { TimedCast } from './alignment'
 import { BOSS_LIMITS, positionAt, type PositionSample } from './positions'
 
@@ -155,6 +157,17 @@ export function lateUses(group: CooldownGroup, uses: number[], resets: number[],
     fullSince = null
   }
   return result
+}
+
+// 冷卻技中不是輸出技能的分類（見 jobs/roleActions.ts）
+const NON_OFFENSIVE_CATEGORIES: ReadonlySet<AbilityCategory> = new Set(['mitigation', 'partyMitigation', 'movement', 'utility', 'heal'])
+
+/**
+ * 不是輸出技能的冷卻技組（xivanalysis 只在建議中提的治療技能，或分類為減傷、移動、輔助、治療的）：
+ * 照列在技能使用次數，但不提「最多可用」的建議（CooldownPair.nonOffensive）。
+ */
+export function isNonOffensiveCooldown(group: CooldownGroup, job?: JobModule): boolean {
+  return !!group.suggestionOnly || group.ids.some((id) => NON_OFFENSIVE_CATEGORIES.has(abilityCategory(id, job)))
 }
 
 // 冷卻好後晚了這麼久以上才算「晚用」（列出）

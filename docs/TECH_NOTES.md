@@ -582,6 +582,14 @@
 
 ## 技術變更紀錄
 
+### 2026-10-04 Boss 名稱改以官方 XIVAPI 搜尋英文名稱
+- 原因：`/npc-names` 一律回傳空的（Boss 名稱全站顯示英文）。Boilmaster 鏡像 `xivapi-v2.xivcdn.com` 的 `/search` 對 `language=en` 回 400「unsupported language」（與職業資料產生腳本同一原因），`npcNames.ts` 以英文名稱找 BNpcName 列號的搜尋全部失敗。
+- 變更：英文名稱的搜尋改用官方 `https://v2.xivapi.com/api/search`，取得的列號再到鏡像查 `tc`／`chs` 名稱（兩邊列號相同，例如 Howling Blade #13843 → 呼嘯之劍）。技能名稱（`abilityNames.ts`）只查 tc／chs，不受影響。
+
+### 2026-10-04 測試整理
+- Worker：排程字串移到 `worker/src/schedule.ts`，`schedule.node.test.ts` 檢查與 `wrangler.toml` 的 `crons` 一致（只改一邊時掃描與清理會被當成預處理執行、停擺而不報錯）；`index.test.ts` 以 `vi.mock` 檢查各排程呼叫的工作（掃描的選項、每小時標記一個 Boss、不認得的排程字串跑預處理、沒有 DB 不執行）。清理不再公開的報告時檢查 8 張表都刪除；排名掃描加上正式選項（1 頁、2 份報告）的測試，原本的測試註明是預設選項；每分鐘工作的傷害補抓、暫時失敗留在佇列、`tcRankingsAbove` 與 `tcRankings` 對傷害不可信場次的排除一致；Node 測試共用 `testDb.node.ts` 的 `memoryDb()`（`*.node.ts` 由 tsconfig.node.json 檢查、Worker 的 tsconfig 排除）；`console.warn` 改用 `vi.spyOn`＋`afterEach(vi.restoreAllMocks)`。
+- 前端：前輩平均建議（只把與前輩平均比較的建議改稱「前輩平均」，原本連「選了參考日誌後…」都被改掉；沒用強化藥時不再重複列「爆發藥少用」）、職業資料標記的治療、治療次數上限與已追蹤的冷卻技、不到 1 秒的懲罰（只有我的日誌與剛好 1 秒）、略過的戰鬥外效果的範圍邊界與戰鬥中獲得、`focusChecker`、前輩平均的 GCD 中位數與樣本裁切、`clipSide` 的敵人 debuff。`isNonOffensiveCooldown()`（原在 Comparison.tsx）移到 `analysis/cooldowns.ts` 以便測試。移除沒有作用的選項與欄位：`mechanicLabel` 的 `withIds`、`AdviceInput` 的 `deaths.ref`／`penalties.ref`；放寬過度的斷言改為確切的值。
+
 ### 2026-10-04 詳細區塊分頁、日誌選擇收合
 - 變更：`ui/Tabs.tsx` 支援外部控制（`selected`／`onSelect`）與 `keepMounted`（其他分頁以 `hidden` 隱藏不卸載，保留時間軸縮放、俯視圖視角等狀態）；`Comparison.tsx` 的 `Loaded` 以 `detail` 狀態控制兩個分頁（時間軸在分頁外、一直顯示，跳到時間點照舊用 `jumpTo`），`showSection()` 以 `closest('[data-detail]')` 找到區塊所在的分頁、`flushSync` 切換後再捲動。`App.tsx` 的 `collapsed`／`autoCollapse`（網址同時有 mine 與 ref／avg 時，兩邊第一次選好就收合），輸入區以 `hidden` 隱藏不卸載；全域 `[hidden] { display: none !important }`（`.logs` 的 `display: grid` 會蓋過預設）。
 - `scripts/ui-audit.js` 改為非同步、逐一切換分頁檢查（`headings` 中以 `[分頁名稱]` 分隔）：程式觸發的 click 由 React 在微任務中更新畫面，切換後要等一下再檢查。瀏覽器面板中可用 `await (0, eval)(await (await fetch('/@fs/D:/GameDev/FF14CopyCat/scripts/ui-audit.js')).text())` 從 Vite 開發伺服器載入執行（`/@fs/` 可讀專案內的檔案）。

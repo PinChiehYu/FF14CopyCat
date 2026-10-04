@@ -32,6 +32,26 @@ describe('buffs', () => {
     expect(prepullEffects(events, me)).toEqual([1_001_233, 1_000_048])
   })
 
+  it('hides every squadron manual and free company action, but not their neighbours', () => {
+    const at = (ids: number[]) =>
+      prepullEffects([{ timestamp: 10_000, type: 'combatantinfo', sourceID: me, auras: ids.map((ability) => ({ source: me, ability })) }], me)
+    // 分隊手冊 1078～1086、部隊特效 353～368（遊戲狀態 ID＋1,000,000）
+    expect(at([1_001_078, 1_001_086, 1_000_353, 1_000_368])).toEqual([])
+    // 範圍外相鄰的是戰鬥中的效果（1077 閃電鏈、1087 詛咒、352、369 吸附式炸彈），照常列出
+    expect(at([1_001_077, 1_001_087, 1_000_352, 1_000_369])).toEqual([1_001_077, 1_001_087, 1_000_352, 1_000_369])
+  })
+
+  it('hides those statuses when gained mid-fight too', () => {
+    const gained = [
+      ...events,
+      { timestamp: 30_000, type: 'applybuff', sourceID: me, targetID: me, abilityGameID: 1_001_086 },
+      { timestamp: 31_000, type: 'applybuff', sourceID: me, targetID: me, abilityGameID: 1_000_360 },
+    ] as FFLogsEvent[]
+    const hidden = new Set([1_001_084, 1_001_086, 1_000_360])
+    expect(selfBuffWindows(gained, fight, me).some((w) => hidden.has(w.statusId))).toBe(false)
+    expect(playerAuras(gained, fight, me).some((a) => hidden.has(a.statusId))).toBe(false)
+  })
+
   it('collects every aura on the player: own, from party members and debuffs from enemies', () => {
     const auras = playerAuras(
       [

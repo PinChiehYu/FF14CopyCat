@@ -18,5 +18,5 @@
   },
   "include": ["src"],
   // 使用 Node 內建模組的測試由 tsconfig.node.json 檢查
-  "exclude": ["src/**/*.node.test.ts"]
+  "exclude": ["src/**/*.node.test.ts", "src/**/*.node.ts"]
 }

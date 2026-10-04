@@ -3,7 +3,7 @@ import { evaluateWindows, inapplicableSummary, timelineWindow } from '../analysi
 import { pairedWindowRules, ruleIds, ruleName, windowRules, type WindowRule } from '../jobs/windows'
 import { pairRulesByPatch, patchAt, type GamePatch } from '../jobs/patch'
 import { COOLDOWN_RULES, type CooldownGroup } from '../jobs/cooldownRules'
-import { cooldownUsage, downtimeWindows } from '../analysis/cooldowns'
+import { cooldownUsage, downtimeWindows, isNonOffensiveCooldown } from '../analysis/cooldowns'
 import { Playback } from './Playback'
 import { StatusPanel } from './StatusPanel'
 import { Windows } from './Windows'
@@ -111,8 +111,6 @@ function useSide(selection: Selection | null) {
 
 // 普通攻擊（Action 7，繁中「攻擊」）
 const AUTO_ATTACK = 7
-// 冷卻技中不是輸出技能的分類（見 jobs/roleActions.ts）
-const NON_OFFENSIVE_CATEGORIES = new Set(['mitigation', 'partyMitigation', 'movement', 'utility', 'heal'])
 
 /** 查詢兩邊出現過的技能的繁中名稱；查詢失敗時沿用 FFLogs 的英文名稱。 */
 function useAbilityNames(mine: SideData, reference: SideData | null): Map<number, AbilityName> {
@@ -612,13 +610,10 @@ function Loaded({
       const usedPrepull = (g: CooldownGroup) => g.ids.some((id) => prepullNames.has(english(id)))
       return cooldownUsage([group], side.playerCasts, side.duration, downtimeWindows(side.bossPositions, side.duration), usedPrepull)[0]
     }
-    // 不是輸出技能（xivanalysis 只在建議中提的治療技能，或分類為減傷、移動、輔助的）：照列在技能使用次數，但不提「最多可用」的建議
-    const nonOffensive = (g: CooldownGroup) =>
-      !!g.suggestionOnly || g.ids.some((id) => NON_OFFENSIVE_CATEGORIES.has(abilityCategory(id, job)))
     return pairRulesByPatch(COOLDOWN_RULES[job.subType] ?? [], patches.mine.rules, patches.ref.rules).map(({ mine: m, ref: r }) => ({
       mine: m ? evaluate(m, mineInRange) : null,
       ref: r && !partial ? evaluate(r, refInRange) : null,
-      nonOffensive: nonOffensive((m ?? r)!),
+      nonOffensive: isNonOffensiveCooldown((m ?? r)!, job),
     }))
   }, [job, patches, mineInRange, refInRange, abilities, partial])
   // DoT 覆蓋率與提早續上：兩邊各自、只看比較範圍內
@@ -699,7 +694,7 @@ function Loaded({
       firstUse: (id) => mineInRange.playerCasts.find((c) => c.abilityId === id)?.t,
       windows: windows.flatMap(({ mine: m, ref: r }) => (r ? [{ mine: m, ref: r }] : [])),
       prepull: { mine: mine.prepull, ref: reference.prepull },
-      deaths: { mine: mineInRange.deaths, ref: refInRange.deaths },
+      deaths: { mine: mineInRange.deaths },
       mineDurationMs: mineInRange.duration,
       cooldowns,
       dots,
@@ -708,13 +703,10 @@ function Loaded({
       subType: mine.selection.player.subType,
       fillerId,
       deathRecaps,
-      penalties: {
-        mine: mergeOverlapping(mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')),
-        ref: mergeOverlapping(refInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')),
-      },
+      penalties: { mine: mergeOverlapping(mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')) },
     }
     return average ? generateAverageAdvice(soloInput, compareInput) : generateAdvice(compareInput)
-  }, [average, deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, refInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving])
+  }, [average, deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)

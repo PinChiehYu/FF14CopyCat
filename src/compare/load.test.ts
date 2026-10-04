@@ -296,8 +296,16 @@ describe('clipSide', () => {
         { statusId: 1_001_233, start: 4000, end: 7000, prepull: false, openEnded: false },
         { statusId: 1_001_233, start: 6000, end: 8000, prepull: false, openEnded: false },
       ],
-      debuffApplications: [],
-      bossDebuffs: [],
+      debuffApplications: [
+        { t: 3000, statusId: 1_003_849, targetId: 50 },
+        { t: 6000, statusId: 1_003_849, targetId: 50 },
+      ],
+      // 傷害降低等敵人給的 debuff（懲罰與控場用）
+      bossDebuffs: [
+        { statusId: 1_002_911, start: 1000, end: 2000, prepull: false, openEnded: false },
+        { statusId: 1_002_911, start: 4500, end: 9000, prepull: false, openEnded: false },
+        { statusId: 1_002_911, start: 6000, end: 7000, prepull: false, openEnded: false },
+      ],
       prepull: [],
       auras: [],
       hp: [],
@@ -317,6 +325,11 @@ describe('clipSide', () => {
       [3000, false],
       [5000, true],
     ])
+    expect(clipped.bossDebuffs.map((b) => [b.start, b.end, b.openEnded])).toEqual([
+      [1000, 2000, false],
+      [4500, 5000, true],
+    ])
+    expect(clipped.debuffApplications.map((d) => d.t)).toEqual([3000])
     expect(clipped.playerCasts).toEqual([{ t: 1000, abilityId: 1 }])
     expect(clipped.deaths).toEqual([])
     expect(clipped.autoAttacks).toEqual([])

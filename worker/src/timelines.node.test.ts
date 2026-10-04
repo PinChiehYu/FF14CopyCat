@@ -1,9 +1,8 @@
 // Node 環境的測試（使用 node:sqlite）：由 tsconfig.node.json 檢查
-import { readFileSync } from 'node:fs'
-import { DatabaseSync } from 'node:sqlite'
-import { describe, expect, it } from 'vitest'
+import { memoryDb } from './testDb.node.ts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decodeCasts, decodeWindows } from '../../src/analysis/castCodec.ts'
-import type { DbLike, Graphql, StatementLike } from './crawler.ts'
+import type { DbLike, Graphql } from './crawler.ts'
 import { AUTO_ATTACKS_TAKEN_QUERY, CRON_EVENTS_QUERY } from './queries.ts'
 import {
   averageSamples,
@@ -18,22 +17,11 @@ import {
   type Candidate,
 } from './timelines.ts'
 
-function memoryDb(): DbLike {
-  const sqlite = new DatabaseSync(':memory:')
-  sqlite.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'))
-  const statement = (sql: string, values: unknown[] = []): StatementLike => ({
-    bind: (...next) => statement(sql, next),
-    first: async <T>() => (sqlite.prepare(sql).get(...(values as never[])) as T) ?? null,
-    all: async <T>() => ({ results: sqlite.prepare(sql).all(...(values as never[])) as T[] }),
-    run: async () => sqlite.prepare(sql).run(...(values as never[])),
-  })
-  return {
-    prepare: (sql) => statement(sql),
-    batch: async (statements) => {
-      for (const s of statements) await s.run()
-    },
-  }
-}
+// 失敗的請求會 console.warn：測試中靜音，結束後還原（斷言失敗時也還原）
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+const silenceWarn = () => vi.spyOn(console, 'warn').mockImplementation(() => {})
 
 // 2026-09-30（繁中服 7.25）
 const NOW = Date.UTC(2026, 8, 30)
@@ -304,13 +292,14 @@ describe('processTimelines', () => {
       if (query.includes('rateLimitData')) return { rateLimitData: { pointsSpentThisHour: 0 } } as T
       throw new Error(variables.code === 'GONE' ? 'You do not have permission to view this report' : 'FFLogs API error: 502')
     }
-    const warn = console.warn
-    console.warn = () => {}
+    const warn = silenceWarn()
     expect(await processTimelines(db, graphql, NOW)).toMatchObject({ pulls: 0, samples: 0 })
-    console.warn = warn
+    expect(warn).toHaveBeenCalled()
     const stored = (await db.prepare('SELECT report, boss FROM pull_timelines').all<{ report: string; boss: string }>()).results
     expect(stored).toEqual([{ report: 'GONE', boss: '' }])
     expect(await db.prepare("SELECT deaths FROM sample_data WHERE report = 'GONE'").first()).toEqual({ deaths: -1 })
+    // 暫時失敗的留在佇列，下次再試
+    expect((await db.prepare('SELECT report FROM pull_queue').all()).results).toEqual([{ report: 'BUSY' }])
   })
 
   it('skips the run when the points for this hour are nearly used up', async () => {
@@ -327,13 +316,25 @@ describe('processTimelines', () => {
       if (query.includes('rateLimitData')) return { rateLimitData: { pointsSpentThisHour: 0 } } as T
       return { reportData: { report: { events: { data: [], nextPageTimestamp: null } } } } as T
     }
-    const warn = console.warn
-    console.warn = () => {}
+    const warn = silenceWarn()
     expect(await processTimelines(db, graphql, NOW, { combos: 1, samples: 1, pulls: 0, damage: 0 })).toMatchObject({ samples: 0, failed: 1 })
-    console.warn = warn
+    expect(warn).toHaveBeenCalled()
     // 沒有寫入，樣本仍待處理
     expect(await db.prepare('SELECT COUNT(*) AS n FROM sample_data').first()).toEqual({ n: 0 })
     expect(await db.prepare('SELECT pending FROM average_samples').first()).toEqual({ pending: 1 })
+  })
+
+  it('backfills the party damage of collected fights', async () => {
+    const db = memoryDb()
+    await addParse(db, 'DMG', 3, 1, 'Samurai')
+    await db.prepare('INSERT INTO damage_queue (report, fight, report_start) VALUES (?, 3, 0)').bind('DMG').run()
+    const graphql: Graphql = async <T>(query: string) => {
+      if (query.includes('rateLimitData')) return { rateLimitData: { pointsSpentThisHour: 0 } } as T
+      return { reportData: { report: { f3: { data: { entries: [{ id: 1, total: 4000 }, { id: 2, total: 6000 }] } } } } } as T
+    }
+    expect(await processTimelines(db, graphql, NOW, { combos: 0, samples: 0, pulls: 0, damage: 1 })).toMatchObject({ damage: 1, failed: 0 })
+    expect(await db.prepare('SELECT report, fight, total FROM fight_damage').all()).toEqual({ results: [{ report: 'DMG', fight: 3, total: 10_000 }] })
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM damage_queue').first()).toEqual({ n: 0 })
   })
 
   it('splits the work: selecting samples every 10 minutes, processing otherwise', async () => {

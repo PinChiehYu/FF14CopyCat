@@ -21,12 +21,6 @@ describe('patchAt', () => {
     expect(patchAt(at('2026-07-27T16:00:00Z')).key).toBe('7.2')
   })
 
-  it('uses the 7.2 Starry Muse rules only for TC 7.0～7.15 logs', () => {
-    const starry = (iso: string) => windowRules('Pictomancer', patchAt(at(iso)).rules)[0]
-    expect(starry('2026-08-19T12:00:00Z').limitedActions).toBeDefined()
-    expect(starry('2026-05-01T12:00:00Z').limitedActions).toBeUndefined()
-  })
-
   it('compares patch numbers', () => {
     expect(comparePatch('7.05', '7.1')).toBeLessThan(0)
     expect(comparePatch('7.25', '7.3')).toBeLessThan(0)
@@ -46,6 +40,9 @@ describe('window rules by patch', () => {
     expect(windowRules('RedMage', '7.3').map((r) => r.key)).toEqual(['manafication'])
     expect(windowRules('RedMage', '7.5')).toEqual([])
     const starry = (patch: string) => windowRules('Pictomancer', patch)[0]
+    // 繁中服 7.2 起（規則 7.3）與 7.0～7.15（規則 7.2）的日誌各自對應（版本對照見 patchAt）
+    expect(starry('7.3').limitedActions).toBeDefined()
+    expect(starry('7.2').limitedActions).toBeUndefined()
     expect(starry('7.25').limitedActions).toBeUndefined()
     expect(starry('7.25').expectedGcds).toBe(9)
     expect(starry('7.5').limitedActions).toBeDefined()

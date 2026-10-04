@@ -64,3 +64,17 @@ describe('averageCasts', () => {
     expect(averageCasts(boss, 300_000, [unaligned], { isGcd })).toEqual({ casts: [], rangeEnd: 0, used: 0, aligned: [] })
   })
 })
+
+describe('averageCasts aligned samples', () => {
+  it('clips each aligned sample to its own kill and the comparison range', () => {
+    // 200、250、290 秒擊殺 → 比較範圍到 250 秒：各樣本的施放到自己擊殺與 250 秒中較早者
+    const samples = [sample({ duration: 200_000 }), sample({ duration: 250_000 }), sample({ duration: 290_000 })]
+    const { aligned } = averageCasts(boss, 300_000, samples, { isGcd })
+    const last = aligned.map((casts) => Math.max(...casts.map((c) => c.t)))
+    expect(last[0]).toBeLessThanOrEqual(200_000)
+    // 290 秒擊殺的樣本在 250～290 秒之間的施放不列入
+    expect(last[1]).toBeLessThanOrEqual(250_000)
+    expect(last[2]).toBeLessThanOrEqual(250_000)
+    expect(last[2]).toBeGreaterThan(245_000)
+  })
+})

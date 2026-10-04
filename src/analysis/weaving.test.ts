@@ -41,5 +41,10 @@ describe('badWeaves', () => {
   it('lets monks double weave and weave four after Six-sided Star', () => {
     const monk = side([[1000, 16476], [2000, 200], [3000, 201], [4000, 202], [5000, 203], [7000, GCD]])
     expect(badWeaves(monk, 'Monk', isGcd, isItem, 2000)).toEqual([])
+    // 一般 GCD 後雙插沒事，三插讓下一個 GCD 晚了就算
+    expect(badWeaves(side([[1000, GCD], [1700, 200], [2400, 201], [3300, GCD]]), 'Monk', isGcd, isItem, 2000)).toEqual([])
+    expect(badWeaves(side([[1000, GCD], [1700, 200], [2400, 201], [3100, 202], [4200, GCD]]), 'Monk', isGcd, isItem, 2000)).toMatchObject([
+      { start: 1000, end: 4200, allowed: 2, delayMs: 1200 },
+    ])
   })
 })

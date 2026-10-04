@@ -46,6 +46,10 @@ describe('buildAlignment', () => {
     expect(anchors.map((a) => [a.abilityId, a.mine, a.ref])).toContainEqual([11, 60_000, 60_000])
     expect(mineToRef(50_000)).toBe(50_000)
     expect(pushDifferences(anchors)).toEqual([])
+    // 只有兩邊在同一時間不同的技能才歸成一組，共同的技能不歸組
+    const groups = variantGroups(mine, ref, mineToRef, 1000)
+    expect(groups.get(10)).toBe(groups.get(11))
+    expect(groups.has(1)).toBe(false)
   })
 
   it('does not group a mechanic that only one side cast', () => {
@@ -55,15 +59,6 @@ describe('buildAlignment', () => {
     const ref = [...common, cast(40, 50)]
     const first = buildAlignment(mine, ref)
     expect(variantGroups(mine, ref, first.mineToRef, 1000).size).toBe(0)
-  })
-
-  it('groups abilities cast at the same time only when both sides differ there', () => {
-    const common = [cast(10, 1), cast(20, 2), cast(30, 3), cast(60, 4), cast(70, 5)]
-    const mine = [...common, cast(40, 10), cast(50, 11)]
-    const ref = [...common, cast(40, 11), cast(50, 10)]
-    const groups = variantGroups(mine, ref, buildAlignment(mine, ref).mineToRef, 1000)
-    expect(groups.get(10)).toBe(groups.get(11))
-    expect(groups.has(1)).toBe(false)
   })
 
   it('does not pair the same ability across a swapped random order', () => {
@@ -99,7 +94,9 @@ describe('buildAlignment', () => {
     // 60 秒後參考都早 10 秒（依血量推進）：時間差跳一次後維持
     const mine = [cast(10, 1), cast(20, 2), cast(30, 3), cast(60, 4), cast(70, 5), cast(80, 6)]
     const ref = [cast(10, 1), cast(20, 2), cast(30, 3), cast(50, 4), cast(60, 5), cast(70, 6)]
-    expect(buildAlignment(mine, ref).anchors).toHaveLength(6)
+    const { anchors } = buildAlignment(mine, ref)
+    expect(anchors).toHaveLength(6)
+    expect(pushDifferences(anchors)).toEqual([{ mineStart: 30_000, mineEnd: 60_000, refStart: 30_000, refEnd: 50_000, deltaMs: 10_000 }])
   })
 
   it('pairs frequent abilities with the same cast at the same time, not a neighbouring one', () => {

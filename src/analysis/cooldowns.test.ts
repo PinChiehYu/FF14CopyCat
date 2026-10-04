@@ -65,11 +65,10 @@ describe('downtimeWindows / cooldownUsage', () => {
     // 每 10 秒一筆 Boss 取樣，但 40～100 秒沒有（超過 BOSS_LIMITS 的 30 秒內插上限）
     const boss = [0, 10, 20, 30, 40, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200].map((s) => ({ t: s * 1000, x: 100, y: 100 }))
     const windows = downtimeWindows(boss, 200_000)
-    expect(windows).toHaveLength(1)
-    expect(windows[0].start).toBeGreaterThan(40_000)
-    expect(windows[0].end).toBeLessThanOrEqual(100_000)
+    // 兩端各留 BOSS_LIMITS 的內插範圍：51～90 秒
+    expect(windows).toEqual([{ start: 51_000, end: 90_000 }])
     const [usage] = cooldownUsage([group()], [{ t: 0, abilityId: 1 }, { t: 130_000, abilityId: 1 }, { t: 5000, abilityId: 2 }], 200_000, windows)
-    expect(usage.uses).toBe(2)
-    expect(usage.max).toBeGreaterThan(2)
+    // 61.25 秒好的那次落在 Boss 不在的時段，延到 91.25 秒；之後 152.5 秒 → 最多 3 次，130 秒那次晚了 38.75 秒
+    expect(usage).toMatchObject({ uses: 2, max: 3, late: [{ t: 130_000, lateMs: 38_750 }] })
   })
 })
