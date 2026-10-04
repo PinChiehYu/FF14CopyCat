@@ -719,7 +719,7 @@ function Loaded({
     setCursor(t)
     setFocus({ t })
   }, [setCursor, setFocus])
-  // 建議與時間軸之間的詳細區塊分頁顯示（輸出循環／機制與站位），避免整頁過長；時間軸一直顯示在下方，方便配合播放
+  // 建議與站位之間的詳細區塊分頁顯示（輸出循環／Boss 機制），避免整頁過長；站位與當下狀態、時間軸一直顯示在下方，方便配合播放
   const [detail, setDetail] = useState<string>('rotation')
   // 「查看」頁面上的區塊：切到區塊所在的分頁（分頁都保持掛載，可直接找到），顯示後再捲動
   const showSection = useCallback((id: string) => {
@@ -922,58 +922,56 @@ function Loaded({
       {!partial && alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
       {adviceSection}
-      <Tabs
-        className="detail-tabs"
-        label="比較結果"
-        selected={detail}
-        onSelect={setDetail}
-        keepMounted
-        tabs={[
-          { key: 'rotation', label: '輸出循環', content: <div data-detail="rotation">{rotationSection}</div> },
-          {
-            key: 'positions',
-            label: partial ? '站位' : '機制與站位',
-            content: (
-              <div data-detail="positions">
-                {mechanicsSection}
-                <h3>站位與當下狀態</h3>
-                <Positions
-                  solo={partial}
-                  abilityName={abilityName}
-                  track={positions.track}
-                  divergences={positions.divergences}
-                  mineSamples={positions.mineSamples}
-                  refSamples={partial ? [] : refInRange.playerPositions}
-                  bossSamples={refInRange.bossPositions}
-                  mineBossSamples={positions.mineBossSamples}
-                  mineAlignedSamples={positions.mineAlignedSamples}
-                  names={{ mine: mine.selection.player.name, ref: reference.selection.player.name }}
-                  threshold={DIVERGENCE_YALM}
-                  duration={compareEnd}
-                  cursor={cursor}
-                  onSeek={setCursor}
-                  onJump={jumpTo}
-                  isFocused={isFocused}
-                  refToMine={alignment.refToMine}
-                  status={
-                    <StatusPanel
-                      mine={mine}
-                      reference={average ? null : shownRef}
-                      cursor={cursor}
-                      refToMine={alignment.refToMine}
-                      isFocused={isFocused}
-                      control={control}
-                      namedStatus={namedStatus}
-                      abilities={abilities}
-                      abilityName={abilityName}
-                      isGcd={isGcd}
-                    />
-                  }
-                />
-              </div>
-            ),
-          },
-        ]}
+      {/* 建議與站位之間的詳細區塊：有 Boss 機制差異時分頁，只有我的日誌（沒有機制差異）時直接列出 */}
+      {partial ? (
+        <div data-detail="rotation">{rotationSection}</div>
+      ) : (
+        <Tabs
+          className="detail-tabs"
+          label="比較結果"
+          selected={detail}
+          onSelect={setDetail}
+          keepMounted
+          tabs={[
+            { key: 'rotation', label: '輸出循環', content: <div data-detail="rotation">{rotationSection}</div> },
+            { key: 'mechanics', label: 'Boss 機制', content: <div data-detail="mechanics">{mechanicsSection}</div> },
+          ]}
+        />
+      )}
+      {/* 站位與當下狀態、時間軸一直顯示：配合播放與跳到時間點，兩者同時反映目前的時間 */}
+      <h3>站位與當下狀態</h3>
+      <Positions
+        solo={partial}
+        abilityName={abilityName}
+        track={positions.track}
+        divergences={positions.divergences}
+        mineSamples={positions.mineSamples}
+        refSamples={partial ? [] : refInRange.playerPositions}
+        bossSamples={refInRange.bossPositions}
+        mineBossSamples={positions.mineBossSamples}
+        mineAlignedSamples={positions.mineAlignedSamples}
+        names={{ mine: mine.selection.player.name, ref: reference.selection.player.name }}
+        threshold={DIVERGENCE_YALM}
+        duration={compareEnd}
+        cursor={cursor}
+        onSeek={setCursor}
+        onJump={jumpTo}
+        isFocused={isFocused}
+        refToMine={alignment.refToMine}
+        status={
+          <StatusPanel
+            mine={mine}
+            reference={average ? null : shownRef}
+            cursor={cursor}
+            refToMine={alignment.refToMine}
+            isFocused={isFocused}
+            control={control}
+            namedStatus={namedStatus}
+            abilities={abilities}
+            abilityName={abilityName}
+            isGcd={isGcd}
+          />
+        }
       />
       <h3>時間軸</h3>
       <Timeline

@@ -591,7 +591,7 @@
 - 前端：前輩平均建議（只把與前輩平均比較的建議改稱「前輩平均」，原本連「選了參考日誌後…」都被改掉；沒用強化藥時不再重複列「爆發藥少用」）、職業資料標記的治療、治療次數上限與已追蹤的冷卻技、不到 1 秒的懲罰（只有我的日誌與剛好 1 秒）、略過的戰鬥外效果的範圍邊界與戰鬥中獲得、`focusChecker`、前輩平均的 GCD 中位數與樣本裁切、`clipSide` 的敵人 debuff。`isNonOffensiveCooldown()`（原在 Comparison.tsx）移到 `analysis/cooldowns.ts` 以便測試。移除沒有作用的選項與欄位：`mechanicLabel` 的 `withIds`、`AdviceInput` 的 `deaths.ref`／`penalties.ref`；放寬過度的斷言改為確切的值。
 
 ### 2026-10-04 詳細區塊分頁、日誌選擇收合
-- 變更：`ui/Tabs.tsx` 支援外部控制（`selected`／`onSelect`）與 `keepMounted`（其他分頁以 `hidden` 隱藏不卸載，保留時間軸縮放、俯視圖視角等狀態）；`Comparison.tsx` 的 `Loaded` 以 `detail` 狀態控制兩個分頁（時間軸在分頁外、一直顯示，跳到時間點照舊用 `jumpTo`），`showSection()` 以 `closest('[data-detail]')` 找到區塊所在的分頁、`flushSync` 切換後再捲動。`App.tsx` 的 `collapsed`／`autoCollapse`（網址同時有 mine 與 ref／avg 時，兩邊第一次選好就收合），輸入區以 `hidden` 隱藏不卸載；全域 `[hidden] { display: none !important }`（`.logs` 的 `display: grid` 會蓋過預設）。
+- 變更：`ui/Tabs.tsx` 支援外部控制（`selected`／`onSelect`）與 `keepMounted`（其他分頁以 `hidden` 隱藏不卸載，保留時間軸縮放、俯視圖視角等狀態）；`Comparison.tsx` 的 `Loaded` 以 `detail` 狀態控制分頁（輸出循環／Boss 機制；站位與當下狀態、時間軸在分頁外、一直顯示，跳到時間點照舊用 `jumpTo`；只有我的日誌時不用分頁），`showSection()` 以 `closest('[data-detail]')` 找到區塊所在的分頁、`flushSync` 切換後再捲動。`App.tsx` 的 `collapsed`／`autoCollapse`（網址同時有 mine 與 ref／avg 時，兩邊第一次選好就收合），輸入區以 `hidden` 隱藏不卸載；全域 `[hidden] { display: none !important }`（`.logs` 的 `display: grid` 會蓋過預設）。
 - `scripts/ui-audit.js` 改為非同步、逐一切換分頁檢查（`headings` 中以 `[分頁名稱]` 分隔）：程式觸發的 click 由 React 在微任務中更新畫面，切換後要等一下再檢查。瀏覽器面板中可用 `await (0, eval)(await (await fetch('/@fs/D:/GameDev/FF14CopyCat/scripts/ui-audit.js')).text())` 從 Vite 開發伺服器載入執行（`/@fs/` 可讀專案內的檔案）。
 
 ### 2026-10-04 治療能力技不列為優先
