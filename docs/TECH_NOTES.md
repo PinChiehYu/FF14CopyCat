@@ -582,6 +582,10 @@
 
 ## 技術變更紀錄
 
+### 2026-10-04 詳細區塊分頁、日誌選擇收合
+- 變更：`ui/Tabs.tsx` 支援外部控制（`selected`／`onSelect`）與 `keepMounted`（其他分頁以 `hidden` 隱藏不卸載，保留時間軸縮放、俯視圖視角等狀態）；`Comparison.tsx` 的 `Loaded` 以 `detail` 狀態控制三個分頁，`showAt()`（跳到時間點並切到時間軸）取代各區塊原本的 `jumpTo`，`showSection()` 以 `closest('[data-detail]')` 找到區塊所在的分頁、`flushSync` 切換後再捲動。`Timeline` 的 `active`：隱藏的元素不能捲動，切到時間軸分頁時才依最後一次 `focus` 捲動。`App.tsx` 的 `collapsed`／`autoCollapse`（網址同時有 mine 與 ref／avg 時，兩邊第一次選好就收合），輸入區以 `hidden` 隱藏不卸載；全域 `[hidden] { display: none !important }`（`.logs` 的 `display: grid` 會蓋過預設）。
+- `scripts/ui-audit.js` 改為非同步、逐一切換分頁檢查（`headings` 中以 `[分頁名稱]` 分隔）：程式觸發的 click 由 React 在微任務中更新畫面，切換後要等一下再檢查。瀏覽器面板中可用 `await (0, eval)(await (await fetch('/@fs/D:/GameDev/FF14CopyCat/scripts/ui-audit.js')).text())` 從 Vite 開發伺服器載入執行（`/@fs/` 可讀專案內的檔案）。
+
 ### 2026-10-04 治療能力技不列為優先
 - 變更：`healOnlyAbilities()` 依日誌找出只治療的能力技（`SideData.healOnly`），`advice.ts` 對這些技能與 heal 分類的技能只在少用 ≥ 2 次時給「建議」（排除 GCD 與冷卻技規則已追蹤的技能）；新增 `AbilityCategory` 'heal'，`gen-job-data.mjs` 改用官方 XIVAPI。
 - 原因：學者的生命回生法被列為優先。檢查其他補師時，深謀遠慮之策（治療記在同名效果上）改用名稱比對；全大赦（治療記在告解上）與補師的即刻詠唱從日誌判斷不出來，改由職業資料標記。

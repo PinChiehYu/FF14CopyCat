@@ -7,7 +7,13 @@ const GROUPS: { severity: Severity; label: string }[] = [
   { severity: 'low', label: '參考' },
 ]
 
-function AdviceItem({ advice, onJump }: { advice: Advice; onJump: (t: number) => void }) {
+/** 「查看」的動作：跳到時間點，或到頁面上的對應區塊（可能在其他分頁，由比較結果切換分頁後捲動） */
+interface Jumps {
+  onJump: (t: number) => void
+  onSection: (id: string) => void
+}
+
+function AdviceItem({ advice, onJump, onSection }: { advice: Advice } & Jumps) {
   return (
     <li className={`advice ${advice.severity}`}>
       {/* 「查看」與標題同一列，說明文字用滿整個寬度 */}
@@ -15,7 +21,7 @@ function AdviceItem({ advice, onJump }: { advice: Advice; onJump: (t: number) =>
         <strong>{advice.title}</strong>
         {advice.section ? (
           // 捲到頁面上的對應區塊（例如停手總結 → 少打 GCD 的時段）
-          <button type="button" onClick={() => document.getElementById(advice.section!)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <button type="button" onClick={() => onSection(advice.section!)}>
             查看
           </button>
         ) : (
@@ -32,7 +38,7 @@ function AdviceItem({ advice, onJump }: { advice: Advice; onJump: (t: number) =>
 }
 
 /** 一組相關的建議：類別名稱（多於一則時附則數）＋各則 */
-function Group({ group, onJump }: { group: AdviceGroup; onJump: (t: number) => void }) {
+function Group({ group, onJump, onSection }: { group: AdviceGroup } & Jumps) {
   return (
     <li className="advice-group">
       {group.label && (
@@ -43,14 +49,14 @@ function Group({ group, onJump }: { group: AdviceGroup; onJump: (t: number) => v
       )}
       <ol className="advice-list">
         {group.items.map((a, i) => (
-          <AdviceItem key={i} advice={a} onJump={onJump} />
+          <AdviceItem key={i} advice={a} onJump={onJump} onSection={onSection} />
         ))}
       </ol>
     </li>
   )
 }
 
-export function AdviceList({ advice, onJump }: { advice: Advice[]; onJump: (t: number) => void }) {
+export function AdviceList({ advice, onJump, onSection }: { advice: Advice[] } & Jumps) {
   if (advice.length === 0) {
     return <p className="hint">沒有明顯需要改進的地方，你的表現與參考玩家相近。</p>
   }
@@ -65,7 +71,7 @@ export function AdviceList({ advice, onJump }: { advice: Advice[]; onJump: (t: n
       content: (
         <ol className="advice-groups">
           {inTab.map((g) => (
-            <Group key={g.key} group={g} onJump={onJump} />
+            <Group key={g.key} group={g} onJump={onJump} onSection={onSection} />
           ))}
         </ol>
       ),

@@ -266,6 +266,54 @@ function readAverageTier(): AverageTier | null {
   return AVERAGE_ENABLED && AVERAGE_TIERS.some((t) => t.tier === value) ? (value as AverageTier) : null
 }
 
+/** 收合後的一側：「我的／參考」＋玩家、職業、戰鬥 */
+function PickedLog({ label, selection }: { label: string; selection: Selection }) {
+  const { player, fight } = selection
+  return (
+    <span className="picked-log" title={`${player.name}${player.server ? ` @ ${player.server}` : ''}・#${fight.id} ${fight.name}`}>
+      <span className="picked-label">{label}</span>
+      <span className="picked-name">
+        {player.name}
+        {player.server && <span className="option-server"> @ {player.server}</span>}
+      </span>
+      <JobBadge subType={player.subType} />
+      <span className="picked-fight">
+        #{fight.id} {formatFightTime(fight.endTime - fight.startTime)}
+      </span>
+    </span>
+  )
+}
+
+/** 收合的日誌選擇：一行列出兩邊選了什麼，「更換」展開原本的輸入區（連結與選擇都保留） */
+function PickedLogs({
+  mine,
+  reference,
+  average,
+  onExpand,
+}: {
+  mine: Selection
+  reference: Selection | null
+  average: AverageTier | null
+  onExpand: () => void
+}) {
+  return (
+    <div className="picked-logs">
+      <PickedLog label="我的" selection={mine} />
+      {average ? (
+        <span className="picked-log">
+          <span className="picked-label">參考</span>
+          <span className="picked-name">前輩平均 {AVERAGE_TIERS.find((t) => t.tier === average)?.label}</span>
+        </span>
+      ) : (
+        reference && <PickedLog label="參考" selection={reference} />
+      )}
+      <button type="button" className="picked-change" onClick={onExpand}>
+        更換日誌
+      </button>
+    </div>
+  )
+}
+
 export default function App() {
   const [mine, setMine] = useState<Selection | null>(null)
   const [reference, setReference] = useState<Selection | null>(null)
@@ -277,6 +325,15 @@ export default function App() {
   }
   // 從繁中服排名選的參考日誌連結
   const [picked, setPicked] = useState<{ url: string } | null>(null)
+  // 兩邊都選好後可收合輸入區，比較結果往上移（手機上輸入區佔約一個半畫面）。
+  // 從網址還原兩邊（分享連結、重新整理）時自動收合；使用者自己貼連結時不自動收合，避免選單在調整時消失。
+  const [collapsed, setCollapsed] = useState(false)
+  const [autoCollapse, setAutoCollapse] = useState(() => readLogParam('mine') !== '' && (readLogParam('ref') !== '' || readAverageTier() !== null))
+  const bothPicked = mine !== null && (reference !== null || average !== null)
+  if (autoCollapse && bothPicked) {
+    setAutoCollapse(false)
+    setCollapsed(true)
+  }
   // 參考日誌依我選的 Boss 與職業自動選擇戰鬥與角色
   const preferred = mine
     ? { encounterID: mine.fight.encounterID, bossName: mine.fight.name, subType: mine.player.subType }
@@ -287,7 +344,11 @@ export default function App() {
       <h1>FF14 CopyCat</h1>
       <p className="subtitle">比較你與前輩的 FFLogs 日誌，找出技能循環與站位的差異。</p>
 
-      <div className="logs">
+      {collapsed && mine && bothPicked && (
+        <PickedLogs mine={mine} reference={reference} average={average} onExpand={() => setCollapsed(false)} />
+      )}
+      {/* 收合時只隱藏、不卸載：連結、戰鬥與角色的選擇都保留，展開即可更換 */}
+      <div className="logs" hidden={collapsed && bothPicked}>
         <LogPicker label="我的日誌" storageKey="mine" onChange={setMine} />
         {average ? (
           <AveragePicker tier={average} onChange={setAverage} onSingle={() => setAverage(null)} />
@@ -318,6 +379,13 @@ export default function App() {
           />
         )}
       </div>
+      {!collapsed && mine && bothPicked && (
+        <div className="logs-collapse">
+          <button type="button" onClick={() => setCollapsed(true)}>
+            收合日誌選擇
+          </button>
+        </div>
+      )}
 
       {/* 選好我的日誌就先顯示我的分析，選了參考日誌再補上比較 */}
       {mine && (

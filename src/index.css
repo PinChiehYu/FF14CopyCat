@@ -3153,3 +3153,95 @@ h3 {
     font-size: 0.72em;
   }
 }
+
+/* 比較結果下半部的分頁（輸出循環／機制與站位／時間軸）：區塊層級的分頁，字較大；捲動時分頁列固定在畫面上方 */
+.detail-tabs {
+  margin-top: 24px;
+}
+
+.detail-tabs > .tab-list {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  font-size: 1.05em;
+  background: var(--bg);
+}
+
+/* 分頁內第一個標題不用再空一大段；捲到區塊時標題不被固定的分頁列蓋住 */
+.detail-tabs > .tab-panel > div > h3:first-child {
+  margin-top: 0;
+}
+
+.detail-tabs h3 {
+  scroll-margin-top: 56px;
+}
+
+/* hidden 屬性一律隱藏（.logs 等有自己的 display 設定，會蓋過瀏覽器預設） */
+[hidden] {
+  display: none !important;
+}
+
+/* 收合的日誌選擇：一行列出兩邊的玩家與戰鬥，右邊「更換日誌」；窄畫面自動換行 */
+.picked-logs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 20px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.picked-log {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.picked-label {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.picked-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picked-fight {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.picked-change,
+.logs-collapse button {
+  padding: 2px 12px;
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.picked-change {
+  margin-left: auto;
+}
+
+.logs-collapse {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+@media (max-width: 560px) {
+  /* 每側各佔一行，名稱過長時省略 */
+  .picked-log {
+    flex: 1 1 100%;
+  }
+}

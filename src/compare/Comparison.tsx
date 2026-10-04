@@ -35,6 +35,8 @@ import {
   type Selection,
   type SideData,
 } from './load'
+import { flushSync } from 'react-dom'
+import { Tabs } from '../ui/Tabs'
 import { AdviceList } from './AdviceList'
 import { HelpTip } from './HelpTip'
 import { Mechanics, MechanicsHeading } from './Mechanics'
@@ -725,6 +727,22 @@ function Loaded({
     setCursor(t)
     setFocus({ t })
   }, [setCursor, setFocus])
+  // 建議以下的詳細區塊分頁顯示（輸出循環／機制與站位／時間軸），避免整頁過長
+  const [detail, setDetail] = useState<string>('rotation')
+  // 「查看」某個時間點：切到時間軸並捲到那裡（站位分頁內的跳轉只移動游標，留在俯視圖）
+  const showAt = useCallback(
+    (t: number) => {
+      jumpTo(t)
+      setDetail('timeline')
+    },
+    [jumpTo, setDetail],
+  )
+  // 「查看」頁面上的區塊：切到區塊所在的分頁（分頁都保持掛載，可直接找到），顯示後再捲動
+  const showSection = useCallback((id: string) => {
+    const tab = document.getElementById(id)?.closest<HTMLElement>('[data-detail]')?.dataset.detail
+    if (tab) flushSync(() => setDetail(tab))
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [setDetail])
   const playbackEnd = Math.max(reference.duration, alignment.mineToRef(mine.duration))
   // 時間軸的標示：固定下來，時間軸的技能列才不會在播放時重繪
   const timelineHighlights = useMemo(() => lost.map((w) => ({ start: w.mineStart, end: w.mineEnd })), [lost])
@@ -785,11 +803,18 @@ function Loaded({
   }, [dots, abilityName])
 
   // 不隨游標變動的區塊先做好，播放時游標每秒更新多次，不必跟著重繪
-  const staticSections = useMemo(
+  const adviceSection = useMemo(
     () => (
       <>
         <h3>建議</h3>
-        <AdviceList advice={advice} onJump={jumpTo} />
+        <AdviceList advice={advice} onJump={showAt} onSection={showSection} />
+      </>
+    ),
+    [advice, showAt, showSection],
+  )
+  const rotationSection = useMemo(
+    () => (
+      <>
         {windows.length > 0 && (
           <>
             <h3>技能窗口</h3>
@@ -798,27 +823,14 @@ function Loaded({
               abilities={abilities}
               abilityName={abilityName}
               mineToRef={alignment.mineToRef}
-              onJump={jumpTo}
+              onJump={showAt}
             />
           </>
         )}
         {dots.length > 0 && (
           <>
             <DotsHeading />
-            <Dots dots={dots} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
-          </>
-        )}
-        {!partial && (
-          <>
-            <MechanicsHeading main={mainMechanicGroups(mine.selection.fight.encounterID) !== null} />
-            <Mechanics
-              differences={mainMechanics}
-              main={mainMechanicGroups(mine.selection.fight.encounterID) !== null}
-              abilityName={abilityName}
-              onJump={jumpTo}
-              isFocused={isFocused}
-              refToMine={alignment.refToMine}
-            />
+            <Dots dots={dots} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={showAt} />
           </>
         )}
         <Metrics
@@ -829,14 +841,14 @@ function Loaded({
           job={job}
           category={category}
           lost={lost}
-          onFocus={jumpTo}
+          onFocus={showAt}
           cooldowns={cooldowns}
           mineToRef={alignment.mineToRef}
           abilityName={abilityName}
           afterGcd={
             <>
               {weaving && weaving.mine.length > 0 && (
-                <Weaving weaving={weaving} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
+                <Weaving weaving={weaving} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={showAt} />
               )}
               {fillers && fillerId !== undefined && (
                 <Fillers
@@ -845,7 +857,7 @@ function Loaded({
                   abilities={abilities}
                   abilityName={abilityName}
                   mineToRef={alignment.mineToRef}
-                  onJump={jumpTo}
+                  onJump={showAt}
                 />
               )}
             </>
@@ -853,7 +865,24 @@ function Loaded({
         />
       </>
     ),
-    [solo, partial, advice, jumpTo, windows, dots, fillers, fillerId, weaving, isFocused, abilities, abilityName, alignment, mainMechanics, mine, gcd, usage, job, category, lost, cooldowns],
+    [solo, showAt, windows, dots, fillers, fillerId, weaving, abilities, abilityName, alignment, gcd, usage, job, category, lost, cooldowns],
+  )
+  const mechanicsSection = useMemo(
+    () =>
+      !partial && (
+        <>
+          <MechanicsHeading main={mainMechanicGroups(mine.selection.fight.encounterID) !== null} />
+          <Mechanics
+            differences={mainMechanics}
+            main={mainMechanicGroups(mine.selection.fight.encounterID) !== null}
+            abilityName={abilityName}
+            onJump={showAt}
+            isFocused={isFocused}
+            refToMine={alignment.refToMine}
+          />
+        </>
+      ),
+    [partial, mine, mainMechanics, abilityName, showAt, isFocused, alignment],
   )
 
   return (
@@ -867,7 +896,7 @@ function Loaded({
         refEnd={compareEnd}
         abilityName={abilityName}
         mineToRef={alignment.mineToRef}
-        onJump={jumpTo}
+        onJump={showAt}
         average={average}
       />
       {patchDiffs.length > 0 && (
@@ -895,7 +924,7 @@ function Loaded({
                 key={p.refEnd}
                 type="button"
                 className={`push-chip ${p.deltaMs > 0 ? 'slower' : 'faster'}`}
-                onClick={() => jumpTo(p.refEnd)}
+                onClick={() => showAt(p.refEnd)}
                 title={pushTitle(p)}
               >
                 {formatFightTime(p.refEnd)} 我{p.deltaMs > 0 ? '慢' : '快'} {(Math.abs(p.deltaMs) / 1000).toFixed(1)} 秒
@@ -908,60 +937,87 @@ function Loaded({
       )}
       {!partial && alignment.anchors.length < MIN_ANCHORS && <p className="error">對齊錨點過少，時間軸對齊結果可能不準確。</p>}
       {!job && <p className="hint">此職業尚未有專屬規則，技能不區分 GCD／oGCD。</p>}
-      {staticSections}
-      <h3>站位與當下狀態</h3>
-      <Positions
-        solo={partial}
-        abilityName={abilityName}
-        track={positions.track}
-        divergences={positions.divergences}
-        mineSamples={positions.mineSamples}
-        refSamples={partial ? [] : refInRange.playerPositions}
-        bossSamples={refInRange.bossPositions}
-        mineBossSamples={positions.mineBossSamples}
-        mineAlignedSamples={positions.mineAlignedSamples}
-        names={{ mine: mine.selection.player.name, ref: reference.selection.player.name }}
-        threshold={DIVERGENCE_YALM}
-        duration={compareEnd}
-        cursor={cursor}
-        onSeek={setCursor}
-        onJump={jumpTo}
-        isFocused={isFocused}
-        refToMine={alignment.refToMine}
-        status={
-          <StatusPanel
-            mine={mine}
-            reference={average ? null : shownRef}
-            cursor={cursor}
-            refToMine={alignment.refToMine}
-            isFocused={isFocused}
-            control={control}
-            namedStatus={namedStatus}
-            abilities={abilities}
-            abilityName={abilityName}
-            isGcd={isGcd}
-          />
-        }
-      />
-      <h3>時間軸</h3>
-      <Timeline
-        mine={mine}
-        reference={shownRef}
-        alignment={alignment}
-        abilities={abilities}
-        job={job}
-        highlights={timelineHighlights}
-        windows={timelineWindows}
-        weaveMarks={weaveMarks}
-        dotMarks={dotMarks}
-        isFocused={isFocused}
-        pushes={pushes}
-        focus={focus}
-        cursor={cursor}
-        follow={playing}
-        onSeek={setCursor}
-        compareEnd={solo ? undefined : compareEnd}
-        averaged={!!average}
+      {adviceSection}
+      <Tabs
+        className="detail-tabs"
+        label="比較結果"
+        selected={detail}
+        onSelect={setDetail}
+        keepMounted
+        tabs={[
+          { key: 'rotation', label: '輸出循環', content: <div data-detail="rotation">{rotationSection}</div> },
+          {
+            key: 'positions',
+            label: partial ? '站位' : '機制與站位',
+            content: (
+              <div data-detail="positions">
+                {mechanicsSection}
+                <h3>站位與當下狀態</h3>
+                <Positions
+                  solo={partial}
+                  abilityName={abilityName}
+                  track={positions.track}
+                  divergences={positions.divergences}
+                  mineSamples={positions.mineSamples}
+                  refSamples={partial ? [] : refInRange.playerPositions}
+                  bossSamples={refInRange.bossPositions}
+                  mineBossSamples={positions.mineBossSamples}
+                  mineAlignedSamples={positions.mineAlignedSamples}
+                  names={{ mine: mine.selection.player.name, ref: reference.selection.player.name }}
+                  threshold={DIVERGENCE_YALM}
+                  duration={compareEnd}
+                  cursor={cursor}
+                  onSeek={setCursor}
+                  onJump={jumpTo}
+                  isFocused={isFocused}
+                  refToMine={alignment.refToMine}
+                  status={
+                    <StatusPanel
+                      mine={mine}
+                      reference={average ? null : shownRef}
+                      cursor={cursor}
+                      refToMine={alignment.refToMine}
+                      isFocused={isFocused}
+                      control={control}
+                      namedStatus={namedStatus}
+                      abilities={abilities}
+                      abilityName={abilityName}
+                      isGcd={isGcd}
+                    />
+                  }
+                />
+              </div>
+            ),
+          },
+          {
+            key: 'timeline',
+            label: '時間軸',
+            content: (
+              <div data-detail="timeline">
+                <Timeline
+                  active={detail === 'timeline'}
+                  mine={mine}
+                  reference={shownRef}
+                  alignment={alignment}
+                  abilities={abilities}
+                  job={job}
+                  highlights={timelineHighlights}
+                  windows={timelineWindows}
+                  weaveMarks={weaveMarks}
+                  dotMarks={dotMarks}
+                  isFocused={isFocused}
+                  pushes={pushes}
+                  focus={focus}
+                  cursor={cursor}
+                  follow={playing}
+                  onSeek={setCursor}
+                  compareEnd={solo ? undefined : compareEnd}
+                  averaged={!!average}
+                />
+              </div>
+            ),
+          },
+        ]}
       />
       {/* 固定在畫面底部的播放列：捲到哪裡都能操作 */}
       <Playback
