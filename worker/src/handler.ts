@@ -81,19 +81,22 @@ export function setTokenStore(store: CacheLike | null): void {
 
 const fresh = (token: { expiresAt: number } | null): boolean => !!token && token.expiresAt > Date.now() + TOKEN_REFRESH_MARGIN_MS
 
-async function getToken(env: Env): Promise<string> {
-  if (cachedToken && fresh(cachedToken)) return cachedToken.value
+/** @param renew 不用快取的權杖，直接換新的（FFLogs 拒絕了快取中的權杖時；新權杖會覆蓋快取） */
+async function getToken(env: Env, renew = false): Promise<string> {
+  if (!renew && cachedToken && fresh(cachedToken)) return cachedToken.value
 
   // 快取失敗時照常向 FFLogs 換權杖
-  try {
-    const stored = await tokenStore?.match(tokenKey(env))
-    const token = stored ? ((await stored.json()) as { value: string; expiresAt: number }) : null
-    if (token && fresh(token)) {
-      cachedToken = token
-      return token.value
+  if (!renew) {
+    try {
+      const stored = await tokenStore?.match(tokenKey(env))
+      const token = stored ? ((await stored.json()) as { value: string; expiresAt: number }) : null
+      if (token && fresh(token)) {
+        cachedToken = token
+        return token.value
+      }
+    } catch (err) {
+      console.warn('token cache read failed', err)
     }
-  } catch (err) {
-    console.warn('token cache read failed', err)
   }
 
   const res = await fflogsFetch(TOKEN_URL, {
@@ -134,15 +137,17 @@ async function fflogsFetch(url: string, init: RequestInit): Promise<Response> {
   }
 }
 
-async function queryGraphql<T>(env: Env, query: string, variables: Record<string, unknown>): Promise<T | undefined> {
+async function queryGraphql<T>(env: Env, query: string, variables: Record<string, unknown>, renewed = false): Promise<T | undefined> {
   const res = await fflogsFetch(API_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${await getToken(env)}`,
+      Authorization: `Bearer ${await getToken(env, renewed)}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ query, variables }),
   })
+  // 快取中的權杖被 FFLogs 拒絕（未到期但已失效，2026-10-08 實測定時工作每次 401）：換新權杖重試一次
+  if (res.status === 401 && !renewed) return queryGraphql(env, query, variables, true)
   if (res.status === 429) throw new HttpError(503, 'FFLogs API rate limit reached, try again later')
   if (!res.ok) throw new HttpError(502, `FFLogs API error: ${res.status}`)
 

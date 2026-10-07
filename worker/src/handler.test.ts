@@ -77,6 +77,36 @@ describe('handleRequest', () => {
     expect([...stored.keys()]).toEqual(['https://fflogs-token.internal/id'])
   })
 
+  it('replaces a cached token that FFLogs rejects and retries once', async () => {
+    // 快取中的權杖未到期但已失效：FFLogs 回 401
+    const stored = new Map<string, Response>()
+    const store = {
+      match: async (req: Request) => stored.get(req.url)?.clone(),
+      put: async (req: Request, res: Response) => void stored.set(req.url, res),
+    }
+    await store.put(new Request('https://fflogs-token.internal/id'), Response.json({ value: 'revoked', expiresAt: Date.now() + 86_400_000 }))
+    setTokenStore(store)
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/oauth/token')) return Response.json({ access_token: 'new', expires_in: 3600 })
+      const auth = new Headers(init?.headers).get('Authorization')
+      return auth === 'Bearer new'
+        ? Response.json({ data: { reportData: { report: { code: 'abc', fights: [{ id: 1 }] } } } })
+        : new Response('unauthorized', { status: 401 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await handleRequest(get('/reports/abc'), env, ctx, null)
+    expect(res.status).toBe(200)
+    // 新權杖覆蓋快取，其他 isolate 之後也用新的
+    expect(((await (await store.match(new Request('https://fflogs-token.internal/id')))!.json()) as { value: string }).value).toBe('new')
+
+    // 換了新權杖仍被拒絕：不無限重試
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) =>
+      String(input).endsWith('/oauth/token') ? Response.json({ access_token: 'new', expires_in: 3600 }) : new Response('unauthorized', { status: 401 }),
+    )
+    resetTokenCache()
+    expect((await handleRequest(get('/reports/abc'), env, ctx, null)).status).toBe(502)
+  })
+
   it('still fetches a token when the cache fails', async () => {
     mockFflogs({ data: { reportData: { report: { code: 'abc', fights: [{ id: 1 }] } } } })
     setTokenStore({
