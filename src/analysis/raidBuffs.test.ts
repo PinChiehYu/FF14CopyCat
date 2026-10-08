@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FFLogsEvent, Fight } from '../fflogs/types'
-import { burstAlignment, burstPoints, enemyRaidDebuffs, raidBuffWindows, type RaidBuffWindow } from './raidBuffs'
+import { burstAlignment, burstPoints, enemyRaidDebuffs, raidBuffLabel, raidBuffWindows, type RaidBuffWindow } from './raidBuffs'
 
 const names: Record<number, string> = {
   1: 'Battle Litany',
@@ -25,10 +25,13 @@ describe('raidBuffWindows', () => {
       englishName,
     )
     expect(windows).toEqual([
-      { name: 'Battle Litany', start: 10_000, end: 30_000 },
-      { name: 'Chain Stratagem', start: 11_000, end: 31_000 },
-      { name: 'Embolden', start: 12_000, end: 33_000 },
+      { name: 'Battle Litany', statusId: 1, start: 10_000, end: 30_000 },
+      { name: 'Chain Stratagem', statusId: 5, start: 11_000, end: 31_000 },
+      { name: 'Embolden', statusId: 3, start: 12_000, end: 33_000 },
     ])
+    // 顯示名稱以效果 ID 查繁中名稱，查不到時沿用英文
+    const label = raidBuffLabel(windows, (id) => ({ 1: '戰鬥連禱', 3: '鼓勵' })[id])
+    expect(['Battle Litany', 'Embolden', 'Chain Stratagem'].map(label)).toEqual(['戰鬥連禱', '鼓勵', 'Chain Stratagem'])
   })
 })
 
@@ -61,9 +64,9 @@ describe('burstPoints', () => {
 describe('burstAlignment', () => {
   // 0:10 起 4 個團隊 Buff（各 20 秒）；2:10 起 4 個；4:10 只有 1 個
   const windows: RaidBuffWindow[] = [
-    ...['A', 'B', 'C', 'D'].map((name, i) => ({ name, start: 10_000 + i * 500, end: 30_000 })),
-    ...['A', 'B', 'C', 'D'].map((name, i) => ({ name, start: 130_000 + i * 500, end: 150_000 })),
-    { name: 'A', start: 250_000, end: 270_000 },
+    ...['A', 'B', 'C', 'D'].map((name, i) => ({ name, statusId: i, start: 10_000 + i * 500, end: 30_000 })),
+    ...['A', 'B', 'C', 'D'].map((name, i) => ({ name, statusId: i, start: 130_000 + i * 500, end: 150_000 })),
+    { name: 'A', statusId: 0, start: 250_000, end: 270_000 },
   ]
 
   it('counts the raid buffs active shortly after the burst against the most available nearby', () => {

@@ -37,7 +37,7 @@ import {
 } from './load'
 import { flushSync } from 'react-dom'
 import { Tabs } from '../ui/Tabs'
-import { burstAlignment, burstPoints } from '../analysis/raidBuffs'
+import { burstAlignment, burstPoints, raidBuffLabel } from '../analysis/raidBuffs'
 import { RaidBuffAlignment } from './RaidBuffAlignment'
 import { AdviceList } from './AdviceList'
 import { HelpTip } from './HelpTip'
@@ -129,6 +129,8 @@ function useAbilityNames(mine: SideData, reference: SideData | null): Map<number
         ...s.bossDebuffs.map((b) => b.statusId),
         // 當下狀態面板：角色自身的效果
         ...s.auras.filter((a) => a.sourceId === s.selection.player.id).map((a) => a.statusId),
+        // 團隊 Buff（爆發與團隊 Buff、時間軸的團隊 Buff 列）
+        ...(s.raidBuffs ?? []).map((w) => w.statusId),
         // 死亡的致命技能
         ...s.deaths.flatMap((d) => (d.abilityId === null ? [] : [d.abilityId])),
         // 死亡回顧（死亡建議的說明）：死前受到的傷害
@@ -824,7 +826,14 @@ function Loaded({
           </>
         )}
         {bursts && bursts.length > 0 && (
-          <RaidBuffAlignment bursts={bursts} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
+          <RaidBuffAlignment
+            bursts={bursts}
+            raidBuffName={raidBuffLabel(mineInRange.raidBuffs ?? [], (id) => abilities.get(id)?.name)}
+            abilities={abilities}
+            abilityName={abilityName}
+            mineToRef={alignment.mineToRef}
+            onJump={jumpTo}
+          />
         )}
         {dots.length > 0 && (
           <>
@@ -864,7 +873,7 @@ function Loaded({
         />
       </>
     ),
-    [solo, jumpTo, windows, bursts, dots, fillers, fillerId, weaving, abilities, abilityName, alignment, gcd, usage, job, category, lost, cooldowns],
+    [solo, jumpTo, windows, bursts, mineInRange.raidBuffs, dots, fillers, fillerId, weaving, abilities, abilityName, alignment, gcd, usage, job, category, lost, cooldowns],
   )
   const mechanicsSection = useMemo(
     () =>

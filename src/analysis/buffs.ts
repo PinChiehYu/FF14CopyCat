@@ -223,7 +223,7 @@ export function enemyDebuffApplications(events: FFLogsEvent[], fight: Fight, act
 }
 
 /**
- * 玩家施加在敵人身上的效果（例如忍者的毒盛、攻擊力降低類的減益）時段。
+ * 玩家施加在敵人身上的效果（例如忍者的介毒之術、攻擊力降低類的減益）時段。
  * 同一效果可能同時掛在多個敵人身上（範圍技能），同一效果重疊的時段合併成一段。
  */
 export function enemyDebuffWindows(events: FFLogsEvent[], fight: Fight, actorId: number): BuffWindow[] {

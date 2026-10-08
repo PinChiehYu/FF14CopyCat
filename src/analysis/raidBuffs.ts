@@ -3,7 +3,7 @@ import { toFightTime } from './timeline'
 
 /**
  * 團隊 Buff（英文名稱；依名稱比對，同名的不同效果 ID 視為同一個，例如赤魔的鼓勵自己與隊友是不同 ID）：
- * 施加在隊友身上的增傷，以及連環計、毒盛這兩個施加在敵人身上的（敵人身上的另外查詢）。
+ * 施加在隊友身上的增傷，以及連環計、介毒之術這兩個施加在敵人身上的（敵人身上的另外查詢）。
  */
 export const RAID_BUFF_NAMES: readonly string[] = [
   'Battle Litany',
@@ -23,9 +23,21 @@ const RAID_BUFFS = new Set(RAID_BUFF_NAMES)
 
 /** 一個團隊 Buff 的時段（我的戰鬥時間）；同名的重疊時段已合併 */
 export interface RaidBuffWindow {
+  /** 英文名稱（判斷與合併用） */
   name: string
+  /** 其中一個效果 ID（查繁中名稱用，見 raidBuffLabel） */
+  statusId: number
   start: number
   end: number
+}
+
+/** 團隊 Buff 的顯示名稱：以時段中的效果 ID 查繁中名稱；查不到時沿用英文 */
+export function raidBuffLabel(windows: RaidBuffWindow[], abilityName: (id: number) => string | undefined): (name: string) => string {
+  const ids = new Map(windows.map((w) => [w.name, w.statusId]))
+  return (name) => {
+    const id = ids.get(name)
+    return (id === undefined ? undefined : abilityName(id)) ?? name
+  }
 }
 
 // 爆發點之後這麼久內開始的團隊 Buff 也算「當時」：爆發技能常在團隊 Buff 前一兩個 GCD 先開（例如武士開場的意氣衝天），
@@ -48,10 +60,12 @@ export function raidBuffWindows(
   englishName: (statusId: number) => string | undefined,
 ): RaidBuffWindow[] {
   const byName = new Map<string, { start: number; end: number }[]>()
+  const statusIds = new Map<string, number>()
   for (const a of [...auras, ...enemyDebuffs]) {
     const name = englishName(a.statusId)
     if (!name || !RAID_BUFFS.has(name)) continue
     byName.set(name, [...(byName.get(name) ?? []), { start: a.start, end: a.end }])
+    if (!statusIds.has(name)) statusIds.set(name, a.statusId)
   }
   const windows: RaidBuffWindow[] = []
   for (const [name, spans] of byName) {
@@ -60,18 +74,18 @@ export function raidBuffWindows(
     for (const s of spans) {
       if (current && s.start <= current.end) current.end = Math.max(current.end, s.end)
       else {
-        if (current) windows.push({ name, ...current })
+        if (current) windows.push({ name, statusId: statusIds.get(name)!, ...current })
         current = { ...s }
       }
     }
-    if (current) windows.push({ name, ...current })
+    if (current) windows.push({ name, statusId: statusIds.get(name)!, ...current })
   }
   return windows.sort((a, b) => a.start - b.start)
 }
 
 /**
  * 敵人身上的效果時段（任一個敵人有就算；多個敵人的時段合併），從「Debuffs、Enemies」的事件取得。
- * 只用來找團隊 Debuff（連環計、毒盛），不限施加者。
+ * 只用來找團隊 Debuff（連環計、介毒之術），不限施加者。
  */
 export function enemyRaidDebuffs(events: FFLogsEvent[], fight: Fight): { statusId: number; start: number; end: number }[] {
   const duration = fight.endTime - fight.startTime

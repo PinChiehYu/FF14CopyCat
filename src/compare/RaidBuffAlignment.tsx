@@ -10,6 +10,7 @@ import { HelpTip } from './HelpTip'
  */
 export function RaidBuffAlignment({
   bursts,
+  raidBuffName,
   abilities,
   abilityName,
   mineToRef,
@@ -17,6 +18,8 @@ export function RaidBuffAlignment({
 }: {
   /** 我的爆發（我的時間） */
   bursts: BurstAlignment[]
+  /** 團隊 Buff 的英文名稱 → 顯示名稱（繁中） */
+  raidBuffName: (name: string) => string
   abilities: Map<number, Ability>
   abilityName: (id: number) => string
   mineToRef: (t: number) => number
@@ -32,7 +35,7 @@ export function RaidBuffAlignment({
         <HelpTip
           text={[
             '爆發：冷卻 60 秒以上的輸出技能與強化藥的每次使用（一個 GCD 內連續按下的算同一波）。',
-            '團隊 Buff：隊友給的增傷（戰鬥連禱、占卜、技巧舞步結束、義結金蘭、灼熱之光、神秘環、鼓勵、光明神的最終樂章、戰鬥之聲、星空構想），以及施加在敵人身上的連環計、毒盛。',
+            '團隊 Buff：隊友給的增傷（戰鬥連禱、占卜、技巧舞步結束、義結金蘭、灼熱之光、神秘環、鼓勵、光明神的最終樂章、戰鬥之聲、星空構想），以及施加在敵人身上的連環計、介毒之術。',
             `團隊 Buff 欄為「當時／最多」（實心圓點＝當時有）。當時：使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內最多同時有幾個團隊 Buff；最多：前後 ${LOOKAROUND_MS / 1000} 秒內最多同時有幾個（這次本來可以對上的數量）。當時達到最多的一半、或團隊 Buff 在使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內開始（提早先開）就算對上；附近沒有團隊 Buff 的不評。`,
             '只看你自己的日誌：隊伍實際給了哪些團隊 Buff。時間為你的戰鬥時間，點擊跳到時間軸。',
           ].join('\n')}
@@ -77,7 +80,7 @@ export function RaidBuffAlignment({
                       )
                     })}
                   </td>
-                  <td title={b.activeNames.length > 0 ? `當時：${b.activeNames.join('、')}` : '當時沒有團隊 Buff'}>
+                  <td title={b.activeNames.length > 0 ? `當時：${b.activeNames.map(raidBuffName).join('、')}` : '當時沒有團隊 Buff'}>
                     {b.available === 0 ? (
                       <span className="hint-inline">—</span>
                     ) : (

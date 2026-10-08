@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { pushTitle, type Alignment, type PushDifference, type TimedCast } from '../analysis/alignment'
 import { displayAxis, type DisplayAxis } from '../analysis/displayAxis'
 import { formatFightTime } from '../analysis/timeline'
-import { raidBuffsAt, type RaidBuffWindow } from '../analysis/raidBuffs'
+import { raidBuffLabel, raidBuffsAt, type RaidBuffWindow } from '../analysis/raidBuffs'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import type { JobModule } from '../jobs'
@@ -205,7 +205,7 @@ export function Timeline({
             '能力技列頂部的紅線：穿插過多，下一個 GCD 被延後（從前一個 GCD 到被延後的 GCD）。',
             dotMarks.length > 0 && `GCD 列頂部的金黃線：DoT 斷掉（Boss 可選中但 DoT 不在敵人身上，1 秒以上）；金黃短直線：DoT 提早續上（覆蓋掉 ${DOT_CLIP_MARK_MIN_MS / 1000} 秒以上）。`,
             'Boss 列較粗的深藍色標記：你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）。',
-            raidBuffs && '「團隊 Buff」列：你身上的團隊 Buff 與敵人身上的連環計、毒盛，顏色越深代表同時越多個；滑鼠停在上面可看是哪些。爆發技能應落在顏色最深的時段。',
+            raidBuffs && '「團隊 Buff」列：你身上的團隊 Buff 與敵人身上的連環計、介毒之術，顏色越深代表同時越多個；滑鼠停在上面可看是哪些。爆發技能應落在顏色最深的時段。',
             '金黃框：止損技（近戰與坦克離開 Boss 時用的遠程 GCD，例如投盾、飛刀）；用得多代表離 Boss 太遠或走位不順。開場起手（開打前與第一個 GCD）與有強化效果時（貫穿尖、勾刃、燕飛效果提高）不標。',
           ]
             .filter(Boolean)
@@ -460,7 +460,7 @@ function TimelineLanesImpl({
               </div>
               )
             })}
-            {raidBuffs && <RaidBuffLane windows={raidBuffs} at={axis.mine} span={span} />}
+            {raidBuffs && <RaidBuffLane windows={raidBuffs} at={axis.mine} span={span} label={raidBuffLabel(raidBuffs, (id) => abilities.get(id)?.name)} />}
     </>
   )
 }
@@ -470,8 +470,11 @@ function RaidBuffLane({
   windows,
   at,
   span,
+  label,
 }: {
   windows: RaidBuffWindow[]
+  /** 英文名稱 → 顯示名稱（繁中） */
+  label: (name: string) => string
   at: (t: number) => number
   span: (start: number, end: number) => { left: number; width: number }
 }) {
@@ -484,7 +487,7 @@ function RaidBuffLane({
           key={s.start}
           className="raid-segment"
           style={{ ...span(at(s.start), at(s.end)), opacity: 0.25 + (0.75 * s.names.length) / most }}
-          title={`團隊 Buff ${s.names.length} 個：${s.names.join('、')}（${formatFightTime(s.start)}～${formatFightTime(s.end)}）`}
+          title={`團隊 Buff ${s.names.length} 個：${s.names.map(label).join('、')}（${formatFightTime(s.start)}～${formatFightTime(s.end)}）`}
         >
           {s.names.length > 1 ? s.names.length : ''}
         </span>

@@ -379,7 +379,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     fetchFightEvents(report.code, fight, { hostility: 'Enemies', dataType: 'Casts' }, signal),
     // 只用來標示，查詢失敗時不影響比較
     fetchTargetability(report.code, fight, signal).catch(() => []),
-    // 敵人身上的效果（找連環計、毒盛等團隊 Debuff；整場約數百筆），查詢失敗時只少算這兩個
+    // 敵人身上的效果（找連環計、介毒之術等團隊 Debuff；整場約數百筆），查詢失敗時只少算這兩個
     fetchFightEvents(report.code, fight, { hostility: 'Enemies', dataType: 'Debuffs' }, signal).catch(() => []),
   ])
   const names = abilityMap(report)

@@ -584,9 +584,10 @@
 ## 技術變更紀錄
 
 ### 2026-10-08 爆發與團隊 Buff
-- 實作：`analysis/raidBuffs.ts`（`RAID_BUFF_NAMES` 依英文名稱；`raidBuffWindows()` 合併我身上的效果〔`playerAuras`〕與敵人身上的 Debuff、同名合併；`burstPoints()` 一個 GCD 內連續按下的併成一波；`burstAlignment()` 計算當時／最多、早晚與是否對上）。`load.ts` 的 `loadSide()` 多查一次 `dataType=Debuffs&hostility=Enemies`（敵人身上的效果，整場約 250 筆；查詢失敗時只少算連環計、毒盛），結果存 `SideData.raidBuffs`（前輩平均的合成資料沒有）。爆發技能取 `COOLDOWN_RULES` 中冷卻 ≥ 60 秒且 `isNonOffensiveCooldown()` 為否的技能，加上強化藥（`isItemId` 且 `isPotionName`）。表格 `compare/RaidBuffAlignment.tsx`、時間軸 `Timeline` 的 `raidBuffs`（`RaidBuffLane`）、建議 `advice.ts` 的 `burstAdvice()`（只有我的日誌與比較共用）。
+- 實作：`analysis/raidBuffs.ts`（`RAID_BUFF_NAMES` 依英文名稱；`raidBuffWindows()` 合併我身上的效果〔`playerAuras`〕與敵人身上的 Debuff、同名合併；`burstPoints()` 一個 GCD 內連續按下的併成一波；`burstAlignment()` 計算當時／最多、早晚與是否對上）。`load.ts` 的 `loadSide()` 多查一次 `dataType=Debuffs&hostility=Enemies`（敵人身上的效果，整場約 250 筆；查詢失敗時只少算連環計、介毒之術），結果存 `SideData.raidBuffs`（前輩平均的合成資料沒有）。爆發技能取 `COOLDOWN_RULES` 中冷卻 ≥ 60 秒且 `isNonOffensiveCooldown()` 為否的技能，加上強化藥（`isItemId` 且 `isPotionName`）。表格 `compare/RaidBuffAlignment.tsx`、時間軸 `Timeline` 的 `raidBuffs`（`RaidBuffLane`）、建議 `advice.ts` 的 `burstAdvice()`（只有我的日誌與比較共用）。
+- 名稱：團隊 Buff 以英文名稱判斷，顯示時以效果 ID 查繁中名稱（`raidBuffLabel()`；例如 Dokumori 的官方繁中是「介毒之術」、Brotherhood 的隊友效果是「義結金蘭：攻擊」）。
 - 資料特性：敵人身上的團隊 Debuff 要用 `hostility=Enemies`（`Friendlies` 拿到的是隊友身上的 Debuff）；FFLogs 報告的效果名稱就是英文，同名不同 ID 的例子：鼓勵 1239（赤魔自己）／1297（隊友）、光明神的最終樂章 2964／2722。
-- 驗證：M8S 武士基準（只有我的日誌）對上 9／10；M8S 忍者（隊伍有學者、忍者，連環計與毒盛都算到）對上 32／35，錯開的 3 次為早 6.9 秒、晚 27.9 秒、早 11.8 秒；騎士基準 9／9。
+- 驗證：M8S 武士基準（只有我的日誌）對上 9／10；M8S 忍者（隊伍有學者、忍者，連環計與介毒之術都算到）對上 32／35，錯開的 3 次為早 6.9 秒、晚 27.9 秒、早 11.8 秒；騎士基準 9／9。
 
 ### 2026-10-08 FFLogs 拒絕快取中的權杖時換新的
 - 現象：部署後 `wrangler tail` 顯示每分鐘的預處理與排名掃描每次都以 `FFLogs API error: 401` 結束（CPU 1～2 ms 就中斷）；同一時間前端用的 `/reports/:code` 正常。
