@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { pushTitle, type Alignment, type PushDifference, type TimedCast } from '../analysis/alignment'
 import { displayAxis, type DisplayAxis } from '../analysis/displayAxis'
 import { formatFightTime } from '../analysis/timeline'
+import { raidBuffsAt, type RaidBuffWindow } from '../analysis/raidBuffs'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
 import type { JobModule } from '../jobs'
@@ -64,6 +65,17 @@ function lanes(
   ]
 }
 
+/** 團隊 Buff 的數量變化：每段時間有效的團隊 Buff（數量不變的一段） */
+function raidBuffSegments(windows: RaidBuffWindow[]): { start: number; end: number; names: string[] }[] {
+  const points = [...new Set(windows.flatMap((w) => [w.start, w.end]))].sort((a, b) => a - b)
+  const segments: { start: number; end: number; names: string[] }[] = []
+  for (let i = 0; i + 1 < points.length; i++) {
+    const names = raidBuffsAt(windows, points[i])
+    if (names.length > 0) segments.push({ start: points[i], end: points[i + 1], names })
+  }
+  return segments
+}
+
 function dedupeBoss(casts: TimedCast[]): TimedCast[] {
   const last = new Map<number, number>()
   return casts.filter((c) => {
@@ -92,6 +104,7 @@ export function Timeline({
   onSeek,
   compareEnd,
   averaged = false,
+  raidBuffs,
 }: {
   mine: SideData
   /** 還沒有參考日誌時為 null：Boss 列用我的 Boss 施放、只畫我的技能列（alignment 應為恆等對應） */
@@ -123,6 +136,8 @@ export function Timeline({
   compareEnd?: number
   /** 參考為前輩平均（已在我的時間、Boss 列為我的；圖示透明度表示一致度） */
   averaged?: boolean
+  /** 我身上的團隊 Buff（我的時間）；有時在我的技能列下方多一列 */
+  raidBuffs?: RaidBuffWindow[]
 }) {
   const refLabel = useRefLabel()
   const [pxPerSec, setPxPerSec] = useState(20)
@@ -190,6 +205,7 @@ export function Timeline({
             '能力技列頂部的紅線：穿插過多，下一個 GCD 被延後（從前一個 GCD 到被延後的 GCD）。',
             dotMarks.length > 0 && `GCD 列頂部的金黃線：DoT 斷掉（Boss 可選中但 DoT 不在敵人身上，1 秒以上）；金黃短直線：DoT 提早續上（覆蓋掉 ${DOT_CLIP_MARK_MIN_MS / 1000} 秒以上）。`,
             'Boss 列較粗的深藍色標記：你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）。',
+            raidBuffs && '「團隊 Buff」列：你身上的團隊 Buff 與敵人身上的連環計、毒盛，顏色越深代表同時越多個；滑鼠停在上面可看是哪些。爆發技能應落在顏色最深的時段。',
             '金黃框：止損技（近戰與坦克離開 Boss 時用的遠程 GCD，例如投盾、飛刀）；用得多代表離 Boss 太遠或走位不順。開場起手（開打前與第一個 GCD）與有強化效果時（貫穿尖、勾刃、燕飛效果提高）不標。',
           ]
             .filter(Boolean)
@@ -207,6 +223,7 @@ export function Timeline({
               {lane.label}
             </div>
           ))}
+          {raidBuffs && <div className="lane-label mine raid-label">團隊 Buff</div>}
         </div>
 
         <div className="timeline-scroll" ref={scrollRef}>
@@ -238,6 +255,7 @@ export function Timeline({
               pxPerSec={pxPerSec}
               totalMs={totalMs}
               onSeek={onSeek}
+              raidBuffs={raidBuffs}
             />
           </div>
         </div>
@@ -263,6 +281,7 @@ function TimelineLanesImpl({
   pxPerSec,
   totalMs,
   onSeek,
+  raidBuffs,
 }: {
   mine: SideData
   reference: SideData
@@ -280,6 +299,7 @@ function TimelineLanesImpl({
   pxPerSec: number
   totalMs: number
   onSeek?: (t: number) => void
+  raidBuffs?: RaidBuffWindow[]
 }) {
   const x = (ms: number) => (ms / 1000) * pxPerSec
   const anchorRefTimes = new Set(alignment.anchors.map((a) => a.ref))
@@ -440,7 +460,36 @@ function TimelineLanesImpl({
               </div>
               )
             })}
+            {raidBuffs && <RaidBuffLane windows={raidBuffs} at={axis.mine} span={span} />}
     </>
+  )
+}
+
+/** 團隊 Buff 列：同時越多個顏色越深 */
+function RaidBuffLane({
+  windows,
+  at,
+  span,
+}: {
+  windows: RaidBuffWindow[]
+  at: (t: number) => number
+  span: (start: number, end: number) => { left: number; width: number }
+}) {
+  const segments = raidBuffSegments(windows)
+  const most = Math.max(1, ...segments.map((s) => s.names.length))
+  return (
+    <div className="lane mine raid-lane">
+      {segments.map((s) => (
+        <span
+          key={s.start}
+          className="raid-segment"
+          style={{ ...span(at(s.start), at(s.end)), opacity: 0.25 + (0.75 * s.names.length) / most }}
+          title={`團隊 Buff ${s.names.length} 個：${s.names.join('、')}（${formatFightTime(s.start)}～${formatFightTime(s.end)}）`}
+        >
+          {s.names.length > 1 ? s.names.length : ''}
+        </span>
+      ))}
+    </div>
   )
 }
 

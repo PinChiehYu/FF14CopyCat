@@ -3271,3 +3271,56 @@ h3 {
     flex: 1 1 100%;
   }
 }
+
+/* 團隊 Buff 列（時間軸）：較矮的一列，同時越多個顏色越深 */
+.lane.raid-lane,
+.lane-label.raid-label {
+  height: 20px;
+}
+
+.raid-segment {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 2px;
+  background: var(--warning);
+  color: var(--bg);
+  font-size: 0.7em;
+  line-height: 14px;
+  text-align: center;
+  overflow: hidden;
+}
+
+/* 爆發與團隊 Buff 表：團隊 Buff 數量以圓點表示（實心＝當時有、空心＝附近有但當時沒有） */
+.burst-table td {
+  vertical-align: middle;
+}
+
+.burst-abilities .usage-icon {
+  margin-right: 2px;
+  vertical-align: middle;
+}
+
+.raid-dots {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.raid-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--warning);
+  box-sizing: border-box;
+}
+
+.raid-dot.on {
+  background: var(--warning);
+}
+
+.burst-result {
+  white-space: nowrap;
+  color: var(--text-muted);
+}

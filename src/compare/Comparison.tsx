@@ -37,6 +37,8 @@ import {
 } from './load'
 import { flushSync } from 'react-dom'
 import { Tabs } from '../ui/Tabs'
+import { burstAlignment, burstPoints } from '../analysis/raidBuffs'
+import { RaidBuffAlignment } from './RaidBuffAlignment'
 import { AdviceList } from './AdviceList'
 import { HelpTip } from './HelpTip'
 import { Mechanics, MechanicsHeading } from './Mechanics'
@@ -650,6 +652,14 @@ function Loaded({
     },
     [abilities],
   )
+  // 爆發與團隊 Buff 的對齊（只看我的日誌）：爆發＝冷卻 60 秒以上的輸出冷卻技與強化藥；沒有團隊 Buff 資料（前輩平均等合成資料）時為 null
+  const bursts = useMemo(() => {
+    if (!mineInRange.raidBuffs) return null
+    const groups = (job ? (COOLDOWN_RULES[job.subType] ?? []) : []).filter((g) => g.cooldownMs >= 60_000 && !isNonOffensiveCooldown(g, job))
+    const ids = new Set(groups.flatMap((g) => g.ids))
+    const isBurst = (id: number) => ids.has(id) || (isItemId(id) && isPotionName(englishName(id)))
+    return burstAlignment(burstPoints(mineInRange.playerCasts, isBurst), mineInRange.raidBuffs)
+  }, [mineInRange, job, englishName])
   // 死亡回顧（死亡建議的說明）：死前幾擊與參考在同一時間吃同一招的情形
   const deathRecaps = useMemo(() => {
     const refHits = partial ? null : refInRange.damageTaken
@@ -675,6 +685,7 @@ function Loaded({
         subType: mine.selection.player.subType,
         fillerId,
         deathRecaps,
+        bursts: bursts ?? undefined,
     }
     if (solo) return generateSoloAdvice(soloInput)
     const compareInput: Parameters<typeof generateAdvice>[0] = {
@@ -703,10 +714,11 @@ function Loaded({
       subType: mine.selection.player.subType,
       fillerId,
       deathRecaps,
+      bursts: bursts ?? undefined,
       penalties: { mine: mergeOverlapping(mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')) },
     }
     return average ? generateAverageAdvice(soloInput, compareInput) : generateAdvice(compareInput)
-  }, [average, deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving])
+  }, [average, bursts, deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)
@@ -811,6 +823,9 @@ function Loaded({
             />
           </>
         )}
+        {bursts && bursts.length > 0 && (
+          <RaidBuffAlignment bursts={bursts} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
+        )}
         {dots.length > 0 && (
           <>
             <DotsHeading />
@@ -849,7 +864,7 @@ function Loaded({
         />
       </>
     ),
-    [solo, jumpTo, windows, dots, fillers, fillerId, weaving, abilities, abilityName, alignment, gcd, usage, job, category, lost, cooldowns],
+    [solo, jumpTo, windows, bursts, dots, fillers, fillerId, weaving, abilities, abilityName, alignment, gcd, usage, job, category, lost, cooldowns],
   )
   const mechanicsSection = useMemo(
     () =>
@@ -992,6 +1007,7 @@ function Loaded({
         onSeek={setCursor}
         compareEnd={solo ? undefined : compareEnd}
         averaged={!!average}
+        raidBuffs={mine.raidBuffs}
       />
       {/* 固定在畫面底部的播放列：捲到哪裡都能操作 */}
       <Playback

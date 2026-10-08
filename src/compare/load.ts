@@ -13,6 +13,7 @@ import {
   type HpSample,
 } from '../analysis/buffs'
 import type { PositionSample } from '../analysis/positions'
+import { enemyRaidDebuffs, raidBuffWindows, type RaidBuffWindow } from '../analysis/raidBuffs'
 import { toFightTime } from '../analysis/timeline'
 import { fetchFightEvents, fetchTargetability, type TargetabilityChange } from '../fflogs/client'
 import { abilityMap, isItemId, isUnnamedAbility } from '../fflogs/report'
@@ -58,6 +59,8 @@ export interface SideData {
   duration: number
   /** 只有治療、沒有造成傷害的技能（依這場的治療與傷害事件判斷，例如學者的生命回生法）：不影響輸出，建議不列為優先 */
   healOnly?: number[]
+  /** 我身上的團隊 Buff 與敵人身上的團隊 Debuff（見 raidBuffs.ts）；前輩平均等合成的資料沒有 */
+  raidBuffs?: RaidBuffWindow[]
 }
 
 export interface TimeSpan {
@@ -371,13 +374,16 @@ export function healOnlyAbilities(events: FFLogsEvent[], actorId: number, nameOf
 export async function loadSide(selection: Selection, signal?: AbortSignal): Promise<SideData> {
   const { report, fight, player } = selection
   // 玩家取全部事件（約每 0.4 秒一筆位置），施放與位置都從中取得；只取施放時位置取樣太稀疏
-  const [playerEvents, bossEvents, targetability] = await Promise.all([
+  const [playerEvents, bossEvents, targetability, enemyDebuffs] = await Promise.all([
     fetchFightEvents(report.code, fight, { sourceId: player.id, dataType: 'All' }, signal),
     fetchFightEvents(report.code, fight, { hostility: 'Enemies', dataType: 'Casts' }, signal),
     // 只用來標示，查詢失敗時不影響比較
     fetchTargetability(report.code, fight, signal).catch(() => []),
+    // 敵人身上的效果（找連環計、毒盛等團隊 Debuff；整場約數百筆），查詢失敗時只少算這兩個
+    fetchFightEvents(report.code, fight, { hostility: 'Enemies', dataType: 'Debuffs' }, signal).catch(() => []),
   ])
   const names = abilityMap(report)
+  const auras = playerAuras(playerEvents, fight, player.id)
   return {
     selection,
     playerCasts: playerCasts(playerEvents, fight, player.id),
@@ -392,7 +398,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     debuffApplications: enemyDebuffApplications(playerEvents, fight, player.id),
     bossDebuffs: debuffsOnPlayer(playerEvents, fight, player.id),
     prepull: prepullEffects(playerEvents, player.id),
-    auras: playerAuras(playerEvents, fight, player.id),
+    auras,
     hp: hpSamples(playerEvents, fight, player.id),
     castBars: castBars(playerEvents, fight, player.id),
     deaths: deaths(playerEvents, fight, player.id),
@@ -400,6 +406,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     untargetable: untargetableSpans(targetability, report.masterData.actors, fight),
     duration: fight.endTime - fight.startTime,
     healOnly: healOnlyAbilities(playerEvents, player.id, (id) => names.get(id)?.name),
+    raidBuffs: raidBuffWindows(auras, enemyRaidDebuffs(enemyDebuffs, fight), (id) => names.get(id)?.name),
   }
 }
 
@@ -427,6 +434,7 @@ export function clipSide(side: SideData, endMs: number): SideData {
     bossDebuffs: side.bossDebuffs
       .filter((b) => b.start <= endMs)
       .map((b) => (b.end > endMs ? { ...b, end: endMs, openEnded: true } : b)),
+    raidBuffs: side.raidBuffs?.filter((w) => w.start <= endMs).map((w) => ({ ...w, end: Math.min(w.end, endMs) })),
     duration: Math.min(side.duration, endMs),
   }
 }

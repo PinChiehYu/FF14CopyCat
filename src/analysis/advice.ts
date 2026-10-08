@@ -21,6 +21,7 @@ import { fflogsStatusId } from '../jobs/dotRules'
 import { compareFillers, isRangedFiller } from '../jobs/rangedFillers'
 import { weavingSeverity, type BadWeave } from './weaving'
 import type { DeathRecap } from './damageTaken'
+import { LOOKAROUND_MS, type BurstAlignment } from './raidBuffs'
 
 export type Severity = 'high' | 'medium' | 'low'
 
@@ -32,6 +33,7 @@ export type AdviceKind =
   | 'cooldown'
   | 'dot'
   | 'window'
+  | 'burst'
   | 'prepull'
   | 'usage'
   | 'potion'
@@ -72,7 +74,8 @@ export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[
   { key: 'gcd', label: '停手與 GCD', kinds: ['gcd'] },
   // 穿插過多會拖慢 GCD，緊接在停手之後、技能窗口與技能使用之前
   { key: 'weave', label: '穿插過多', kinds: ['weave'] },
-  { key: 'window', label: '技能窗口', kinds: ['window'] },
+  // 爆發沒對上團隊 Buff：與技能窗口同屬「爆發期打得好不好」
+  { key: 'window', label: '技能窗口與團隊 Buff', kinds: ['window', 'burst'] },
   // 止損技（威力低的遠程 GCD）直接少了輸出，與技能使用放在同一組
   { key: 'usage', label: '技能與強化藥', kinds: ['potion', 'cooldown', 'filler', 'usage'] },
   { key: 'dot', label: 'DoT', kinds: ['dot'] },
@@ -165,6 +168,8 @@ export interface AdviceInput {
   deathRecaps?: DeathRecap[]
   /** 我被施加的傷害降低（我的時間）；本來就不該被施加，不與參考比較 */
   penalties?: { mine: { start: number; end: number }[] }
+  /** 我的爆發與團隊 Buff 的對齊（只看我的日誌；我的時間） */
+  bursts?: BurstAlignment[]
 }
 
 /** 同一條 DoT 規則兩邊的結果；沒有參考時 ref 為 null */
@@ -809,6 +814,33 @@ export interface SoloAdviceInput {
   subType?: string
   /** 我每次死亡的死亡回顧 */
   deathRecaps?: DeathRecap[]
+  /** 我的爆發與團隊 Buff 的對齊（我的時間） */
+  bursts?: BurstAlignment[]
+}
+
+/**
+ * 爆發沒對上團隊 Buff：只看我的日誌（隊友實際給了哪些團隊 Buff），有參考時也一樣。
+ * 附近最多只有 1 個團隊 Buff 的不提（隊伍本身沒有對齊的團隊 Buff，不是我的問題）。
+ */
+function burstAdvice(bursts: BurstAlignment[] | undefined, abilityName: (id: number) => string, toRef: (t: number) => number): Advice[] {
+  const missed = (bursts ?? []).filter((b) => b.aligned === false && b.available >= 2)
+  if (missed.length === 0) return []
+  const seconds = (ms: number) => (Math.abs(ms) / 1000).toFixed(1)
+  const list = missed
+    .map((b) => {
+      const offset = b.offsetMs === null ? '' : `，${b.offsetMs > 0 ? '晚' : '早'} ${seconds(b.offsetMs)} 秒`
+      return `${formatFightTime(toRef(b.t))} ${b.abilityIds.map(abilityName).join('＋')}（當時 ${b.active} 個、前後 ${LOOKAROUND_MS / 1000} 秒最多 ${b.available} 個${offset}）`
+    })
+    .join('、')
+  return [
+    {
+      kind: 'burst',
+      severity: missed.length >= 2 ? 'high' : 'medium',
+      title: `${missed.length} 次爆發沒對上團隊 Buff`,
+      detail: `${list}。冷卻 60 秒以上的輸出技能與強化藥應在隊友的團隊 Buff（戰鬥連禱、占卜、連環計等）期間使用，同樣的技能傷害更高；對照時間軸的「團隊 Buff」列調整使用時機。`,
+      at: toRef(missed[0].t),
+    },
+  ]
 }
 
 /**
@@ -905,6 +937,8 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
     })
   }
 
+  items.push(...burstAdvice(input.bursts, abilityName, (t) => t))
+
   if (input.potionUses === 0) {
     items.push({
       kind: 'potion',
@@ -945,6 +979,7 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...tag('cooldown', cooldownAdvice(input)),
     ...tag('dot', dotAdvice(input)),
     ...tag('window', windowAdvice(input)),
+    ...tag('burst', burstAdvice(input.bursts, input.abilityName, input.mineToRef)),
     ...tag('prepull', prepullAdvice(input)),
     ...tag('usage', usageAdvice(input)),
     ...tag('penalty', penaltyAdvice(input)),

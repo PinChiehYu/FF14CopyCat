@@ -652,3 +652,41 @@ describe('generateAverageAdvice', () => {
     expect(advice.map((a) => a.title)).toEqual(['爆發藥少用 1 次（你 1 次、前輩平均 2 次）'])
   })
 })
+
+describe('burst advice', () => {
+  const burst = (t: number, active: number, available: number, offsetMs: number | null) => ({
+    t,
+    abilityIds: [1],
+    active,
+    activeNames: [],
+    available,
+    aligned: available === 0 ? null : active * 2 >= available,
+    offsetMs,
+  })
+  const solo: SoloAdviceInput = {
+    abilityName: (id) => names[id] ?? `#${id}`,
+    deaths: [],
+    durationMs: 600_000,
+    stops: [],
+    windows: [],
+    cooldowns: [],
+    penalties: [],
+    potionUses: 1,
+  }
+
+  it('lists bursts that missed the raid buffs, with or without a reference', () => {
+    const bursts = [burst(10_000, 4, 4, null), burst(250_000, 0, 4, 25_000), burst(370_000, 1, 4, -8000)]
+    const [advice] = generateSoloAdvice({ ...solo, bursts })
+    expect(advice).toMatchObject({ kind: 'burst', severity: 'high', title: '2 次爆發沒對上團隊 Buff', at: 250_000 })
+    expect(advice.detail).toContain('4:10.0 Ikishoten（當時 0 個、前後 20 秒最多 4 個，晚 25.0 秒）、6:10.0 Ikishoten（當時 1 個、前後 20 秒最多 4 個，早 8.0 秒）')
+    // 有參考時一樣只看自己；時間換成參考的時間軸
+    const compared = generateAdvice(input({ bursts, mineToRef: (t) => t + 1000 })).find((a) => a.kind === 'burst')
+    expect(compared).toMatchObject({ severity: 'high', at: 251_000 })
+  })
+
+  it('does not blame bursts when the party had at most one raid buff nearby', () => {
+    expect(generateSoloAdvice({ ...solo, bursts: [burst(10_000, 0, 1, 5000), burst(70_000, 0, 0, null)] })).toEqual([])
+    // 只錯開 1 次：建議
+    expect(generateSoloAdvice({ ...solo, bursts: [burst(10_000, 0, 3, 9000)] })[0].severity).toBe('medium')
+  })
+})
