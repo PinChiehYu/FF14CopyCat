@@ -659,8 +659,14 @@ function Loaded({
     if (!mineInRange.raidBuffs) return null
     const groups = (job ? (COOLDOWN_RULES[job.subType] ?? []) : []).filter((g) => g.cooldownMs >= 60_000 && !isNonOffensiveCooldown(g, job))
     const ids = new Set(groups.flatMap((g) => g.ids))
-    const isBurst = (id: number) => ids.has(id) || (isItemId(id) && isPotionName(englishName(id)))
-    return burstAlignment(burstPoints(mineInRange.playerCasts, isBurst), mineInRange.raidBuffs)
+    const isPotion = (id: number) => isItemId(id) && isPotionName(englishName(id))
+    const isBurst = (id: number) => ids.has(id) || isPotion(id)
+    // 附帶的自身效果：與技能同名（強化藥為「Medicated」）、使用後 1.5 秒內開始的效果時段（xivanalysis 的 BuffWindow）
+    const buffEnd = (id: number, t: number) => {
+      const name = isPotion(id) ? 'Medicated' : englishName(id)
+      return mineInRange.buffs.find((b) => b.start >= t - 500 && b.start <= t + 1500 && englishName(b.statusId) === name)?.end
+    }
+    return burstAlignment(burstPoints(mineInRange.playerCasts, isBurst, buffEnd), mineInRange.raidBuffs)
   }, [mineInRange, job, englishName])
   // 死亡回顧（死亡建議的說明）：死前幾擊與參考在同一時間吃同一招的情形
   const deathRecaps = useMemo(() => {

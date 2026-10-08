@@ -61,6 +61,24 @@ describe('burstPoints', () => {
   })
 })
 
+describe('burstPoints with buff windows', () => {
+  it('keeps bursts used while the own buff lasts in the same wave, like xivanalysis BuffWindow', () => {
+    // 100：戰逃反應（自身效果 20 秒）；101：絕對統治（沒有附帶效果）
+    const casts = [
+      { t: 634_000, abilityId: 100 },
+      { t: 637_000, abilityId: 101 }, // 戰逃反應期間：同一波
+      { t: 660_000, abilityId: 101 }, // 效果已結束：另一波
+    ]
+    const buffEnd = (id: number, t: number) => (id === 100 ? t + 20_000 : undefined)
+    expect(burstPoints(casts, () => true, buffEnd)).toEqual([
+      { t: 634_000, end: 637_000, abilityIds: [100, 101] },
+      { t: 660_000, end: 660_000, abilityIds: [101] },
+    ])
+    // 沒有附帶效果的：照舊只看一個 GCD 內
+    expect(burstPoints(casts, () => true)).toHaveLength(3)
+  })
+})
+
 describe('burstAlignment', () => {
   // 0:10 起 4 個團隊 Buff（各 20 秒）；2:10 起 4 個；4:10 只有 1 個
   const windows: RaidBuffWindow[] = [

@@ -170,7 +170,7 @@ export function burstAlignment(bursts: BurstPoint[], windows: RaidBuffWindow[]):
 
 /**
  * 爆發點：輸出類、冷卻 60 秒以上的冷卻技（見 cooldowns.ts 的 isNonOffensiveCooldown）每次使用，以及強化藥（爆發藥）。
- * 依時間排序；一個 GCD 內連續按下的多個算同一波爆發（時間取第一個）。
+ * 依時間排序；一個 GCD 內連續按下的、或在附帶效果持續期間內用的算同一波爆發（時間取第一個）。
  */
 export interface BurstPoint {
   t: number
@@ -179,16 +179,25 @@ export interface BurstPoint {
   abilityIds: number[]
 }
 
-export function burstPoints(casts: { t: number; abilityId: number }[], isBurst: (abilityId: number) => boolean): BurstPoint[] {
+/**
+ * @param buffEnd 爆發技能附帶的自身效果（例如戰逃反應、強化藥）的結束時間；沒有時 undefined。
+ *   與 xivanalysis 的 BuffWindow 相同：效果持續期間內用的爆發技能算同一波
+ */
+export function burstPoints(
+  casts: { t: number; abilityId: number }[],
+  isBurst: (abilityId: number) => boolean,
+  buffEnd: (abilityId: number, t: number) => number | undefined = () => undefined,
+): BurstPoint[] {
   const points: BurstPoint[] = []
-  let last = -Infinity
+  // 目前這一波可以接續到的時間：最後一個技能後一個 GCD，或附帶效果結束
+  let until = -Infinity
   for (const c of casts.filter((x) => isBurst(x.abilityId)).sort((a, b) => a.t - b.t)) {
     const current = points.at(-1)
-    if (current && c.t - last <= SAME_BURST_MS) {
+    if (current && c.t <= until) {
       if (!current.abilityIds.includes(c.abilityId)) current.abilityIds.push(c.abilityId)
       current.end = c.t
     } else points.push({ t: c.t, end: c.t, abilityIds: [c.abilityId] })
-    last = c.t
+    until = Math.max(until, c.t + SAME_BURST_MS, buffEnd(c.abilityId, c.t) ?? -Infinity)
   }
   return points
 }
