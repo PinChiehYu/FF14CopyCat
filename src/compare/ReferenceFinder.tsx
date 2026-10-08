@@ -95,7 +95,9 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
         minPr,
         maxPr,
       })
-      setResult({ status: 'ready', count, rows: rankings.slice(0, MAX_LISTED) })
+      // 不列自己（名字 @ 伺服器相同）的其他擊殺：要找的是前輩；比較自己的兩場可直接貼連結
+      const others = rankings.filter((r) => !(r.name === mine.player.name && r.server === mine.player.server))
+      setResult({ status: 'ready', count, rows: others.slice(0, MAX_LISTED) })
     } catch (err) {
       setResult({ status: 'error', message: err instanceof Error ? err.message : String(err) })
     } finally {
