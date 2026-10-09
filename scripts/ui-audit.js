@@ -1,6 +1,7 @@
 // 在瀏覽器中檢查比較結果頁的版面（以瀏覽器面板的 javascript_tool 或開發者工具執行整段，回傳 JSON）。
 // 桌面與手機（375 px）各跑一次，比較兩者的區塊是否一致。檢查項目：
 // - 頁面是否橫向捲動、元素是否超出畫面或被裁切（捲動區內的不算：時間軸、站位差異卡片列）
+// - 區塊內的橫向捲動（innerScroll）：時間軸與站位差異卡片列本來就會捲動，其他區塊（例如 .metrics 的保險捲動）出現捲動代表內容超出欄寬
 // - 短文字是否被拆成兩行（split）
 // - 「?」圖示大小是否一致、錯誤訊息、主要區塊是否都有顯示
 // 比較結果下半部的分頁（輸出循環／機制與站位／時間軸）逐一切換檢查，結束後切回原本的分頁（非同步：結果是 Promise）。
@@ -19,7 +20,10 @@
   const label = (el) => `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).join('.') : ''}「${(el.textContent || '').trim().slice(0, 24)}」`
   const visible = (el) => el.offsetParent !== null || getComputedStyle(el).position === 'fixed'
 
+  // 設計上就會橫向捲動的區域
+  const INTENDED_SCROLL = ['.timeline-scroll', '.divergence-cards']
   const offscreen = new Set()
+  const innerScroll = new Set()
   const clipped = new Set()
   const split = new Set()
   const tips = []
@@ -33,6 +37,9 @@
     if (r.right > vw + 1 && !scrollable(el)) offscreen.add(`${label(el)} 右緣 ${Math.round(r.right)} > ${vw}`)
     const cs = getComputedStyle(el)
     const overflowVisible = cs.overflowX === 'visible'
+    if ((cs.overflowX === 'auto' || cs.overflowX === 'scroll') && el.scrollWidth > el.clientWidth + 1 && !INTENDED_SCROLL.some((s) => el.matches(s))) {
+      innerScroll.add(`${label(el)} 內容 ${el.scrollWidth} > ${el.clientWidth}`)
+    }
     if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0 && overflowVisible && !scrollable(el) && el.children.length === 0) {
       clipped.add(`${label(el)} 內容 ${el.scrollWidth} > ${el.clientWidth}`)
     }
@@ -85,6 +92,7 @@
     horizontalScroll: document.documentElement.scrollWidth > vw + 1 ? document.documentElement.scrollWidth : false,
     offscreen: [...offscreen].slice(0, 15),
     clipped: [...clipped].slice(0, 15),
+    innerScroll: [...innerScroll].slice(0, 15),
     split: [...split].slice(0, 15),
     helpTipSizes: tipSizes,
     helpTips: tips.length,

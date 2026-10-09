@@ -40,7 +40,7 @@ npx wrangler deploy -c worker/wrangler.toml --dry-run --outdir <tmp>   # 不登�
 node scripts/smoke-test.mjs          # 對正式站與 Worker 做實際請求的冒煙測試（CI 部署後自動執行）
 node scripts/gen-job-data.mjs        # 從遊戲資料（官方 XIVAPI v2.xivapi.com）重新產生 src/jobs/generated.ts（GCD 集合、各職業技能分類；約 100 個請求）
 node scripts/random-logs.mjs         # 從繁中服排名隨機挑同 Boss、同職業的兩筆擊殺（參考的 rDPS 比我的高），印出比較與只有我的日誌的正式站網址（隨機測試用）
-# scripts/ui-audit.js：在瀏覽器面板以 javascript_tool 執行（非同步，逐一切換詳細區塊的分頁；本機可 await (0, eval)(await (await fetch('/@fs/<專案路徑>/scripts/ui-audit.js')).text())），回傳版面檢查 JSON（橫向捲動、超出畫面、裁切、「?」大小、區塊標題）；桌面與 375 px 各跑一次比對
+# scripts/ui-audit.js：在瀏覽器面板以 javascript_tool 執行（非同步，逐一切換詳細區塊的分頁；本機可 await (0, eval)(await (await fetch('/@fs/<專案路徑>/scripts/ui-audit.js')).text())），回傳版面檢查 JSON（橫向捲動、超出畫面、裁切、區塊內的橫向捲動 innerScroll〔時間軸與站位差異卡片列除外〕、「?」大小、區塊標題）；桌面與 375 px 各跑一次比對
 node scripts/gen-mechanics.mjs       # 從 cactbot 零式時間軸重新產生 src/analysis/mechanicData.generated.ts（各 Boss 的主要機制；換季時更新腳本的 ENCOUNTERS）
 ```
 

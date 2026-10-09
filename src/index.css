@@ -2892,12 +2892,12 @@ h3 {
     gap: 4px;
   }
 
-  /* 少打 GCD 的時段：縮小字級與欄寬，一列放得下 */
+  /* 少打 GCD 的時段：縮小字級與欄寬，一列放得下（含「控場」標籤時 375px 寬也不超出） */
   .lost-list li {
-    grid-template-columns: 8.6em 6em 1fr auto;
-    gap: 6px;
+    grid-template-columns: 8.6em 5.8em 1fr auto;
+    gap: 5px;
     padding: 3px 6px;
-    font-size: 0.85em;
+    font-size: 0.8em;
   }
 
   /* 比較結果摘要：標籤欄與內距縮小，留空間給兩欄資料 */
