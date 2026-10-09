@@ -38,7 +38,7 @@ export function RaidBuffAlignment({
           text={[
             '爆發：冷卻 60 秒以上的輸出技能與強化藥的每次使用（一個 GCD 內連續按下的算同一波）。',
             '團隊 Buff：隊友給的增傷（戰鬥連禱、占卜、技巧舞步結束、義結金蘭、灼熱之光、神秘環、鼓勵、光明神的最終樂章、戰鬥之聲、星空構想），以及施加在敵人身上的連環計、介毒之術。',
-            `團隊 Buff 欄為隊友施放的技能圖示（變淡＝附近有但當時沒有）與「當時／最多」。當時：使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內最多同時有幾個團隊 Buff；最多：前後 ${LOOKAROUND_MS / 1000} 秒內最多同時有幾個（這次本來可以對上的數量）。當時達到最多的一半、或團隊 Buff 在使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內開始（提早先開）就算對上；附近沒有團隊 Buff 的（例如 60 秒爆發的職業在團隊 Buff 120 秒一輪之間的那次）不評、不列出。`,
+            `團隊 Buff 欄為隊友施放的技能圖示：照常的是「當時」有的（使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內同時最多的那一刻），變淡的是前後 ${LOOKAROUND_MS / 1000} 秒內有、但當時沒有的（這次本來可以對上的）。當時有的達到全部圖示的一半、或團隊 Buff 在使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內開始（提早先開）就算對上；附近沒有團隊 Buff 的（例如 60 秒爆發的職業在團隊 Buff 120 秒一輪之間的那次）不評、不列出。`,
             '只看你自己的日誌：隊伍實際給了哪些團隊 Buff。時間為你的戰鬥時間，點擊跳到時間軸。',
           ].join('\n')}
         />
@@ -108,9 +108,6 @@ export function RaidBuffAlignment({
                             <span key={n} className={on ? 'raid-dot on' : 'raid-dot'} />
                           )
                         })}
-                    </span>
-                    <span className="raid-count">
-                      {b.active}／{b.available}
                     </span>
                   </td>
                   <td className="burst-result">

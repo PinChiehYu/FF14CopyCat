@@ -3340,7 +3340,6 @@ h3 {
 .raid-icons {
   display: inline-flex;
   gap: 2px;
-  margin-right: 6px;
   vertical-align: middle;
 }
 
@@ -3348,14 +3347,13 @@ h3 {
   margin-right: 0;
 }
 
-/* 爆發的技能圖示與「當時／最多」不拆行 */
-.burst-abilities,
-.raid-count {
+/* 爆發的技能圖示不拆行 */
+.burst-abilities {
   white-space: nowrap;
 }
 
 @media (max-width: 560px) {
-  /* 手機：團隊 Buff 圖示縮小，與數字放得進一行 */
+  /* 手機：團隊 Buff 圖示縮小，放得進一行 */
   .raid-icons .usage-icon {
     width: 16px;
     height: 16px;
@@ -3363,7 +3361,6 @@ h3 {
 
   .raid-icons {
     gap: 1px;
-    margin-right: 4px;
   }
 
   .burst-abilities .usage-icon {
@@ -3371,7 +3368,7 @@ h3 {
     height: 18px;
   }
 
-  /* 一波爆發的技能多（例如武僧 4 個）、團隊 Buff 多時，圖示與早晚可換行，表格不超出畫面；「當時／最多」仍不拆開 */
+  /* 一波爆發的技能多（例如武僧 4 個）、團隊 Buff 多時，圖示與早晚可換行，表格不超出畫面 */
   .burst-abilities,
   .burst-result {
     white-space: normal;
