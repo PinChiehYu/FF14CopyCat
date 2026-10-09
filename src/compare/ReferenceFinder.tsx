@@ -245,7 +245,7 @@ export function ReferenceFinder({ mine, onPick }: { mine: Selection | null; onPi
         .map((o, i) => ({
           ...o,
           // 同名合併後重新編號（第 N 次指這個名稱的第 N 次）
-          label: `${i + 1} · ${formatFightTime(o.t).replace(/\.\d$/, '')}`,
+          label: `${i + 1}・${formatFightTime(o.t).replace(/\.\d$/, '')}`,
           version: versionName(o.ids),
           records: [...differingByRow.values()].filter((ids) => ids.has(o.id)).length,
         })),

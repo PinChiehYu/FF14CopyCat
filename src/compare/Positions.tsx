@@ -672,7 +672,7 @@ export function Positions({
             '可能對稱：你的位置接近參考位置的對稱點，可能是攻略或分配不同。',
             `以 Boss 為基準：${BOSS_FRAME_TITLE}；距離圖底部的細條標示這些時段。`,
             `相對 Boss 相同：${SAME_TO_BOSS_TITLE}（卡片中灰色的機制）。`,
-            '卡片的機制：「我 時間 · 參考 時間」為兩邊各自結算的時間（各自的戰鬥時間，— 為那一邊這段沒有結算）；「相距 · 距王 我／參考」為結算當下兩人的距離與各自離自己 Boss 的距離（yalm，— 為沒有位置資料）。滑鼠停在「機制不同」上可看兩邊不同的機制。',
+            '卡片的機制：「我 時間・參考 時間」為兩邊各自結算的時間（各自的戰鬥時間，— 為那一邊這段沒有結算）；「相距・距王 我／參考」為結算當下兩人的距離與各自離自己 Boss 的距離（yalm，— 為沒有位置資料）。滑鼠停在「機制不同」上可看兩邊不同的機制。',
             '時間後的 ★、機制左側的主色條與「★ 關注」標籤：你在「搜尋前輩日誌」中關注的機制時間點（有取消勾選時才標）；整張卡片浮起加框則是時間軸游標所在的這段。',
           ].join('\n')}
         />
@@ -981,10 +981,10 @@ function DivergenceCards({
                           {focusedNames.has(m.name) && <span className="tag focus">★ 關注</span>}
                         </span>
                         <span className="card-sub">
-                          我 {m.mine !== undefined ? formatFightTime(m.mine) : '—'} · 參考 {m.ref !== undefined ? formatFightTime(m.ref) : '—'}
+                          我 {m.mine !== undefined ? formatFightTime(m.mine) : '—'}・參考 {m.ref !== undefined ? formatFightTime(m.ref) : '—'}
                         </span>
                         <span className="card-sub">
-                          {distance != null && `相距 ${distance.toFixed(1)} · `}距王 {yalm(m.mineToBoss)}／{yalm(m.refToBoss)}
+                          {distance != null && `相距 ${distance.toFixed(1)}・`}距王 {yalm(m.mineToBoss)}／{yalm(m.refToBoss)}
                         </span>
                       </span>
                     )
