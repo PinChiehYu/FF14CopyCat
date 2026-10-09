@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DB_UNAVAILABLE_MESSAGE, dbStatus, fetchReport, fetchTcRankings, fightNameParts, translateFightName } from './client'
+import { DB_UNAVAILABLE_MESSAGE, dbStatus, defaultAverageTier, fetchReport, fetchTcRankings, fightNameParts, translateFightName } from './client'
 
 describe('report errors', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -111,5 +111,11 @@ describe('ranking database status', () => {
     expect(dbStatus.available()).toBe(false)
     expect(listener).toHaveBeenCalledTimes(1)
     unsubscribe()
+  })
+})
+
+describe('defaultAverageTier', () => {
+  it('picks the tier one step above my PR', () => {
+    expect([null, 99, 75, 74, 50, 49, 10].map(defaultAverageTier)).toEqual(['top', 'top', 'top', 'upper', 'upper', 'mid', 'mid'])
   })
 })

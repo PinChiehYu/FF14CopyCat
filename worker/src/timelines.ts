@@ -568,6 +568,27 @@ export interface AverageSample {
  * 一個區間的前輩平均樣本（已預處理、沒有死亡、該場有 Boss 施放的），依 rDPS 由高到低；
  * count 為區間內的擊殺數，updatedAt 為最近一次選樣本的時間（還沒選過時為 null）。
  */
+/** 各 PR 區間可用的樣本數（與 averageSamples 相同的條件：已預處理、沒有死亡、有 Boss 施放）；前端在區間按鈕上顯示 */
+export async function averageTierCounts(
+  db: DbLike,
+  scope: { encounter: number; difficulty: number; job: string; slot: string },
+): Promise<Record<Tier, number>> {
+  const { results } = await db
+    .prepare(
+      `SELECT s.tier, COUNT(*) AS n
+       FROM average_samples s
+       JOIN sample_data d USING (report, fight, actor)
+       JOIN pull_timelines t ON t.report = s.report AND t.fight = s.fight
+       WHERE s.encounter = ? AND s.difficulty = ? AND s.job = ? AND s.slot = ? AND d.deaths = 0 AND t.boss != ''
+       GROUP BY s.tier`,
+    )
+    .bind(scope.encounter, scope.difficulty, scope.job, scope.slot)
+    .all<{ tier: Tier; n: number }>()
+  const counts: Record<Tier, number> = { top: 0, upper: 0, mid: 0 }
+  for (const r of results) if (r.tier in counts) counts[r.tier] = r.n
+  return counts
+}
+
 export async function averageSamples(
   db: DbLike,
   scope: { encounter: number; difficulty: number; job: string; slot: string; tier: Tier },

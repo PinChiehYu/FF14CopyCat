@@ -27,10 +27,10 @@ export function writeLogParam(key: LogKey, value: string): void {
  * 開啟後直接還原兩邊的戰鬥與角色。
  * @param base 本頁網址（origin＋pathname）
  */
-export function shareUrl(mine: Selection, reference: Selection, base: string): string {
-  const params = new URLSearchParams({
-    mine: reportUrl(mine.report.code, mine.fight.id, mine.player.id),
-    ref: reportUrl(reference.report.code, reference.fight.id, reference.player.id),
-  })
+export function shareUrl(mine: Selection, reference: Selection | { average: string }, base: string): string {
+  const params = new URLSearchParams({ mine: reportUrl(mine.report.code, mine.fight.id, mine.player.id) })
+  // 前輩平均：只帶區間（連結不固定樣本，每次開啟用最新的樣本）
+  if ('average' in reference) params.set('avg', reference.average)
+  else params.set('ref', reportUrl(reference.report.code, reference.fight.id, reference.player.id))
   return `${base}?${params}`
 }

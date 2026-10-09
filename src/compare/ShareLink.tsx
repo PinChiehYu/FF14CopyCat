@@ -24,7 +24,7 @@ async function copyText(text: string): Promise<void> {
 }
 
 /** 複製分享連結的按鈕：按下後短暫顯示「已複製」；失敗時以對話框（與滑鼠提示）顯示連結讓使用者自行複製。 */
-export function ShareLink({ mine, reference }: { mine: Selection; reference: Selection }) {
+export function ShareLink({ mine, reference }: { mine: Selection; reference: Selection | { average: string } }) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const url = shareUrl(mine, reference, `${window.location.origin}${window.location.pathname}`)
   useEffect(() => {

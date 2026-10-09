@@ -1,7 +1,7 @@
 import { abilityNames, gameRow } from './abilityNames'
 import { tcRankings, type DbLike, type Graphql } from './crawler'
 import { npcNames } from './npcNames'
-import { averageSamples, storedTimelines, TIERS, type Tier } from './timelines'
+import { averageSamples, averageTierCounts, storedTimelines, TIERS, type Tier } from './timelines'
 import { AUTO_ATTACKS_TAKEN_QUERY, DAMAGE_DONE_QUERY, EVENTS_QUERY, REPORT_QUERY, TARGETABILITY_QUERY } from './queries'
 
 export interface Env {
@@ -282,6 +282,16 @@ async function averageSamplesRoute(params: URLSearchParams, env: Env): Promise<u
   })
 }
 
+/** `GET /average-tiers?encounter&difficulty&job[&slot=MT|ST]`：各 PR 區間可用的樣本數 { top, upper, mid }（timelines.ts 的 averageTierCounts()）。 */
+async function averageTiersRoute(params: URLSearchParams, env: Env): Promise<unknown> {
+  if (!env.DB) throw new HttpError(503, 'Rankings database unavailable')
+  const job = params.get('job') ?? ''
+  if (!JOB_NAME.test(job)) throw new HttpError(400, 'Invalid job')
+  const slot = params.get('slot') ?? ''
+  if (slot !== '' && slot !== 'MT' && slot !== 'ST') throw new HttpError(400, 'Invalid slot')
+  return averageTierCounts(env.DB, { encounter: requiredInt(params, 'encounter'), difficulty: requiredInt(params, 'difficulty'), job, slot })
+}
+
 /** D1 無法使用（例如免費方案的每日讀取額度用完）時的錯誤訊息；前端依此停用搜尋前輩日誌 */
 export const DB_UNAVAILABLE = 'Database unavailable'
 
@@ -299,6 +309,9 @@ async function fromDb<T>(load: () => Promise<T>): Promise<T> {
 async function route(url: URL, env: Env): Promise<{ data: unknown; cacheSeconds: number }> {
   if (url.pathname.replace(/\/$/, '') === '/average-samples') {
     return { data: await fromDb(() => averageSamplesRoute(url.searchParams, env)), cacheSeconds: CACHE_SECONDS }
+  }
+  if (url.pathname.replace(/\/$/, '') === '/average-tiers') {
+    return { data: await fromDb(() => averageTiersRoute(url.searchParams, env)), cacheSeconds: CACHE_SECONDS }
   }
   if (url.pathname.replace(/\/$/, '') === '/tc-rankings') {
     return { data: await fromDb(() => tcRankingsRoute(url.searchParams, env)), cacheSeconds: TC_RANKINGS_CACHE_SECONDS }

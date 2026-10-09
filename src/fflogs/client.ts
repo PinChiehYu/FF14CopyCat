@@ -155,6 +155,22 @@ export const AVERAGE_TIERS: { tier: AverageTier; label: string; range: [number, 
   { tier: 'mid', label: '50–74', range: [50, 74] },
 ]
 
+/** 前輩平均預設的區間：比我的 PR 高一段（我 ≥ 75 用 95+；查不到 PR 時用 95+） */
+export function defaultAverageTier(pr: number | null): AverageTier {
+  if (pr === null || pr >= 75) return 'top'
+  return pr >= 50 ? 'upper' : 'mid'
+}
+
+/** 各 PR 區間可用的樣本數（區間按鈕上顯示） */
+export function fetchAverageTierCounts(
+  query: { encounter: number; difficulty: number; job: string; slot?: 'MT' | 'ST' },
+  signal?: AbortSignal,
+): Promise<Record<AverageTier, number>> {
+  const params = new URLSearchParams({ encounter: String(query.encounter), difficulty: String(query.difficulty), job: query.job })
+  if (query.slot) params.set('slot', query.slot)
+  return get(`/average-tiers?${params}`, signal)
+}
+
 /** 前輩平均的一筆樣本（castCodec.ts 的編碼） */
 export interface AverageSampleData {
   name: string

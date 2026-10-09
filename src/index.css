@@ -67,6 +67,7 @@ h1 {
 }
 
 .logs {
+  container: logs / inline-size;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
@@ -985,12 +986,15 @@ button:disabled {
   cursor: default;
 }
 
-.average-tiers {
+/* 比一般分頁列（.tab-list 下邊距 12px）緊湊，兩欄並排時樣本清單放得下四列 */
+.tab-list.average-tiers {
   align-items: center;
   margin: 4px 0 8px;
 }
 
+/* 緊接在區間按鈕下方（間距只用按鈕列的下邊距） */
 .average-summary .hint {
+  margin: 1px 0 6px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1001,14 +1005,41 @@ button:disabled {
   white-space: nowrap;
 }
 
+.average-summary .hint > .average-switch {
+  margin-left: auto;
+}
+
 .average-samples {
   list-style: none;
-  margin: 0 0 12px;
+  margin: 0;
   padding: 0;
   max-height: 16em;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+/* 兩欄並排時（.logs 寬度 ≥ 2×280＋16），樣本清單只用左側日誌欄位的高度，不把兩欄一起拉長：
+   清單不計入內容高度（contain: size），以 flex 填滿剩下的空間、在裡面捲動 */
+@container logs (min-width: 576px) {
+  .average-picker,
+  .average-summary {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .average-summary {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .average-samples {
+    flex: 1 1 0;
+    contain: size;
+    min-height: 6em;
+    max-height: none;
+    margin-bottom: 0;
+  }
 }
 
 .average-samples button {
@@ -3323,4 +3354,18 @@ h3 {
 .burst-result {
   white-space: nowrap;
   color: var(--text-muted);
+}
+
+/* 手機：樣本清單的名字欄讓出空間（伺服器移到滑鼠提示、數字欄縮窄） */
+@media (max-width: 560px) {
+  .average-samples button {
+    grid-template-columns: minmax(0, 1fr) 3.8em 4.4em 3.2em;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 0.9em;
+  }
+
+  .average-samples .option-server {
+    display: none;
+  }
 }

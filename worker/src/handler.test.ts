@@ -453,6 +453,26 @@ describe('handleRequest', () => {
     }
   })
 
+  it('serves the usable sample counts of each PR tier', async () => {
+    const bound: unknown[][] = []
+    const statement: StatementLike = {
+      bind: (...args: unknown[]) => {
+        bound.push(args)
+        return statement
+      },
+      all: async <T,>() => ({ results: [{ tier: 'top', n: 30 } as T, { tier: 'mid', n: 4 } as T] }),
+      first: async () => null,
+      run: async () => ({}),
+    }
+    const withDb: Env = { ...env, DB: { prepare: () => statement, batch: async () => [] } }
+    const res = await handleRequest(get('/average-tiers?encounter=100&difficulty=101&job=Paladin&slot=ST'), withDb, ctx, null)
+    expect(await res.json()).toEqual({ top: 30, upper: 0, mid: 4 })
+    expect(bound[0]).toEqual([100, 101, 'Paladin', 'ST'])
+    for (const path of ['/average-tiers?encounter=100&difficulty=101', '/average-tiers?encounter=100&difficulty=101&job=Paladin&slot=OT']) {
+      expect((await handleRequest(get(path), withDb, ctx, null)).status, path).toBe(400)
+    }
+  })
+
   it('serves the average samples of a PR tier and validates the parameters', async () => {
     const bound: unknown[][] = []
     const statement: StatementLike = {

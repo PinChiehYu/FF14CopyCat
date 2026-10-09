@@ -8,8 +8,9 @@ import { JobBadge } from './ui/JobBadge'
 import { Comparison } from './compare/Comparison'
 import { ReferenceFinder } from './compare/ReferenceFinder'
 import { AveragePicker } from './compare/AveragePicker'
-import { AVERAGE_ENABLED } from './compare/averageSide'
-import { AVERAGE_TIERS, type AverageTier } from './fflogs/client'
+import { AVERAGE_ENABLED, useAverageTierCounts, type AverageInfo } from './compare/averageSide'
+import { AVERAGE_TIERS, defaultAverageTier, type AverageTier } from './fflogs/client'
+import { useSideDamage } from './compare/sideDamage'
 import { ShareLink } from './compare/ShareLink'
 import type { Selection } from './compare/load'
 import type { Actor, Fight, Report } from './fflogs/types'
@@ -295,11 +296,14 @@ function PickedLogs({
   mine,
   reference,
   average,
+  averageUsed,
   onExpand,
 }: {
   mine: Selection
   reference: Selection | null
   average: AverageTier | null
+  /** 前輩平均用了幾筆樣本（載入後才有） */
+  averageUsed: number | null
   onExpand: () => void
 }) {
   // 參考日誌只能選同一個 Boss 的戰鬥（autoSelect.ts），Boss 名稱列一次
@@ -312,7 +316,10 @@ function PickedLogs({
       {average ? (
         <span className="picked-log">
           <span className="picked-label">參考</span>
-          <span className="picked-name">前輩平均 {AVERAGE_TIERS.find((t) => t.tier === average)?.label}</span>
+          <span className="picked-name">
+            前輩平均 {AVERAGE_TIERS.find((t) => t.tier === average)?.label}
+            {averageUsed !== null && <span className="option-server">（{averageUsed} 筆樣本）</span>}
+          </span>
         </span>
       ) : (
         reference && <PickedLog label="參考" selection={reference} />
@@ -336,6 +343,11 @@ export default function App() {
     setAverageState(tier)
     writeLogParam('avg', tier ?? '')
   }
+  // 前輩平均：預設比我的 PR 高一段的區間；區間按鈕上的樣本數
+  const myPr = useSideDamage(AVERAGE_ENABLED ? mine : null)?.pr?.pr ?? null
+  const tierCounts = useAverageTierCounts(average ? mine : null)
+  // 目前區間的樣本資訊（比較結果載入後回傳），顯示在 PR 區間下方
+  const [averageInfo, setAverageInfo] = useState<AverageInfo | null>(null)
   // 從繁中服排名選的參考日誌連結
   const [picked, setPicked] = useState<{ url: string } | null>(null)
   // 兩邊都選好後可收合輸入區，比較結果往上移（手機上輸入區佔約一個半畫面）。
@@ -358,13 +370,27 @@ export default function App() {
       <p className="subtitle">比較你與前輩的 FFLogs 日誌，找出技能循環與站位的差異。</p>
 
       {collapsed && mine && bothPicked && (
-        <PickedLogs mine={mine} reference={reference} average={average} onExpand={() => setCollapsed(false)} />
+        <PickedLogs mine={mine} reference={reference} average={average} averageUsed={averageInfo?.used ?? null} onExpand={() => setCollapsed(false)} />
       )}
       {/* 收合時只隱藏、不卸載：連結、戰鬥與角色的選擇都保留，展開即可更換 */}
       <div className="logs" hidden={collapsed && bothPicked}>
         <LogPicker label="我的日誌" storageKey="mine" onChange={setMine} />
         {average ? (
-          <AveragePicker tier={average} onChange={setAverage} onSingle={() => setAverage(null)} />
+          <AveragePicker
+            tier={average}
+            counts={tierCounts}
+            info={averageInfo}
+            job={mine?.player.subType ?? null}
+            onChange={setAverage}
+            onSingle={() => setAverage(null)}
+            onPickSample={(s) => {
+              // 改以這一場為參考（單一日誌）
+              const url = reportUrl(s.report, s.fight, s.actor)
+              writeLogParam('ref', url)
+              setAverage(null)
+              setPicked({ url })
+            }}
+          />
         ) : (
           <LogPicker
             // 前輩平均開放時標題列多一個按鈕：手機上標題縮成「參考日誌」
@@ -376,7 +402,7 @@ export default function App() {
             action={
               <span className="log-actions">
                 {AVERAGE_ENABLED && (
-                  <button type="button" className="average-switch" onClick={() => setAverage('top')} disabled={!mine} title="參考改用前輩平均">
+                  <button type="button" className="average-switch" onClick={() => setAverage(defaultAverageTier(myPr))} disabled={!mine} title="參考改用前輩平均">
                     <span className="wide-only">前輩</span>平均
                   </button>
                 )}
@@ -405,20 +431,14 @@ export default function App() {
         <section className="comparison">
           <div className="comparison-head">
             <h2>{reference || average ? '比較結果' : '我的分析'}</h2>
-            {reference && !average && <ShareLink mine={mine} reference={reference} />}
+            {(average || reference) && <ShareLink mine={mine} reference={average ? { average } : reference!} />}
           </div>
           <Comparison
             mine={mine}
             reference={average ? null : reference}
             sameAsMine={sameAsMine && !average}
             average={average}
-            onPickSample={(s) => {
-              // 改以這一場為參考（單一日誌）
-              const url = reportUrl(s.report, s.fight, s.actor)
-              writeLogParam('ref', url)
-              setAverage(null)
-              setPicked({ url })
-            }}
+            onAverageInfo={setAverageInfo}
           />
         </section>
       )}

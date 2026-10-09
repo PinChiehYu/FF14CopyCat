@@ -15,4 +15,10 @@ describe('shareUrl', () => {
     expect(parseReportUrl(url.searchParams.get('mine')!)).toMatchObject({ reportCode: 'AAA', fight: 3, sourceId: 16 })
     expect(parseReportUrl(url.searchParams.get('ref')!)).toMatchObject({ reportCode: 'BBB', fight: 11, sourceId: 6 })
   })
+
+  it('shares a peer average reference by its PR tier only', () => {
+    const url = new URL(shareUrl(selection('AAA', 3, 16), { average: 'upper' }, 'https://pinchiehyu.github.io/FF14CopyCat/'))
+    expect([...url.searchParams.keys()]).toEqual(['mine', 'avg'])
+    expect(url.searchParams.get('avg')).toBe('upper')
+  })
 })

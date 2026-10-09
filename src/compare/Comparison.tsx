@@ -54,8 +54,7 @@ import { Positions } from './Positions'
 import { DOT_CLIP_MARK_MIN_MS, Timeline, type DotMark } from './Timeline'
 import { FEW_SAMPLES, tierLabel, useAverageReference, type AverageInfo } from './averageSide'
 import { RefLabelContext } from './refLabel'
-import type { AverageSampleData, AverageTier } from '../fflogs/client'
-import { AverageSummary } from './AveragePicker'
+import type { AverageTier } from '../fflogs/client'
 
 // 錨點太少時對齊結果不可靠
 const MIN_ANCHORS = 5
@@ -1046,7 +1045,7 @@ export function Comparison({
   mine,
   reference,
   average = null,
-  onPickSample,
+  onAverageInfo,
   sameAsMine = false,
 }: {
   mine: Selection
@@ -1055,8 +1054,8 @@ export function Comparison({
   sameAsMine?: boolean
   /** 參考改用前輩平均（PR 區間）；此時 reference 不用 */
   average?: AverageTier | null
-  /** 在前輩平均的樣本清單中選了一場：改以那一場為參考 */
-  onPickSample?: (sample: AverageSampleData) => void
+  /** 前輩平均的樣本資訊（樣本清單等，顯示在參考欄位的 PR 區間下方）；還沒有時為 null */
+  onAverageInfo?: (info: AverageInfo | null) => void
 }) {
   const problem = reference && !average ? incompatibility(mine, reference) : null
   const mineResult = useSide(mine)
@@ -1068,6 +1067,10 @@ export function Comparison({
     [refResult, reference],
   )
   const averageState = useAverageReference(mineSide ?? undefined, average)
+  const averageInfo = average && averageState?.status === 'ready' && averageState.side ? averageState.info : null
+  useEffect(() => {
+    onAverageInfo?.(averageInfo)
+  }, [averageInfo, onAverageInfo])
   if (!mineResult) return <p>載入戰鬥事件中…</p>
   if (mineResult.error || !mineSide) return <p className="error">{mineResult.error}</p>
   if (average) {
@@ -1088,12 +1091,7 @@ export function Comparison({
         mine={mineSide}
         reference={ready?.side ?? null}
         average={ready?.side ? ready.info : undefined}
-        notice={
-          <>
-            {ready?.side && <AverageSummary info={ready.info} job={mine.player.subType} onPick={(s) => onPickSample?.(s)} />}
-            {averageNotice}
-          </>
-        }
+        notice={averageNotice}
       />
     )
   }

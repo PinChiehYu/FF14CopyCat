@@ -6,6 +6,7 @@ import type { DbLike, Graphql } from './crawler.ts'
 import { AUTO_ATTACKS_TAKEN_QUERY, CRON_EVENTS_QUERY } from './queries.ts'
 import {
   averageSamples,
+  averageTierCounts,
   bossTimeline,
   playerCasts,
   processTimelines,
@@ -260,6 +261,8 @@ describe('processTimelines', () => {
     expect(read.count).toBe(1)
     expect(read.updatedAt).toBe(NOW)
     expect(read.samples.map((s) => [s.name, s.pr, s.duration, decodeCasts(s.boss)])).toEqual([['p2', 100, 60_000, [{ t: 10_000, abilityId: 500 }]]])
+    // 各區間可用的樣本數（區間按鈕顯示）
+    expect(await averageTierCounts(db, { encounter: 100, difficulty: 101, job: 'Samurai', slot: '' })).toEqual({ top: 1, upper: 0, mid: 0 })
   })
 
   it('marks samples with deaths as excluded and keeps nothing else for them', async () => {
