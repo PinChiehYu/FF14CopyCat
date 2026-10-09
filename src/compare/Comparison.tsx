@@ -861,17 +861,21 @@ function Loaded({
           afterGcd={
             <>
               {weaving && weaving.mine.length > 0 && (
-                <Weaving weaving={weaving} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
+                <div className="metric-block">
+                  <Weaving weaving={weaving} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
+                </div>
               )}
               {fillers && fillerId !== undefined && (
-                <Fillers
-                  fillerId={fillerId}
-                  fillers={fillers}
-                  abilities={abilities}
-                  abilityName={abilityName}
-                  mineToRef={alignment.mineToRef}
-                  onJump={jumpTo}
-                />
+                <div className="metric-block">
+                  <Fillers
+                    fillerId={fillerId}
+                    fillers={fillers}
+                    abilities={abilities}
+                    abilityName={abilityName}
+                    mineToRef={alignment.mineToRef}
+                    onJump={jumpTo}
+                  />
+                </div>
               )}
             </>
           }

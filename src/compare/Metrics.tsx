@@ -42,96 +42,100 @@ function GcdSection({
 
   return (
     <>
-      <h3>
-        GCD
-        <HelpTip
-          text={`GCD 間隔取開始施放時間的中位數；空檔含 Boss 無法攻擊的時間${reference ? `，與${refLabel}的差距才有意義` : ''}。`}
-        />
-      </h3>
-      <table className="metrics-table">
-        <thead>
-          <tr>
-            <th />
-            <th className="mine">我</th>
-            {reference && <th className="ref">{refLabel}</th>}
-            {reference && <th>差距</th>}
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th>GCD 數</th>
-            <td>{mine.count}</td>
-            {reference && <td>{reference.count}</td>}
-            {reference && <td>{signed(mine.count - reference.count, 0)}</td>}
-          </tr>
-          <tr>
-            <th>GCD 間隔</th>
-            <td>{mine.gcdMs !== null ? `${seconds(mine.gcdMs, 3)} 秒` : '—'}</td>
-            {reference && <td>{reference.gcdMs !== null ? `${seconds(reference.gcdMs, 3)} 秒` : '—'}</td>}
-            {reference && <td>{slower ? `${signed(slower, 0)} 毫秒` : '—'}</td>}
-          </tr>
-          <tr>
-            <th>空檔總計</th>
-            <td>{seconds(mine.idleMs)} 秒</td>
-            {reference && <td>{seconds(reference.idleMs)} 秒</td>}
-            {reference && <td>{signed((mine.idleMs - reference.idleMs) / 1000)} 秒</td>}
-          </tr>
-        </tbody>
-      </table>
-      {slower > 10 && <p className="hint">你的 GCD 比{refLabel}慢 {slower.toFixed(0)} 毫秒，可能是技能速度或加速效果的差異。</p>}
+      <div className="metric-block">
+        <h3>
+          GCD
+          <HelpTip
+            text={`GCD 間隔取開始施放時間的中位數；空檔含 Boss 無法攻擊的時間${reference ? `，與${refLabel}的差距才有意義` : ''}。`}
+          />
+        </h3>
+        <table className="metrics-table">
+          <thead>
+            <tr>
+              <th />
+              <th className="mine">我</th>
+              {reference && <th className="ref">{refLabel}</th>}
+              {reference && <th>差距</th>}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>GCD 數</th>
+              <td>{mine.count}</td>
+              {reference && <td>{reference.count}</td>}
+              {reference && <td>{signed(mine.count - reference.count, 0)}</td>}
+            </tr>
+            <tr>
+              <th>GCD 間隔</th>
+              <td>{mine.gcdMs !== null ? `${seconds(mine.gcdMs, 3)} 秒` : '—'}</td>
+              {reference && <td>{reference.gcdMs !== null ? `${seconds(reference.gcdMs, 3)} 秒` : '—'}</td>}
+              {reference && <td>{slower ? `${signed(slower, 0)} 毫秒` : '—'}</td>}
+            </tr>
+            <tr>
+              <th>空檔總計</th>
+              <td>{seconds(mine.idleMs)} 秒</td>
+              {reference && <td>{seconds(reference.idleMs)} 秒</td>}
+              {reference && <td>{signed((mine.idleMs - reference.idleMs) / 1000)} 秒</td>}
+            </tr>
+          </tbody>
+        </table>
+        {slower > 10 && <p className="hint">你的 GCD 比{refLabel}慢 {slower.toFixed(0)} 毫秒，可能是技能速度或加速效果的差異。</p>}
+      </div>
 
-      {/* 停手建議的「查看」捲到這裡（LOST_GCD_SECTION） */}
-      <h3 id={LOST_GCD_SECTION}>
-        {reference ? '少打 GCD 的時段' : '停手時段'}
-        <HelpTip
-          text={[
-            reference
-              ? `你的 GCD 間隔超過 1.5 個 GCD（且至少多 1 秒）、${refLabel}在同一段（依 Boss 機制對齊）仍施放 GCD 的時段；「${refLabel}打 N 個 GCD」即你少打的數量。雙方都停手的時段（Boss 無法攻擊等）不列入。`
-              : 'GCD 間隔超過 1.5 個 GCD（且至少多 1 秒）的時段；「約少 N 個 GCD」依你的 GCD 間隔估計，Boss 無法選中與死亡的時間已扣除。',
-            '控場：你身上有 Boss 施加、期間無法施放的效果，停手是機制造成（滑鼠停在標籤上可看效果名稱）。',
-          ].join('\n')}
-        />
-      </h3>
-      {lost.length === 0 ? (
-        <p className="hint">{reference ? `沒有「你停手但${refLabel}仍在施放」的時段。` : '沒有停手的時段。'}</p>
-      ) : (
-        <>
-          <p>
-            {reference
-              ? `共 ${lost.length} 段，${refLabel}在這些時段多打了 ${lostTotal} 個 GCD。`
-              : `共 ${lost.length} 段，約少打 ${lostTotal} 個 GCD。`}
-            {controlled.length > 0 && `其中 ${controlled.length} 段你被 Boss 控場，停手是機制造成。`}
-          </p>
-          {/* 每段一列、欄位對齊（時間｜停手秒數｜參考同段的 GCD 數或估計少打的 GCD 數），手機上也不換行 */}
-          <ul className="lost-list">
-            {lost.map((w) => (
-              <li key={w.mineStart} className={w.control ? 'controlled' : w.refGcds >= 3 ? 'many' : undefined}>
-                <button type="button" onClick={() => onFocus(w.refStart)} title="跳到這段">
-                  {formatFightTime(w.mineStart)}
-                  <span className="range-sep">–</span>
-                  {formatFightTime(w.mineEnd)}
-                </button>
-                <span>停手 {seconds(w.mineEnd - w.mineStart)} 秒</span>
-                {reference ? (
-                  <span>
-                    {refLabel}打 <strong>{w.refGcds}</strong> 個 GCD
-                  </span>
-                ) : (
-                  <span>
-                    約少 <strong>{w.refGcds}</strong> 個 GCD
-                  </span>
-                )}
-                {/* 滑鼠提示只放控場效果的名稱；「控場」的意義在標題的「?」 */}
-                {w.control && (
-                  <span className="tag control" title={controlNames(w.control, abilityName ?? ((id) => `#${id}`))}>
-                    控場
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      <div className="metric-block">
+        {/* 停手建議的「查看」捲到這裡（LOST_GCD_SECTION） */}
+        <h3 id={LOST_GCD_SECTION}>
+          {reference ? '少打 GCD 的時段' : '停手時段'}
+          <HelpTip
+            text={[
+              reference
+                ? `你的 GCD 間隔超過 1.5 個 GCD（且至少多 1 秒）、${refLabel}在同一段（依 Boss 機制對齊）仍施放 GCD 的時段；「${refLabel}打 N 個 GCD」即你少打的數量。雙方都停手的時段（Boss 無法攻擊等）不列入。`
+                : 'GCD 間隔超過 1.5 個 GCD（且至少多 1 秒）的時段；「約少 N 個 GCD」依你的 GCD 間隔估計，Boss 無法選中與死亡的時間已扣除。',
+              '控場：你身上有 Boss 施加、期間無法施放的效果，停手是機制造成（滑鼠停在標籤上可看效果名稱）。',
+            ].join('\n')}
+          />
+        </h3>
+        {lost.length === 0 ? (
+          <p className="hint">{reference ? `沒有「你停手但${refLabel}仍在施放」的時段。` : '沒有停手的時段。'}</p>
+        ) : (
+          <>
+            <p>
+              {reference
+                ? `共 ${lost.length} 段，${refLabel}在這些時段多打了 ${lostTotal} 個 GCD。`
+                : `共 ${lost.length} 段，約少打 ${lostTotal} 個 GCD。`}
+              {controlled.length > 0 && `其中 ${controlled.length} 段你被 Boss 控場，停手是機制造成。`}
+            </p>
+            {/* 每段一列、欄位對齊（時間｜停手秒數｜參考同段的 GCD 數或估計少打的 GCD 數），手機上也不換行 */}
+            <ul className="lost-list">
+              {lost.map((w) => (
+                <li key={w.mineStart} className={w.control ? 'controlled' : w.refGcds >= 3 ? 'many' : undefined}>
+                  <button type="button" onClick={() => onFocus(w.refStart)} title="跳到這段">
+                    {formatFightTime(w.mineStart)}
+                    <span className="range-sep">–</span>
+                    {formatFightTime(w.mineEnd)}
+                  </button>
+                  <span>停手 {seconds(w.mineEnd - w.mineStart)} 秒</span>
+                  {reference ? (
+                    <span>
+                      {refLabel}打 <strong>{w.refGcds}</strong> 個 GCD
+                    </span>
+                  ) : (
+                    <span>
+                      約少 <strong>{w.refGcds}</strong> 個 GCD
+                    </span>
+                  )}
+                  {/* 滑鼠提示只放控場效果的名稱；「控場」的意義在標題的「?」 */}
+                  {w.control && (
+                    <span className="tag control" title={controlNames(w.control, abilityName ?? ((id) => `#${id}`))}>
+                      控場
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
     </>
   )
 }
@@ -280,12 +284,15 @@ export function Metrics({
   ]
   return (
     <section className="metrics">
-      {gcd ? (
-        <GcdSection mine={gcd.mine} reference={gcd.ref} lost={lost} onFocus={onFocus} abilityName={abilityName} />
-      ) : (
-        <p className="hint">此職業尚未有專屬規則，無法計算 GCD 指標。</p>
-      )}
-      {afterGcd}
+      {/* 較窄的區塊（GCD、停手時段、穿插過多、止損技）在寬螢幕上並排，手機上照常一欄 */}
+      <div className="metric-row">
+        {gcd ? (
+          <GcdSection mine={gcd.mine} reference={gcd.ref} lost={lost} onFocus={onFocus} abilityName={abilityName} />
+        ) : (
+          <p className="hint">此職業尚未有專屬規則，無法計算 GCD 指標。</p>
+        )}
+        {afterGcd}
+      </div>
 
       <h3>
         技能使用次數

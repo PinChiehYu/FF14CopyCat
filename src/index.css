@@ -3337,71 +3337,64 @@ h3 {
   border-radius: 3px;
 }
 
-/* 爆發與團隊 Buff 表：團隊 Buff 以技能圖示表示（照常＝當時有、變淡＝附近有但當時沒有） */
-.burst-table td {
-  vertical-align: middle;
+/* 爆發與團隊 Buff：每波一張卡片（時間｜爆發技能｜團隊 Buff｜結果），寬螢幕上多張並排 */
+.burst-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
 }
 
+.burst-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* 沒對上的卡片以紅色外框標出 */
+.burst-card.bad {
+  border-color: color-mix(in srgb, var(--error) 50%, transparent);
+}
+
+/* 爆發技能與團隊 Buff 圖示：佔中間的寬度，放不下時在這裡換行 */
+.burst-icons {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  min-height: 22px;
+}
+
+.burst-abilities,
 .raid-icons {
   display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 2px;
-  vertical-align: middle;
 }
 
+/* 團隊 Buff 與爆發技能之間的分隔線 */
+.raid-icons {
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+.burst-abilities .usage-icon,
 .raid-icons .usage-icon {
   margin-right: 0;
 }
 
-/* 爆發的技能圖示不拆行 */
-.burst-abilities {
-  white-space: nowrap;
-}
-
-@media (max-width: 560px) {
-  /* 手機：團隊 Buff 圖示縮小，放得進一行 */
-  .raid-icons .usage-icon {
-    width: 16px;
-    height: 16px;
-  }
-
-  .raid-icons {
-    gap: 1px;
-  }
-
-  .burst-abilities .usage-icon {
-    width: 18px;
-    height: 18px;
-  }
-
-  /* 一波爆發的技能多（例如武僧 4 個）、團隊 Buff 多時，圖示與早晚可換行，表格不超出畫面 */
-  .burst-abilities,
-  .burst-result {
-    white-space: normal;
-  }
-
-  .raid-icons {
-    flex-wrap: wrap;
-  }
-
-  .burst-table th,
-  .burst-table td {
-    padding-left: 6px;
-    padding-right: 6px;
-  }
-}
-
-.raid-icons .raid-dot {
-  align-self: center;
-}
-
+/* 團隊 Buff 圖示（照常＝當時有、變淡＝附近有但當時沒有） */
 .raid-icon.off {
   opacity: 0.3;
   filter: grayscale(1);
-}
-
-.burst-abilities .usage-icon {
-  margin-right: 2px;
-  vertical-align: middle;
 }
 
 .raid-dot {
@@ -3416,9 +3409,20 @@ h3 {
   background: var(--warning);
 }
 
+/* 結果靠右、與時間同一行 */
 .burst-result {
+  line-height: 22px;
   white-space: nowrap;
   color: var(--text-muted);
+}
+
+@media (max-width: 560px) {
+  /* 手機：圖示縮小 */
+  .burst-abilities .usage-icon,
+  .raid-icons .usage-icon {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 /* 手機：樣本清單的名字欄讓出空間（伺服器移到滑鼠提示、數字欄縮窄） */
@@ -3433,4 +3437,17 @@ h3 {
   .average-samples .option-server {
     display: none;
   }
+}
+
+/* 輸出循環中較窄的區塊（GCD、停手時段、穿插過多、止損技）：寬螢幕上並排，手機上一欄。
+   每欄至少 460px：停手時段一列（時間｜停手秒數｜參考的 GCD 數｜控場）約需 460px，窄於此會超出欄位 */
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr));
+  gap: 0 32px;
+  align-items: start;
+}
+
+.metric-block {
+  min-width: 0;
 }
