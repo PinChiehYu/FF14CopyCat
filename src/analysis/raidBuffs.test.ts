@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FFLogsEvent, Fight } from '../fflogs/types'
-import { burstAlignment, burstPoints, enemyRaidDebuffs, raidBuffLabel, raidBuffWindows, type RaidBuffWindow } from './raidBuffs'
+import { burstAlignment, burstPoints, enemyRaidDebuffs, raidBuffAction, raidBuffLabel, raidBuffWindows, type RaidBuffWindow } from './raidBuffs'
 
 const names: Record<number, string> = {
   1: 'Battle Litany',
@@ -120,10 +120,29 @@ describe('burstAlignment', () => {
       ],
       windows,
     )
-    expect(late).toMatchObject({ active: 0, available: 4, aligned: false, offsetMs: 25_000 })
+    expect(late).toMatchObject({ active: 0, available: 4, aligned: false, offsetMs: 25_000, missedNames: ['A', 'B', 'C', 'D'] })
     expect(early).toMatchObject({ active: 0, available: 4, aligned: false, offsetMs: -10_000 })
     // 團隊 Buff 在 4 秒後才陸續生效（5 秒內只到 1 個）：提早先開，算對上
     const [prepared] = burstAlignment([{ t: 126_000, end: 126_000, abilityIds: [1] }], windows.map((w, i) => (i >= 4 && i < 8 ? { ...w, start: 130_000 + (i - 4) * 3000 } : w)))
-    expect(prepared).toMatchObject({ active: 1, available: 4, aligned: true, offsetMs: -4000 })
+    expect(prepared).toMatchObject({ active: 1, available: 4, aligned: true, offsetMs: -4000, activeNames: ['A'], missedNames: ['B', 'C', 'D'] })
+  })
+})
+
+describe('raidBuffAction', () => {
+  it('finds the action of each raid buff by English name, skipping statuses', () => {
+    const ability = (gameID: number, name: string, englishName?: string) => [gameID, { gameID, name, englishName }] as const
+    const action = raidBuffAction(
+      new Map([
+        ability(1_000_786, '戰鬥連禱', 'Battle Litany'), // 效果
+        ability(3557, '戰鬥連禱', 'Battle Litany'),
+        ability(33218, 'Quadruple Technical Finish'),
+        ability(16196, '四色技巧舞步結束', 'Quadruple Technical Finish'),
+        ability(1_001_182, 'Meditative Brotherhood'),
+      ]),
+    )
+    expect(action('Battle Litany')?.gameID).toBe(3557)
+    // 技能名稱與效果不同：取以效果名稱結尾、ID 最小的
+    expect(action('Technical Finish')?.gameID).toBe(16196)
+    expect(action('Brotherhood')).toBeUndefined()
   })
 })

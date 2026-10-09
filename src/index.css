@@ -3322,20 +3322,83 @@ h3 {
   overflow: hidden;
 }
 
-/* 爆發與團隊 Buff 表：團隊 Buff 數量以圓點表示（實心＝當時有、空心＝附近有但當時沒有） */
+/* 團隊 Buff 開始時隊友施放的技能圖示（比一般施放小，放得進較矮的團隊 Buff 列） */
+.raid-cast {
+  position: absolute;
+  top: 1px;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  border-radius: 3px;
+}
+
+/* 爆發與團隊 Buff 表：團隊 Buff 以技能圖示表示（照常＝當時有、變淡＝附近有但當時沒有） */
 .burst-table td {
   vertical-align: middle;
 }
 
-.burst-abilities .usage-icon {
-  margin-right: 2px;
-  vertical-align: middle;
-}
-
-.raid-dots {
+.raid-icons {
   display: inline-flex;
   gap: 2px;
   margin-right: 6px;
+  vertical-align: middle;
+}
+
+.raid-icons .usage-icon {
+  margin-right: 0;
+}
+
+/* 爆發的技能圖示與「當時／最多」不拆行 */
+.burst-abilities,
+.raid-count {
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  /* 手機：團隊 Buff 圖示縮小，與數字放得進一行 */
+  .raid-icons .usage-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .raid-icons {
+    gap: 1px;
+    margin-right: 4px;
+  }
+
+  .burst-abilities .usage-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* 一波爆發的技能多（例如武僧 4 個）、團隊 Buff 多時，圖示與早晚可換行，表格不超出畫面；「當時／最多」仍不拆開 */
+  .burst-abilities,
+  .burst-result {
+    white-space: normal;
+  }
+
+  .raid-icons {
+    flex-wrap: wrap;
+  }
+
+  .burst-table th,
+  .burst-table td {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+}
+
+.raid-icons .raid-dot {
+  align-self: center;
+}
+
+.raid-icon.off {
+  opacity: 0.3;
+  filter: grayscale(1);
+}
+
+.burst-abilities .usage-icon {
+  margin-right: 2px;
   vertical-align: middle;
 }
 

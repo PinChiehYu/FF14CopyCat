@@ -660,6 +660,7 @@ describe('burst advice', () => {
     active,
     activeNames: [],
     available,
+    missedNames: [],
     aligned: available === 0 ? null : active * 2 >= available,
     offsetMs,
   })

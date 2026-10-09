@@ -40,6 +40,21 @@ export function raidBuffLabel(windows: RaidBuffWindow[], abilityName: (id: numbe
   }
 }
 
+/**
+ * 團隊 Buff 的技能（顯示圖示用）：在報告的技能清單中找英文名稱相同的技能（不含效果與道具）；
+ * 技能名稱與效果不同時取名稱以效果名稱結尾的（例如效果 Technical Finish 的技能是 Quadruple Technical Finish），多個時取 ID 最小的。
+ */
+export function raidBuffAction<T extends { gameID: number; name: string; englishName?: string }>(abilities: Map<number, T>): (name: string) => T | undefined {
+  const actions = [...abilities.values()].filter((a) => a.gameID < 1_000_000).sort((a, b) => a.gameID - b.gameID)
+  const byName = new Map<string, T>()
+  for (const name of RAID_BUFF_NAMES) {
+    const english = (a: T) => a.englishName ?? a.name
+    const found = actions.find((a) => english(a) === name) ?? actions.find((a) => english(a).endsWith(` ${name}`))
+    if (found) byName.set(name, found)
+  }
+  return (name) => byName.get(name)
+}
+
 // 爆發點之後這麼久內開始的團隊 Buff 也算「當時」：爆發技能常在團隊 Buff 前一兩個 GCD 先開（例如武士開場的意氣衝天），
 // 團隊 Buff 也在幾個 GCD 內陸續生效
 export const ACTIVE_WINDOW_MS = 5000
@@ -139,6 +154,8 @@ export interface BurstAlignment {
   activeNames: string[]
   /** 前後 20 秒內最多同時有幾個（這次本來可以對上的數量） */
   available: number
+  /** 附近有、但「當時」沒有的團隊 Buff 名稱（前後 20 秒內最多的那個時間點） */
+  missedNames: string[]
   /** 對上：當時 ≥ 可對上數量的一半，或那一波團隊 Buff 在使用後 ACTIVE_WINDOW_MS 內開始；附近沒有團隊 Buff 時為 null（不評） */
   aligned: boolean | null
   /** 沒有全部對上時，與團隊 Buff 最多的時間點相差多久（正數＝晚用、負數＝早用）；全部對上時為 null */
@@ -162,6 +179,7 @@ export function burstAlignment(bursts: BurstPoint[], windows: RaidBuffWindow[]):
       active: now.count,
       activeNames,
       available,
+      missedNames: around.count > now.count ? raidBuffsAt(windows, around.point).filter((n) => !activeNames.includes(n)) : [],
       aligned: available === 0 ? null : now.count * 2 >= available || earlyOk,
       offsetMs,
     }

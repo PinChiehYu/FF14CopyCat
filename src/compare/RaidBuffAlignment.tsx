@@ -1,4 +1,5 @@
-import { ACTIVE_WINDOW_MS, LOOKAROUND_MS, type BurstAlignment } from '../analysis/raidBuffs'
+import { useMemo } from 'react'
+import { ACTIVE_WINDOW_MS, LOOKAROUND_MS, RAID_BUFF_NAMES, raidBuffAction, type BurstAlignment } from '../analysis/raidBuffs'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
 import type { Ability } from '../fflogs/types'
@@ -25,6 +26,7 @@ export function RaidBuffAlignment({
   mineToRef: (t: number) => number
   onJump: (t: number) => void
 }) {
+  const buffAction = useMemo(() => raidBuffAction(abilities), [abilities])
   const rated = bursts.filter((b) => b.aligned !== null)
   const aligned = rated.filter((b) => b.aligned).length
   const seconds = (ms: number) => (Math.abs(ms) / 1000).toFixed(1)
@@ -36,7 +38,7 @@ export function RaidBuffAlignment({
           text={[
             '爆發：冷卻 60 秒以上的輸出技能與強化藥的每次使用（一個 GCD 內連續按下的算同一波）。',
             '團隊 Buff：隊友給的增傷（戰鬥連禱、占卜、技巧舞步結束、義結金蘭、灼熱之光、神秘環、鼓勵、光明神的最終樂章、戰鬥之聲、星空構想），以及施加在敵人身上的連環計、介毒之術。',
-            `團隊 Buff 欄為「當時／最多」（實心圓點＝當時有）。當時：使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內最多同時有幾個團隊 Buff；最多：前後 ${LOOKAROUND_MS / 1000} 秒內最多同時有幾個（這次本來可以對上的數量）。當時達到最多的一半、或團隊 Buff 在使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內開始（提早先開）就算對上；附近沒有團隊 Buff 的（例如 60 秒爆發的職業在團隊 Buff 120 秒一輪之間的那次）不評、不列出。`,
+            `團隊 Buff 欄為隊友施放的技能圖示（變淡＝附近有但當時沒有）與「當時／最多」。當時：使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內最多同時有幾個團隊 Buff；最多：前後 ${LOOKAROUND_MS / 1000} 秒內最多同時有幾個（這次本來可以對上的數量）。當時達到最多的一半、或團隊 Buff 在使用後 ${ACTIVE_WINDOW_MS / 1000} 秒內開始（提早先開）就算對上；附近沒有團隊 Buff 的（例如 60 秒爆發的職業在團隊 Buff 120 秒一輪之間的那次）不評、不列出。`,
             '只看你自己的日誌：隊伍實際給了哪些團隊 Buff。時間為你的戰鬥時間，點擊跳到時間軸。',
           ].join('\n')}
         />
@@ -80,13 +82,36 @@ export function RaidBuffAlignment({
                       )
                     })}
                   </td>
-                  <td title={b.activeNames.length > 0 ? `當時：${b.activeNames.map(raidBuffName).join('、')}` : '當時沒有團隊 Buff'}>
-                    <span className="raid-dots" aria-hidden>
-                      {Array.from({ length: b.available }, (_, i) => (
-                        <span key={i} className={i < b.active ? 'raid-dot on' : 'raid-dot'} />
-                      ))}
+                  <td
+                    title={[
+                      b.activeNames.length > 0 ? `當時：${b.activeNames.map(raidBuffName).join('、')}` : '當時沒有團隊 Buff',
+                      b.missedNames.length > 0 && `沒對上：${b.missedNames.map(raidBuffName).join('、')}`,
+                    ]
+                      .filter(Boolean)
+                      .join('\n')}
+                  >
+                    {/* 團隊 Buff 的技能圖示（每列同一順序）：當時有的照常、附近有但沒對上的變淡；找不到技能時以圓點表示 */}
+                    <span className="raid-icons" aria-hidden>
+                      {[...b.activeNames.map((n) => [n, true] as const), ...b.missedNames.map((n) => [n, false] as const)]
+                        .sort(([a], [c]) => RAID_BUFF_NAMES.indexOf(a) - RAID_BUFF_NAMES.indexOf(c))
+                        .map(([n, on]) => {
+                          const ability = buffAction(n)
+                          return ability ? (
+                            <img
+                              key={n}
+                              className={on ? 'usage-icon raid-icon' : 'usage-icon raid-icon off'}
+                              src={abilityIconUrl(ability.icon)}
+                              alt=""
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span key={n} className={on ? 'raid-dot on' : 'raid-dot'} />
+                          )
+                        })}
                     </span>
-                    {b.active}／{b.available}
+                    <span className="raid-count">
+                      {b.active}／{b.available}
+                    </span>
                   </td>
                   <td className="burst-result">
                     {b.offsetMs === null ? '✓' : `${b.offsetMs > 0 ? '晚' : '早'} ${seconds(b.offsetMs)} 秒${b.aligned ? '' : ' ✗'}`}
