@@ -634,7 +634,8 @@ button:disabled {
   text-align: left;
 }
 
-.metrics-table.mechanics td.mech-kind {
+.metrics-table.mechanics td.mech-kind,
+.metrics-table.mechanics thead th:nth-child(-n + 2) {
   white-space: nowrap;
 }
 
