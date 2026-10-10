@@ -185,7 +185,7 @@ export function Metrics({
     const diff = u.mine - u.ref
     return (
       <li key={u.abilityId} className={`usage-card${solo ? '' : diff < 0 ? ' fewer' : diff > 0 ? ' more' : ''}`}>
-        <div className="usage-name" title={ability?.englishName}>
+        <div className="usage-name">
           {ability && (
             <img className={`usage-icon${isRangedFiller(u.abilityId) ? ' filler' : ''}`} src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />
           )}
@@ -224,7 +224,6 @@ export function Metrics({
     const lost = (c: CooldownUsage | null) => (c ? Math.max(0, c.max - c.uses) : 0)
     const lateList = (mine?.late ?? []).filter((l) => l.lateMs >= LATE_LISTED_MS)
     const title = [
-      ability?.englishName,
       `理論最多可用次數：依冷卻時間、每次冷卻好就用計算（Boss 無法選取的時間不算）`,
       ...lateList.map((l) => `${formatFightTime(mineToRef ? mineToRef(l.t) : l.t)} 晚了 ${seconds(l.lateMs)} 秒`),
     ]

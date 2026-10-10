@@ -78,9 +78,10 @@ export function Windows({
           return (
             <tr key={mine.rule.key}>
               <th
-                title={[mine.rule.action && ruleName(mine.rule, abilityName), icon?.englishName, ...new Set([mine.rule.patchNote, ref?.rule.patchNote])]
-                  .filter(Boolean)
-                  .join('\n')}
+                title={
+                  [mine.rule.action && ruleName(mine.rule, abilityName), ...new Set([mine.rule.patchNote, ref?.rule.patchNote])].filter(Boolean).join('\n') ||
+                  undefined
+                }
               >
                 {icon && (
                   <img

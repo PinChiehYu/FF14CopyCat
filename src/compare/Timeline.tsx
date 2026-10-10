@@ -431,7 +431,7 @@ function TimelineLanesImpl({
                       className={filler ? 'cast filler' : 'cast'}
                       src={abilityIconUrl(ability.icon)}
                       alt={ability.name}
-                      title={`${ability.name}${ability.englishName ? `（${ability.englishName}）` : ''}${filler ? '・止損技' : ''} ${time}${consistency}`}
+                      title={`${ability.name}${filler ? '・止損技' : ''} ${time}${consistency}`}
                       loading="lazy"
                       style={style}
                     />
