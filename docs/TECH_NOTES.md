@@ -583,6 +583,11 @@
 
 ## 技術變更紀錄
 
+### 2026-10-10 略過延遲送出的定時觸發
+- `worker/src/index.ts` 的 `scheduled()` 在觸發比排定時間晚超過 `MAX_RUN_DELAY_MS`（2 分鐘，`schedule.ts` 的 `isStaleRun()`）時直接略過，只記 `stale` 的 log。
+- 原因：D1 例行檢查時 `wrangler tail` 十幾分鐘收不到 log，改用 `--format json` 錄到：17:16～17:28 排定的 12 次觸發（預處理 9 次、掃描 2 次、確認報告 1 次）在 17:39:44 同時執行。同時執行的預處理都讀到 `pull_queue` 最前面的同 2 場、`average_samples` 最早的同 1 位樣本，各自查 FFLogs 再寫入（INSERT OR REPLACE，資料沒有錯，但 9 次 `pulls: 2` 只多存 2 場，FFLogs 點數與 D1 寫入浪費約 9 倍）；掃描也重複處理同一頁。延遲的觸發做的是之後準時觸發會做的同一批工作，略過不會漏掉資料。
+- 正常的觸發在排定後 1～2 秒內執行（JSON 的 `eventTimestamp − scheduledTime`）；2 分鐘的門檻只擋 Cloudflare 累積後一起送出的觸發。
+
 ### 2026-10-10 爆發技的資料驗證與規則表
 - 規則表 `src/jobs/burstRules.ts`（`BURST_RULES`：`ids`、`periodMs` 60／120 秒、`alignAt`〔觸發技能後 `withinMs` 內第一次使用的技能作為判斷時間〕）。`analysis/raidBuffs.ts`：`burstPoints()` 多收 `periodOf`、`alignTime`，同一波 `SAME_BURST_MS` 2.5→15 秒，`BurstPoint` 多帶 `start`、`periodMs`（`t` 改為判斷時間）；`burstAlignment()` 排除 `self` 的團隊 Buff、「當時」看 `[start, end + 5 秒]`、附近依 `lookaroundMs(periodMs)`（120 秒→60 秒、60 秒→20 秒）；`raidBuffWindows()` 多收我的 ID（`Aura.sourceId`、`enemyRaidDebuffs()` 保留施放者）把我給的團隊 Buff 標為 `self`。強化藥的 `periodMs` 為 60 秒，只有強化藥的一波在 `Comparison.tsx` 設為不評。
 - 資料驗證：`scripts/burst-stats.mjs`（只讀、經 Worker）每個職業取 4 個 Boss 各 2 場 PR 95+ 的擊殺（共約 8 場、約 700 個請求、20 分鐘），統計一場用 20 次以下、間隔中位數 ≥ 50 秒的技能「使用後 5 秒內有隊友的團隊 Buff」的比例，以及觸發技能→後續技能的比例。2026-10-10 的結果（重點）：

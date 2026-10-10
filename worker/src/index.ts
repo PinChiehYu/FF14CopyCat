@@ -1,6 +1,6 @@
 import { CRAWL_DIFFICULTY, crawl, CRAWL_ZONES, CURRENT_ENCOUNTERS, flagSuspectFights, pruneGoneReports } from './crawler'
 import { graphqlFor, handleRequest, setTokenStore, type CacheLike, type Context, type Env } from './handler'
-import { CRAWL_CRON, CRAWL_REPORTS_PER_RUN, PRUNE_CRON } from './schedule'
+import { CRAWL_CRON, CRAWL_REPORTS_PER_RUN, isStaleRun, PRUNE_CRON } from './schedule'
 import { processTimelines, timelineWork } from './timelines'
 
 // Workers 執行環境提供的快取
@@ -15,6 +15,11 @@ export default {
 
   async scheduled(controller: { cron?: string; scheduledTime?: number }, env: Env, ctx: Context): Promise<void> {
     if (!env.DB) return
+    // 延遲太久的觸發會與同時送出的其他觸發做同一批工作（見 schedule.ts 的 MAX_RUN_DELAY_MS）
+    if (isStaleRun(controller.scheduledTime, Date.now())) {
+      console.log('stale', JSON.stringify({ cron: controller.cron, delayMs: Date.now() - controller.scheduledTime! }))
+      return
+    }
     setTokenStore(caches.default)
     const db = env.DB
     const minute = new Date(controller.scheduledTime ?? Date.now()).getUTCMinutes()

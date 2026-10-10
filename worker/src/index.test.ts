@@ -25,9 +25,10 @@ const { crawl, flagSuspectFights, pruneGoneReports } = await import('./crawler')
 const { processTimelines } = await import('./timelines')
 const worker = (await import('./index')).default
 
-/** 以 UTC 時間觸發一次排程，等工作完成 */
-async function fire(cron: string, iso: string, env: Record<string, unknown> = { DB: {} }): Promise<void> {
+/** 以 UTC 時間觸發一次排程（在排定的時間後 delayMs 送出），等工作完成 */
+async function fire(cron: string, iso: string, env: Record<string, unknown> = { DB: {} }, delayMs = 1_000): Promise<void> {
   const pending: Promise<unknown>[] = []
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse(iso) + delayMs)
   await worker.scheduled({ cron, scheduledTime: Date.parse(iso) }, env as never, { waitUntil: (p: Promise<unknown>) => pending.push(p) } as never)
   await Promise.all(pending)
 }
@@ -68,6 +69,14 @@ describe('scheduled', () => {
     expect(vi.mocked(processTimelines).mock.calls.map((c) => c[3])).toEqual([{ minute: 10 }, { minute: 17 }])
     expect(crawl).not.toHaveBeenCalled()
     expect(pruneGoneReports).not.toHaveBeenCalled()
+  })
+
+  it('skips runs delivered long after their scheduled time', async () => {
+    // Cloudflare 把累積的觸發一起送出：12 分鐘前排定的那次與其他觸發做同一批工作
+    await fire(TIMELINES_CRON, '2026-10-04T03:11:00Z', { DB: {} }, 12 * 60_000)
+    await fire(CRAWL_CRON, '2026-10-04T03:12:00Z', { DB: {} }, 12 * 60_000)
+    expect(processTimelines).not.toHaveBeenCalled()
+    expect(crawl).not.toHaveBeenCalled()
   })
 
   it('does nothing without a database', async () => {

@@ -9,3 +9,12 @@ export const TIMELINES_CRON = '* * * * *'
 // 掃描一次最多查幾份繁中服報告的傷害表（一份可能有多場擊殺，傷害表較大；5 份時實測 CPU 27 ms）。
 // 一頁還有沒查的繁中服報告時，下次重新列出同一頁（已處理的跳過）
 export const CRAWL_REPORTS_PER_RUN = 2
+
+// Cloudflare 偶爾延遲送出定時觸發，再把累積的觸發同時執行（2026-10-10 實測：17:16～17:28 的 12 次在 17:39:44 一起執行）。
+// 同時執行的預處理都讀到佇列最前面的同幾場，重複查 FFLogs、重複寫入（10 次只多存 2 場）；超過這個延遲的觸發直接略過，由準時的觸發接手
+export const MAX_RUN_DELAY_MS = 2 * 60_000
+
+/** 這次觸發是否已延遲太久（與同時送出的其他觸發重複），應略過 */
+export function isStaleRun(scheduledTime: number | undefined, now: number): boolean {
+  return scheduledTime !== undefined && now - scheduledTime > MAX_RUN_DELAY_MS
+}
