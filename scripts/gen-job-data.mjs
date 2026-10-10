@@ -70,13 +70,19 @@ const CATEGORIES = {
   },
   Scholar: {
     partyMitigation: ['Sacred Soil', 'Expedient', 'Fey Illumination', 'Deployment Tactics'],
+    // 強化下一個治療的能力技：治療記在被強化的技能上
+    heal: ['Recitation', 'Emergency Tactics'],
   },
   Astrologian: {
     partyMitigation: ['Collective Unconscious', 'Neutral Sect', 'Exaltation', 'Sun Sign'],
+    // 治療記在其他名稱上（星體爆發、同調的治療）
+    heal: ['Synastry', 'Earthly Star'],
   },
   Sage: {
     partyMitigation: ['Kerachole', 'Holos', 'Panhaima', 'Haima', 'Taurochole'],
     movement: ['Icarus'],
+    // 強化治療或補量譜的能力技：治療記在其他名稱上（例如拯救強化的是「心關」的治療），日誌判斷不出是治療
+    heal: ['Krasis', 'Zoe', 'Rhizomata', 'Soteria', 'Philosophia'],
   },
   Monk: {
     mitigation: ['Riddle of Earth'],
