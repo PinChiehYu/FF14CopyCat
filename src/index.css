@@ -3301,10 +3301,27 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* Boss 與每側各佔一行，名稱過長時省略 */
-  .picked-boss,
+  /* 第一行 Boss 名稱與「更換日誌」，下面每側各佔一行（名稱過長時省略） */
+  .picked-boss {
+    flex: 1 1 0;
+  }
+
+  .picked-change {
+    order: 1;
+  }
+
+  /* 與戰鬥、角色選單相同的欄位：標籤｜名稱｜職業｜場次與時間（固定寬、靠右），各行的職業與時間對齊 */
   .picked-log {
+    order: 2;
     flex: 1 1 100%;
+    display: grid;
+    grid-template-columns: 2.5em minmax(0, 1fr) auto 6.4em;
+    column-gap: 8px;
+  }
+
+  .picked-fight {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
 }
 
