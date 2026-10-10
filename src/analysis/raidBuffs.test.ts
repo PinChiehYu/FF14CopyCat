@@ -107,6 +107,17 @@ describe('burstPoints', () => {
       { t: 240_000, start: 240_000, end: 240_000, abilityIds: [34647], periodMs: 120_000 },
     ])
   })
+
+  it('keeps what is used with the follow-up skill in the same wave', () => {
+    // 蝰蛇：蛇靈氣 4:05、祖靈降臨 4:23、強化藥 4:23（離蛇靈氣 18 秒，但與祖靈降臨同時）
+    const potion = 2
+    const casts = [
+      { t: 245_000, abilityId: 34647 },
+      { t: 263_000, abilityId: potion },
+    ]
+    const points = burstPoints(casts, () => true, undefined, { periodOf: () => 120_000, alignTime: (id, t) => (id === 34647 ? t + 18_000 : undefined) })
+    expect(points).toEqual([{ t: 263_000, start: 245_000, end: 263_000, abilityIds: [34647, potion], periodMs: 120_000 }])
+  })
 })
 
 describe('burstAlignment', () => {

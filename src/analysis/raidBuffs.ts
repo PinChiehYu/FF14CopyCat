@@ -249,7 +249,8 @@ export function burstPoints(
       current.t = current.t === current.start ? aligned : Math.min(current.t, aligned)
       current.end = Math.max(current.end, aligned)
     }
-    until = Math.max(until, c.t + SAME_BURST_MS, buffEnd(c.abilityId, c.t) ?? -Infinity)
+    // 真正的爆發在之後的技能：在那之後 SAME_BURST_MS 內用的（例如配合祖靈降臨的強化藥）也算同一波
+    until = Math.max(until, c.t + SAME_BURST_MS, (aligned ?? -Infinity) + SAME_BURST_MS, buffEnd(c.abilityId, c.t) ?? -Infinity)
   }
   return points
 }
