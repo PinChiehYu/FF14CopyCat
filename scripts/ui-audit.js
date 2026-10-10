@@ -1,6 +1,7 @@
 // 在瀏覽器中檢查比較結果頁的版面（以瀏覽器面板的 javascript_tool 或開發者工具執行整段，回傳 JSON）。
 // 桌面與手機（375 px）各跑一次，比較兩者的區塊是否一致。檢查項目：
 // - 頁面是否橫向捲動、元素是否超出畫面或被裁切（捲動區內的不算：時間軸、站位差異卡片列）
+// - 表格儲存格內的內容超出儲存格、蓋到隔壁欄（overflowCell）
 // - 區塊內的橫向捲動（innerScroll）：時間軸與站位差異卡片列本來就會捲動，其他區塊（例如 .metrics 的保險捲動）出現捲動代表內容超出欄寬
 // - 短文字是否被拆成兩行（split）
 // - 「?」圖示大小是否一致、錯誤訊息、主要區塊是否都有顯示
@@ -25,6 +26,7 @@
   const offscreen = new Set()
   const innerScroll = new Set()
   const clipped = new Set()
+  const overflowCell = new Set()
   const split = new Set()
   const tips = []
   const headings = []
@@ -42,6 +44,12 @@
     }
     if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0 && overflowVisible && !scrollable(el) && el.children.length === 0) {
       clipped.add(`${label(el)} 內容 ${el.scrollWidth} > ${el.clientWidth}`)
+    }
+    // 表格儲存格內不換行的文字（行內元素量不到 scrollWidth）超出儲存格，蓋到隔壁欄
+    const cell = el.parentElement?.closest('td, th')
+    if (cell && !el.matches('td, th') && !scrollable(el)) {
+      const c = cell.getBoundingClientRect()
+      if (r.right > c.right + 1 || r.left < c.left - 1) overflowCell.add(`${label(el)} 右緣 ${Math.round(r.right)} > 儲存格 ${Math.round(c.right)}`)
     }
   }
 
@@ -92,6 +100,7 @@
     horizontalScroll: document.documentElement.scrollWidth > vw + 1 ? document.documentElement.scrollWidth : false,
     offscreen: [...offscreen].slice(0, 15),
     clipped: [...clipped].slice(0, 15),
+    overflowCell: [...overflowCell].slice(0, 15),
     innerScroll: [...innerScroll].slice(0, 15),
     split: [...split].slice(0, 15),
     helpTipSizes: tipSizes,

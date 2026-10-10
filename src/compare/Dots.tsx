@@ -83,7 +83,7 @@ export function Dots({
                 {ids.map((id, i) => (
                   <span key={id} className="name-part">
                     {abilityName(id)}
-                    {i < ids.length - 1 && '／'}
+                    {i < ids.length - 1 && <span className="name-sep">／</span>}
                   </span>
                 ))}
                 <span className="rule-duration">目標 {mine.rule.uptimeTarget}%</span>

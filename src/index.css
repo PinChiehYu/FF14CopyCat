@@ -2814,6 +2814,17 @@ h3 {
     margin-left: 0;
   }
 
+  /* 多個名稱各占一行（不需要「／」）、字略小，「均衡注藥III」放得進名稱欄；仍放不下的名稱才在名稱中換行，避免蓋到右邊的覆蓋率 */
+  .dots-table tbody th .name-part {
+    display: block;
+    white-space: normal;
+    font-size: 0.9em;
+  }
+
+  .dots-table tbody th .name-sep {
+    display: none;
+  }
+
   .dot-cell {
     display: flex;
     flex-direction: column;
