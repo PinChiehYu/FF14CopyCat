@@ -948,7 +948,7 @@ button:disabled {
   cursor: default;
 }
 
-/* 前輩平均（開發中，只在本機出現）：參考欄位標題列的切換按鈕、PR 區間、樣本資訊與清單 */
+/* 前輩平均：參考欄位標題列的切換按鈕、PR 區間、樣本資訊與清單 */
 .log-actions {
   display: inline-flex;
   align-items: center;

@@ -11,10 +11,10 @@ import { jobRole } from '../jobs/names'
 import type { Selection, SideData } from './load'
 
 /**
- * 前輩平均是否開放：開發中，只在本機（vite dev）出現；正式站不顯示。
- * 多數 Boss×職業的樣本足夠後才推出（docs/DESIGN.md「前輩平均」）。
+ * 前輩平均是否開放：2026-10-10 起正式站開放（docs/DESIGN.md「前輩平均」）。
+ * 需要暫時關閉時（例如樣本資料有問題）改為 false 即可，介面會回到只能貼參考日誌。
  */
-export const AVERAGE_ENABLED = import.meta.env.DEV
+export const AVERAGE_ENABLED = true
 
 /** 平均參考的資訊（摘要表、樣本清單、提示用） */
 export interface AverageInfo {
