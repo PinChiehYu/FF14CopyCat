@@ -72,6 +72,31 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T
 }
 
+// 名稱查詢遇到請求過多時的重試間隔：每 IP 每分鐘的上限（Worker 的 RATE_LIMITER）約一分鐘內恢復
+export const RATE_LIMIT_RETRY_MS = [20_000, 40_000, 60_000]
+
+/**
+ * 遇到請求過多（429 本站每 IP 的限制、503 FFLogs 的上限；不含排名資料庫額度用完）時等一下再試。
+ * 用在只影響顯示的查詢（技能、Boss 的繁中名稱）：失敗時頁面沿用英文，重試成功後再換成繁中。
+ */
+export async function retryRateLimited<T>(request: () => Promise<T>, signal?: AbortSignal, delays = RATE_LIMIT_RETRY_MS): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await request()
+    } catch (err) {
+      const rateLimited = err instanceof ApiError && (err.status === 429 || err.status === 503) && err.message !== DB_UNAVAILABLE_MESSAGE
+      if (!rateLimited || attempt >= delays.length || signal?.aborted) throw err
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, delays[attempt])
+        signal?.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(new DOMException('aborted', 'AbortError'))
+        })
+      })
+    }
+  }
+}
+
 /** FFLogs 對報告的錯誤訊息（英文）換成說明 */
 export function reportErrorMessage(message: string): string {
   if (/report does not exist/i.test(message)) return '找不到這份報告：連結可能有誤，或報告已刪除'
@@ -267,7 +292,7 @@ export async function fetchNpcNames(names: string[], signal?: AbortSignal): Prom
   const result = new Map<string, string>()
   for (let i = 0; i < unique.length; i += NPC_BATCH) {
     const params = new URLSearchParams(unique.slice(i, i + NPC_BATCH).map((n) => ['name', n]))
-    const batch: Record<string, { name: string }> = await get(`/npc-names?${params}`, signal)
+    const batch: Record<string, { name: string }> = await retryRateLimited(() => get(`/npc-names?${params}`, signal), signal)
     for (const [en, { name }] of Object.entries(batch)) result.set(en, name)
   }
   return result
@@ -318,7 +343,7 @@ export async function fetchAbilityNames(ids: number[], signal?: AbortSignal): Pr
   const names = new Map<number, AbilityName>()
   for (let i = 0; i < unique.length; i += NAME_BATCH) {
     const batch = unique.slice(i, i + NAME_BATCH)
-    const result: Record<string, AbilityName> = await get(`/abilities?ids=${batch.join(',')}`, signal)
+    const result: Record<string, AbilityName> = await retryRateLimited(() => get(`/abilities?ids=${batch.join(',')}`, signal), signal)
     for (const [id, name] of Object.entries(result)) names.set(Number(id), name)
   }
   return names

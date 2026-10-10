@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DB_UNAVAILABLE_MESSAGE, dbStatus, defaultAverageTier, fetchReport, fetchTcRankings, fightNameParts, translateFightName } from './client'
+import { ApiError, DB_UNAVAILABLE_MESSAGE, dbStatus, defaultAverageTier, retryRateLimited, fetchReport, fetchTcRankings, fightNameParts, translateFightName } from './client'
 
 describe('report errors', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -111,6 +111,43 @@ describe('ranking database status', () => {
     expect(dbStatus.available()).toBe(false)
     expect(listener).toHaveBeenCalledTimes(1)
     unsubscribe()
+  })
+})
+
+describe('retryRateLimited', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('waits and retries name lookups that hit the rate limit', async () => {
+    vi.useFakeTimers()
+    const request = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError(429, '請求過多'))
+      .mockResolvedValueOnce('ok')
+    const pending = retryRateLimited(request, undefined, [1000])
+    await vi.advanceTimersByTimeAsync(1000)
+    await expect(pending).resolves.toBe('ok')
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry other errors or an exhausted ranking database', async () => {
+    const notFound = vi.fn().mockRejectedValue(new ApiError(404, 'missing'))
+    await expect(retryRateLimited(notFound, undefined, [1])).rejects.toThrow('missing')
+    expect(notFound).toHaveBeenCalledTimes(1)
+    const dbDown = vi.fn().mockRejectedValue(new ApiError(503, DB_UNAVAILABLE_MESSAGE))
+    await expect(retryRateLimited(dbDown, undefined, [1])).rejects.toThrow(DB_UNAVAILABLE_MESSAGE)
+    expect(dbDown).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops waiting when the caller cancels', async () => {
+    vi.useFakeTimers()
+    const controller = new AbortController()
+    const request = vi.fn().mockRejectedValue(new ApiError(429, '請求過多'))
+    const pending = retryRateLimited(request, controller.signal, [60_000])
+    const result = expect(pending).rejects.toThrow('aborted')
+    await vi.advanceTimersByTimeAsync(10)
+    controller.abort()
+    await result
+    expect(request).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -583,6 +583,9 @@
 
 ## 技術變更紀錄
 
+### 2026-10-10 名稱查詢遇到請求過多時重試
+- 隨機測試中短時間多次重新載入，`/abilities` 撞到 Worker 的每 IP 限制（429），`fetchAbilityNames()` 失敗後整頁一直是英文名稱。新增 `retryRateLimited()`（client.ts）：429 與 503（FFLogs 上限；不含排名資料庫額度用完）時隔 20／40／60 秒重試，呼叫端取消時停止；技能名稱與 Boss 名稱（`fetchNpcNames()`）都用它。只影響顯示的查詢才重試，比較用的資料（報告、事件）照舊直接回報錯誤。
+
 ### 2026-10-09 前輩平均上線前的介面
 - Worker 新增 `GET /average-tiers?encounter&difficulty&job[&slot]`（`timelines.ts` 的 `averageTierCounts()`，與 `averageSamples()` 相同的條件：已預處理、沒有死亡、有 Boss 施放），回傳各區間可用的樣本數 `{ top, upper, mid }`；查詢計畫三個 join 都走索引。前端 `useAverageTierCounts()`（坦克依我這場判斷 MT／ST），失敗或 Worker 尚未部署時按鈕不顯示數字。
 - `defaultAverageTier(pr)`（client.ts）：比我的 PR 高一段。`shareUrl()` 接受 `{ average }`，連結帶 `avg`。
