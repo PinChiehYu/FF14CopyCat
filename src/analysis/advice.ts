@@ -21,7 +21,7 @@ import { fflogsStatusId } from '../jobs/dotRules'
 import { compareFillers, isRangedFiller } from '../jobs/rangedFillers'
 import { weavingSeverity, type BadWeave } from './weaving'
 import type { DeathRecap } from './damageTaken'
-import { LOOKAROUND_MS, type BurstAlignment } from './raidBuffs'
+import type { BurstAlignment } from './raidBuffs'
 
 export type Severity = 'high' | 'medium' | 'low'
 
@@ -829,7 +829,7 @@ function burstAdvice(bursts: BurstAlignment[] | undefined, abilityName: (id: num
   const list = missed
     .map((b) => {
       const offset = b.offsetMs === null ? '' : `，${b.offsetMs > 0 ? '晚' : '早'} ${seconds(b.offsetMs)} 秒`
-      return `${formatFightTime(toRef(b.t))} ${b.abilityIds.map(abilityName).join('＋')}（當時 ${b.active} 個、前後 ${LOOKAROUND_MS / 1000} 秒最多 ${b.available} 個${offset}）`
+      return `${formatFightTime(toRef(b.t))} ${b.abilityIds.map(abilityName).join('＋')}（當時 ${b.active} 個、附近最多 ${b.available} 個${offset}）`
     })
     .join('、')
   return [
@@ -837,7 +837,7 @@ function burstAdvice(bursts: BurstAlignment[] | undefined, abilityName: (id: num
       kind: 'burst',
       severity: missed.length >= 2 ? 'high' : 'medium',
       title: `${missed.length} 次爆發沒對上團隊 Buff`,
-      detail: `${list}。冷卻 60 秒以上的輸出技能與強化藥應在隊友的團隊 Buff（戰鬥連禱、占卜、連環計等）期間使用，同樣的技能傷害更高；對照時間軸的「團隊 Buff」列調整使用時機。`,
+      detail: `${list}。職業的爆發技與強化藥應在隊友的團隊 Buff（戰鬥連禱、占卜、連環計等）期間使用，同樣的技能傷害更高；對照時間軸的「團隊 Buff」列調整使用時機。`,
       at: toRef(missed[0].t),
     },
   ]

@@ -406,7 +406,7 @@ export async function loadSide(selection: Selection, signal?: AbortSignal): Prom
     untargetable: untargetableSpans(targetability, report.masterData.actors, fight),
     duration: fight.endTime - fight.startTime,
     healOnly: healOnlyAbilities(playerEvents, player.id, (id) => names.get(id)?.name),
-    raidBuffs: raidBuffWindows(auras, enemyRaidDebuffs(enemyDebuffs, fight), (id) => names.get(id)?.name),
+    raidBuffs: raidBuffWindows(auras, enemyRaidDebuffs(enemyDebuffs, fight), (id) => names.get(id)?.name, player.id),
   }
 }
 
