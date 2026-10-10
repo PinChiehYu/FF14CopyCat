@@ -73,7 +73,6 @@ function fightOption(fight: Fight): DropdownOption<number> {
   const outcome = fight.kill ? '擊殺' : fight.kill === false ? '滅團' : null
   return {
     value: fight.id,
-    title: fight.englishName,
     content: (
       // 固定欄寬，讓每列的徽章與長度對齊
       <span className="option-row fight-option">
@@ -309,7 +308,8 @@ function PickedLogs({
   // 參考日誌只能選同一個 Boss 的戰鬥（autoSelect.ts），Boss 名稱列一次
   return (
     <div className="picked-logs">
-      <span className="picked-boss" title={mine.fight.englishName}>
+      {/* 名稱過長時省略，滑鼠提示為完整名稱 */}
+      <span className="picked-boss" title={mine.fight.name}>
         {mine.fight.name}
       </span>
       <PickedLog label="我的" selection={mine} />
