@@ -602,8 +602,9 @@ button:disabled {
   border-color: var(--error);
 }
 
-/* 固定欄寬後，較長的規則名稱（例如「技能 後 20 秒」）改為換行，不超出欄位 */
-.windows-table tbody th {
+/* 固定欄寬後，較長的規則名稱（例如「技能 後 20 秒」）改為換行，不超出欄位
+   （提高權重：後面的 .summary-table tbody th 設為不換行，同權重時會蓋過這裡） */
+.summary-table.windows-table tbody th {
   white-space: normal;
 }
 
