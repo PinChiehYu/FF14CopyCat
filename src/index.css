@@ -3356,6 +3356,8 @@ h3 {
 
 /* 爆發與團隊 Buff：每波一張卡片（時間｜爆發技能｜團隊 Buff｜結果），寬螢幕上多張並排 */
 .burst-cards {
+  /* 圖示大小；--burst-slots（自己的技能與強化藥最多幾個）由元件設定，讓每張卡片的團隊 Buff 從同一位置開始 */
+  --burst-icon: 20px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
   gap: 6px;
@@ -3405,7 +3407,23 @@ h3 {
 
 .burst-abilities .usage-icon,
 .raid-icons .usage-icon {
+  width: var(--burst-icon);
+  height: var(--burst-icon);
   margin-right: 0;
+}
+
+/* 自己的技能與強化藥：保留這一區最多的那一波的寬度 */
+.burst-abilities {
+  min-width: calc(var(--burst-slots, 1) * (var(--burst-icon) + 2px) - 2px);
+}
+
+/* 團隊 Buff 每個固定一欄（這一波沒有的留空） */
+.raid-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--burst-icon);
+  height: var(--burst-icon);
 }
 
 /* 團隊 Buff 圖示（照常＝當時有、變淡＝附近有但當時沒有） */
@@ -3435,10 +3453,8 @@ h3 {
 
 @media (max-width: 560px) {
   /* 手機：圖示縮小 */
-  .burst-abilities .usage-icon,
-  .raid-icons .usage-icon {
-    width: 18px;
-    height: 18px;
+  .burst-cards {
+    --burst-icon: 18px;
   }
 }
 

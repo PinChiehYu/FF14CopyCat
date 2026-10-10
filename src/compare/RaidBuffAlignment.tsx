@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import { ACTIVE_WINDOW_MS, RAID_BUFF_NAMES, SAME_BURST_MS, raidBuffAction, type BurstAlignment } from '../analysis/raidBuffs'
 import { formatFightTime } from '../analysis/timeline'
 import { abilityIconUrl } from '../fflogs/report'
@@ -34,6 +34,9 @@ export function RaidBuffAlignment({
   const uniqueByName = (ids: number[]) => ids.filter((id, i) => ids.findIndex((other) => abilityName(other) === abilityName(id)) === i)
   const rated = bursts.filter((b) => b.aligned !== null)
   const aligned = rated.filter((b) => b.aligned).length
+  // 欄位對齊：自己的技能與強化藥保留這一區最多的那一波的寬度；團隊 Buff 每個固定一欄（這一區出現過的都列，該波沒有的留空）
+  const burstSlots = Math.max(1, ...rated.map((b) => uniqueByName(b.abilityIds).length))
+  const buffColumns = RAID_BUFF_NAMES.filter((n) => rated.some((b) => b.activeNames.includes(n) || b.missedNames.includes(n)))
   const seconds = (ms: number) => (Math.abs(ms) / 1000).toFixed(1)
   return (
     <>
@@ -58,7 +61,7 @@ export function RaidBuffAlignment({
             對上 <strong>{aligned}</strong>／{rated.length} 次
           </p>
           {/* 每波一張卡片（時間｜爆發技能｜團隊 Buff｜結果），寬螢幕上多張並排，避免一波一列把頁面拉長 */}
-          <ul className="burst-cards">
+          <ul className="burst-cards" style={{ '--burst-slots': burstSlots } as CSSProperties}>
             {rated.map((b) => (
               <li key={b.t} className={`burst-card ${b.aligned ? 'ok' : 'bad'}`}>
                 <button
@@ -81,7 +84,7 @@ export function RaidBuffAlignment({
                       )
                     })}
                   </span>
-                  {/* 團隊 Buff 的技能圖示（每張同一順序）：當時有的照常、附近有但沒對上的變淡；找不到技能時以圓點表示 */}
+                  {/* 團隊 Buff 的技能圖示（每個團隊 Buff 固定一欄）：當時有的照常、附近有但沒對上的變淡、這一波沒有的留空；找不到技能時以圓點表示 */}
                   <span
                     className="raid-icons"
                     title={[
@@ -91,16 +94,20 @@ export function RaidBuffAlignment({
                       .filter(Boolean)
                       .join('\n')}
                   >
-                    {[...b.activeNames.map((n) => [n, true] as const), ...b.missedNames.map((n) => [n, false] as const)]
-                      .sort(([a], [c]) => RAID_BUFF_NAMES.indexOf(a) - RAID_BUFF_NAMES.indexOf(c))
-                      .map(([n, on]) => {
-                        const ability = buffAction(n)
-                        return ability ? (
-                          <img key={n} className={on ? 'usage-icon raid-icon' : 'usage-icon raid-icon off'} src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />
-                        ) : (
-                          <span key={n} className={on ? 'raid-dot on' : 'raid-dot'} />
-                        )
-                      })}
+                    {buffColumns.map((n) => {
+                      const on = b.activeNames.includes(n)
+                      if (!on && !b.missedNames.includes(n)) return <span key={n} className="raid-slot" />
+                      const ability = buffAction(n)
+                      return (
+                        <span key={n} className="raid-slot">
+                          {ability ? (
+                            <img className={on ? 'usage-icon raid-icon' : 'usage-icon raid-icon off'} src={abilityIconUrl(ability.icon)} alt="" loading="lazy" />
+                          ) : (
+                            <span className={on ? 'raid-dot on' : 'raid-dot'} />
+                          )}
+                        </span>
+                      )
+                    })}
                   </span>
                 </span>
                 <span className="burst-result">
