@@ -59,6 +59,11 @@ describe('heal abilities', () => {
     expect(generateAdvice(input({ usage: [usage(1, 6, 7)], isHeal: (id) => id === 1 })).some((a) => a.kind === 'heal')).toBe(false)
   })
 
+  it('does not advise on fewer auto attacks', () => {
+    // 賢者的「攻擊」（#7）：參考在近身時有 17 次、我 0 次
+    expect(generateAdvice(input({ usage: [usage(7, 0, 17), usage(8, 0, 5)] })).some((a) => a.title.includes('少用'))).toBe(false)
+  })
+
   it('treats abilities the job data marks as heals the same way', () => {
     // 補師的即刻詠唱（7561）：日誌判斷不出來，由職業資料分類
     const ast = getJob('Astrologian')!

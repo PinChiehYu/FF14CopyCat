@@ -1,6 +1,6 @@
 import type { AbilityCategory } from '../jobs/roleActions'
 import { LATE_LISTED_MS, type CooldownPair } from './cooldowns'
-import type { Death } from '../compare/load'
+import { AUTO_ATTACKS, type Death } from '../compare/load'
 import { ruleName } from '../jobs/windows'
 import { mechanicLabel, type MechanicDifference } from './mechanics'
 import type { AbilityUsage, GcdStats, LostWindow } from './metrics'
@@ -347,7 +347,8 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, isHeal, category,
   for (const u of usage) {
     const name = abilityName(u.abilityId)
     const kind = category?.(u.abilityId) ?? 'normal'
-    if (kind === 'ignored') continue
+    // 普通攻擊只列在技能使用次數：次數取決於離 Boss 的距離（例如補師、法系只在近身時才有），不提少用
+    if (kind === 'ignored' || AUTO_ATTACKS.has(u.abilityId)) continue
     if (kind === 'mitigation' || kind === 'partyMitigation' || kind === 'movement') {
       const advice = mitigationAdvice(u, name, kind)
       if (advice) items.push({ ...advice, kind })
