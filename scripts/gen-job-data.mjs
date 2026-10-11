@@ -70,8 +70,8 @@ const CATEGORIES = {
   },
   Scholar: {
     partyMitigation: ['Sacred Soil', 'Expedient', 'Fey Illumination', 'Deployment Tactics'],
-    // 強化下一個治療的能力技：治療記在被強化的技能上
-    heal: ['Recitation', 'Emergency Tactics'],
+    // 強化下一個治療的能力技（治療記在被強化的技能上），以及由小仙女施放的治療（治療事件的施放者是寵物，不是玩家）
+    heal: ['Recitation', 'Emergency Tactics', 'Fey Blessing', 'Whispering Dawn', 'Aetherpact', 'Consolation'],
   },
   Astrologian: {
     partyMitigation: ['Collective Unconscious', 'Neutral Sect', 'Exaltation', 'Sun Sign'],
