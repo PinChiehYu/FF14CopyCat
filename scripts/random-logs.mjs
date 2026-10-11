@@ -25,10 +25,10 @@ for (let attempt = 0; attempt < 20; attempt++) {
   const res = await fetch(`${API}/tc-rankings?encounter=${encounter}&difficulty=101&job=${job}&minPr=0&maxPr=100`, { headers: HEADERS })
   if (!res.ok) continue
   const { rankings } = await res.json()
-  // 兩筆不同報告：我的日誌取任一筆，參考取另一份報告中 rDPS 比我高的一筆（像向前輩學習）
+  // 兩筆不同報告：我的日誌取任一筆，參考取另一份報告中、另一位玩家 rDPS 比我高的一筆（像向前輩學習；同一人的兩場測不出比較的差異）
   if (rankings.length < 2) continue
   const mine = pick(rankings)
-  const others = rankings.filter((r) => r.report !== mine.report && r.rdps > mine.rdps)
+  const others = rankings.filter((r) => r.report !== mine.report && `${r.name}@${r.server}` !== `${mine.name}@${mine.server}` && r.rdps > mine.rdps)
   if (others.length === 0) continue
   const ref = pick(others)
   const params = (extra) => new URLSearchParams({ mine: fflogsUrl(mine), ...extra }).toString()
