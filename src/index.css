@@ -560,8 +560,9 @@ button:disabled {
   table-layout: fixed;
 }
 
+/* 放得下最長的窗口名稱（圖示＋「技巧舞步結束」6 字）不換行；更長的名稱才換行 */
 .windows-table thead th:first-child {
-  width: 7.5em;
+  width: 9.5em;
 }
 
 /* 「技能後 N 秒」窗口的秒數：小字附在名稱後 */
