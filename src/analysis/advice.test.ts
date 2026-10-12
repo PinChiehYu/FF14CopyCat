@@ -234,6 +234,12 @@ describe('generateAdvice', () => {
     expect(advice[1].at).toBe(29_000)
   })
 
+  it('does not flag GCDs used late on average', () => {
+    // Gekko（GCD）平均晚 11 秒：落後一個 GCD 之後每個 GCD 都晚，已由停手與 GCD 速度涵蓋
+    const advice = generateAdvice(input({ usage: [usage(6, 40, 40, 11_000, 40)] }))
+    expect(advice.some((a) => a.title.includes('平均比參考晚'))).toBe(false)
+  })
+
   it('highlights position differences around boss mechanics and summarises mirrored ones', () => {
     const advice = generateAdvice(
       input({

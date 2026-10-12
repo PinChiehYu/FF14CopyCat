@@ -396,7 +396,7 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, isHeal, category,
       continue
     }
 
-    // GCD 的次數差是少打 GCD 的結果，已由停手與 GCD 速度的建議涵蓋，只比較 oGCD 的次數
+    // GCD 的次數差與時間差都是少打 GCD 的結果（落後一個 GCD 之後每個 GCD 都晚），已由停手與 GCD 速度的建議涵蓋，只比較 oGCD 的次數與時機
     if (tracked.has(u.abilityId)) continue
     if (!gcd && fewer >= 2 && u.ref <= 30) {
       items.push({
@@ -406,7 +406,7 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, isHeal, category,
       })
     } else if (!gcd && fewer === 1 && u.ref <= 30) {
       slightlyFewer.push(name)
-    } else if (u.matched >= 2 && u.avgDelayMs !== null && u.avgDelayMs > LATE_COOLDOWN_MS) {
+    } else if (!gcd && u.matched >= 2 && u.avgDelayMs !== null && u.avgDelayMs > LATE_COOLDOWN_MS) {
       items.push({
         severity: 'medium',
         title: `${name} 平均比參考晚 ${seconds(u.avgDelayMs)} 秒使用`,
