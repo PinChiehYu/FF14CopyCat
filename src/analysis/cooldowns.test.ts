@@ -20,6 +20,11 @@ describe('maxUsages', () => {
     expect(maxUsages(group({ firstUseOffsetMs: 10_000 }), [], [], 200_000, [])).toBe(4)
   })
 
+  it('counts from the actual first use when no opener time is set', () => {
+    // 實例（赤魔短兵相接 0:12.9）：開場時間沒有設定時不檢查開場，13 秒起每 61.25 秒 → 13、74.25、135.5 → 3 次（190 秒內；從 0:00 起算會是 4 次）
+    expect(maxUsages(group(), [13_000], [], 190_000, [])).toBe(3)
+  })
+
   it('does not count downtime as lost', () => {
     // 50～150 秒 Boss 無法選取：61.25 的使用延到 150、之後 211.25 → 0、150、211.25 → 3 次（240 秒內）
     expect(maxUsages(group(), [0], [], 240_000, [{ start: 50_000, end: 150_000 }])).toBe(3)
@@ -57,6 +62,13 @@ describe('lateUses', () => {
 
   it('measures the first use from the expected opener time', () => {
     expect(lateUses(group({ firstUseOffsetMs: 10_000 }), [15_000], [], [])).toEqual([{ t: 15_000, lateMs: 3750 }])
+  })
+
+  it('does not check the first use when no opener time is set', () => {
+    expect(lateUses(group(), [15_000], [], [])).toEqual([])
+    expect(lateUses(group({ cooldownMs: 30_000, charges: 2 }), [13_000], [], [])).toEqual([])
+    // 之後照常：15 秒用、75 秒好，85 秒才用 → 晚 10 秒扣掉容許 1.25 秒
+    expect(lateUses(group(), [15_000, 85_000], [], [])).toEqual([{ t: 85_000, lateMs: 8750 }])
   })
 })
 

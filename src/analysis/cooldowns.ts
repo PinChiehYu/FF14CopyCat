@@ -50,7 +50,8 @@ export function maxUsages(
   const refund = group.resetBy?.refundMs ?? 0
   const pendingResets = [...resets].sort((a, b) => a - b)
   const dtUsages = uses.map((t) => inDowntime(downtime, t)).filter((w): w is Downtime => w !== undefined)
-  const expectedFirst = group.firstUseOffsetMs ?? 0
+  // 沒有設定開場時間（xivanalysis 沒有設定）的不檢查開場：從實際第一次使用起算
+  const expectedFirst = group.firstUseOffsetMs ?? uses[0] ?? 0
 
   let charges = maxCharges
   let count = 0
@@ -110,7 +111,7 @@ export interface LateUse {
 
 /**
  * 每次使用晚了多久：以實際的使用模擬充能，充能已滿（技能閒置）卻沒有使用的時間（不含停機），
- * 扣掉容許延遲後記在下一次使用上。第一次使用以預期第一次使用的時間為起點。
+ * 扣掉容許延遲後記在下一次使用上。第一次使用以預期第一次使用的時間為起點（沒有設定時不檢查）。
  */
 export function lateUses(group: CooldownGroup, uses: number[], resets: number[], downtime: Downtime[]): LateUse[] {
   const maxCharges = group.charges || 1
@@ -124,8 +125,8 @@ export function lateUses(group: CooldownGroup, uses: number[], resets: number[],
     b <= a ? 0 : b - a - downtime.reduce((sum, w) => sum + Math.max(0, Math.min(b, w.end) - Math.max(a, w.start)), 0)
 
   let charges = maxCharges
-  // 充能滿的起點（null 代表還沒滿）；開場以預期第一次使用的時間為起點
-  let fullSince: number | null = Math.max(0, group.firstUseOffsetMs ?? 0)
+  // 充能滿的起點（null 代表還沒滿）；開場以預期第一次使用的時間為起點，沒有設定時不檢查開場（第一次使用不算晚）
+  let fullSince: number | null = group.firstUseOffsetMs === undefined ? null : Math.max(0, group.firstUseOffsetMs)
   // 下一次充能完成的時間
   let nextCharge = Infinity
   const result: LateUse[] = []
