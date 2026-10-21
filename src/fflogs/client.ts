@@ -13,7 +13,7 @@ export class ApiError extends Error {
 // 仍失敗就顯示錯誤，不讓畫面一直停在載入中
 const TIMEOUT_MS = 45_000
 const TIMEOUT_MESSAGE = '伺服器沒有回應，請重新整理再試'
-export const FFLOGS_DOWN_MESSAGE = 'FFLogs 暫時無法使用（可能在維護或故障），請稍後再試'
+export const FFLOGS_DOWN_MESSAGE = 'FFLogs 暫時無法使用，請稍後再試'
 
 /** 帶逾時的 fetch；呼叫端取消時照常以 AbortError 結束，逾時則回傳 null。 */
 async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<Response | null> {
