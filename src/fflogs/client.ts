@@ -13,6 +13,7 @@ export class ApiError extends Error {
 // 仍失敗就顯示錯誤，不讓畫面一直停在載入中
 const TIMEOUT_MS = 45_000
 const TIMEOUT_MESSAGE = '伺服器沒有回應，請重新整理再試'
+export const FFLOGS_DOWN_MESSAGE = 'FFLogs 暫時無法使用（可能在維護或故障），請稍後再試'
 
 /** 帶逾時的 fetch；呼叫端取消時照常以 AbortError 結束，逾時則回傳 null。 */
 async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<Response | null> {
@@ -67,6 +68,9 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
     if (res.status === 429 || res.status === 503) {
       throw new ApiError(res.status, '請求過多，暫時無法取得資料，請稍候一分鐘再試')
     }
+    // 502：Worker 向 FFLogs 的請求失敗；FFLogs 本身回 5xx（維護或故障）時換成說明，其他照原訊息
+    const upstream = res.status === 502 ? /^FFLogs (?:token request failed|API error): (\d+)$/.exec(body?.error ?? '') : null
+    if (upstream && Number(upstream[1]) >= 500) throw new ApiError(502, FFLOGS_DOWN_MESSAGE)
     throw new ApiError(res.status, body?.error ?? `API 錯誤：${res.status}`)
   }
   return (await res.json()) as T

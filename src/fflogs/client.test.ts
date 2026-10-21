@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, DB_UNAVAILABLE_MESSAGE, dbStatus, defaultAverageTier, retryRateLimited, fetchReport, fetchTcRankings, fightNameParts, translateFightName } from './client'
+import { ApiError, DB_UNAVAILABLE_MESSAGE, FFLOGS_DOWN_MESSAGE, dbStatus, defaultAverageTier, retryRateLimited, fetchReport, fetchTcRankings, fightNameParts, translateFightName } from './client'
 
 describe('report errors', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -27,6 +27,17 @@ describe('report errors', () => {
     await expect(fetchReport('abc')).rejects.toThrow('這份報告不公開（設為私人），無法讀取')
     fail('Something else')
     await expect(fetchReport('abc')).rejects.toThrow('Something else')
+  })
+
+  it('explains that FFLogs itself is down', async () => {
+    const fail = (error: string) => vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error }, { status: 502 })))
+    fail('FFLogs token request failed: 503')
+    await expect(fetchReport('abc')).rejects.toThrow(FFLOGS_DOWN_MESSAGE)
+    fail('FFLogs API error: 500')
+    await expect(fetchReport('abc')).rejects.toThrow(FFLOGS_DOWN_MESSAGE)
+    // FFLogs 回 4xx（例如憑證錯誤）是本站的問題，照原訊息
+    fail('FFLogs token request failed: 401')
+    await expect(fetchReport('abc')).rejects.toThrow('FFLogs token request failed: 401')
   })
 })
 
