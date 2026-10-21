@@ -558,6 +558,7 @@
 - **GitHub Pages 重複部署**：Pages Source 設成 Deploy from a branch 時，GitHub 另外跑 `pages build and deployment` 把原始碼（未建置的 `index.html`）發布上去，與 Actions 的部署互相覆蓋；需改為 GitHub Actions。冒煙測試會檢查頁面是否引用 `/src/` 原始碼。
 - **Actions 變數未生效**：原本以 repo variable `API_BASE` 注入 Worker 網址，建置時讀到空值導致正式站連 `localhost:8787`；網址非機密，改寫在 `src/config.ts`。
 - **Cloudflare Secret 未部署的版本**：在儀表板刪除 Secret 而未按 Deploy 時，會產生未部署的新版本；下次 `wrangler deploy` 會以最新設定為準而使 Secret 消失。用 `npx wrangler secret list`、`versions list`、`deployments status` 檢查。
+- **授權聲明 .txt 在本機顯示亂碼**（2026-10-22）：Vite 開發伺服器送 `public/THIRD_PARTY_NOTICES.txt` 時只有 `Content-Type: text/plain`、沒有 charset，瀏覽器以系統預設編碼（繁中 Windows 為 Big5）解讀 UTF-8 而成亂碼；GitHub Pages 有 `charset=utf-8`，正式站正常。檔案開頭加 UTF-8 BOM，伺服器沒標編碼時（本機、直接開檔）也能正確顯示。
 - **wrangler login**：自動開啟瀏覽器失敗時，用 `npx wrangler login --browser=false` 取得網址讓使用者手動開啟。
 - **卡片列置中用 offsetLeft 在寬螢幕錯位**（2026-09-28）：站位差異卡片列原本以 `card.offsetLeft` 計算捲動位置，但卡片列沒有 `position`，`offsetLeft` 相對於頁面，頁面內容置中、左邊有空白時多算這段距離，播放換卡時卡片被捲到左邊只剩右半（1024 px 寬的測試畫面左邊只有 16 px，看不出來）。改用 `getBoundingClientRect()` 相對於卡片列計算。驗證方式：`document.body.style.paddingLeft = '400px'` 模擬寬螢幕，修正前中心偏 −400 px。
 - **FFLogs 護盾吸收事件的座標過時**：`absorbed` 事件的 `targetResources` 常是之前的位置，同一時間與其他事件並存時會讓位置瞬間跳回；位置取樣已排除（見技術變更紀錄 2026-09-28「位置取樣去除過時座標」）。
