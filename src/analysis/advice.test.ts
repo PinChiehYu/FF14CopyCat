@@ -506,6 +506,28 @@ describe('generateSoloAdvice', () => {
     )
     expect(advice.detail).toBe('常見問題：雷遁之術 3 次都只用了 1 次（應 2 次）；2 次都只打了 7 個 GCD（應 8 個）。對照時間軸上Meikyo Shisui期間使用的技能。')
   })
+
+  it('keeps the total wording after the window count', () => {
+    // 實例（M7S 戰士 ywfTxV4vJCqYKhGb #3）：原本寫成「猛攻 合計 2 次都只用了 2 次」
+    const window = (issues: string[], start: number) => ({ start, end: start + 10_000, gcds: 3, issues, judged: true })
+    const [advice] = generateSoloAdvice(
+      solo({
+        windows: [
+          {
+            rule: meikyo,
+            judged: 2,
+            passed: 0,
+            windows: [
+              window(['猛攻 合計只用了 2 次（應 3 次）'], 50_000),
+              window(['猛攻 合計只用了 2 次（應 3 次）'], 100_000),
+            ],
+          },
+        ],
+        potionUses: null,
+      }),
+    )
+    expect(advice.detail).toBe('常見問題：猛攻 2 次都合計只用了 2 次（應 3 次）。對照時間軸上Meikyo Shisui期間使用的技能。')
+  })
 })
 
 describe('death recap and penalty advice', () => {

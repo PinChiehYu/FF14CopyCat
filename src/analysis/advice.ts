@@ -545,7 +545,7 @@ function commonIssues(failed: { issues: string[] }[]): string {
     if (!m) return windows > 1 ? `${issue}（${windows} 次）` : issue
     // 每次的實際次數都相同時不重複列出（「雷遁之術 7 次都只用了 1 次」，而不是「只用了 1、1、1…次」）
     if (used.length > 1 && new Set(used).size === 1) {
-      const [, before, verb] = /^(.*?) ?(只(?:用|打)了 )$/.exec(m[1])!
+      const [, before, verb] = /^(.*?) ?((?:合計)?只(?:用|打)了 )$/.exec(m[1])!
       return `${before}${before ? ' ' : ''}${used.length} 次都${verb}${used[0]}${m[3]}（應 ${m[4]} ${m[5]}）`
     }
     return `${m[1]}${used.join('、')}${m[3]}（應 ${m[4]} ${m[5]}）`
