@@ -36,7 +36,8 @@ function Cell({ summary, toRef, onJump }: { summary: DotSummary; toRef: (t: numb
           <span className="dot-sep">・</span>
           {worst ? (
             <button type="button" className={`dot-clip${severity ? ` ${severity}` : ''}`} onClick={() => onJump(toRef(worst.t))}>
-              提早 {(summary.clipPerMinMs / 1000).toFixed(1)} 秒／分
+              {/* 有提早續上但四捨五入後是 0.0 時不寫 0.0 */}
+              提早 {summary.clipPerMinMs < 50 ? '不到 0.1' : (summary.clipPerMinMs / 1000).toFixed(1)} 秒／分
             </button>
           ) : (
             <span className="hint-inline">沒有提早續上</span>
