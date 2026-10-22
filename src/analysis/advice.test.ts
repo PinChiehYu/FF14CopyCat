@@ -483,6 +483,29 @@ describe('generateSoloAdvice', () => {
     )
     expect(advice.detail).toBe('常見問題：暗影鋒、暗影波動 合計只用了 3、2、4 次（應 5 次）；缺少：血亂（2 次）。對照時間軸上Meikyo Shisui期間使用的技能。')
   })
+
+  it('does not repeat the count when every window has the same shortfall', () => {
+    // 實例（M7S 忍者 QWJPF4gpBKXjrVRc #26）：原本列出「雷遁之術 只用了 1、1、1、1、1、1、1 次（應 2 次）」
+    const window = (issues: string[], start: number) => ({ start, end: start + 10_000, gcds: 3, issues, judged: true })
+    const [advice] = generateSoloAdvice(
+      solo({
+        windows: [
+          {
+            rule: meikyo,
+            judged: 3,
+            passed: 0,
+            windows: [
+              window(['雷遁之術 只用了 1 次（應 2 次）', '只打了 7 個 GCD（應 8 個）'], 50_000),
+              window(['雷遁之術 只用了 1 次（應 2 次）', '只打了 7 個 GCD（應 8 個）'], 100_000),
+              window(['雷遁之術 只用了 1 次（應 2 次）'], 150_000),
+            ],
+          },
+        ],
+        potionUses: null,
+      }),
+    )
+    expect(advice.detail).toBe('常見問題：雷遁之術 3 次都只用了 1 次（應 2 次）；2 次都只打了 7 個 GCD（應 8 個）。對照時間軸上Meikyo Shisui期間使用的技能。')
+  })
 })
 
 describe('death recap and penalty advice', () => {

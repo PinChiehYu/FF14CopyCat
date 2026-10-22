@@ -541,8 +541,15 @@ function commonIssues(failed: { issues: string[] }[]): string {
       groups.set(key, group)
     }
   }
-  const text = ({ issue, shortfall: m, used, windows }: { issue: string; shortfall: RegExpExecArray | null; used: string[]; windows: number }) =>
-    m ? `${m[1]}${used.join('、')}${m[3]}（應 ${m[4]} ${m[5]}）` : windows > 1 ? `${issue}（${windows} 次）` : issue
+  const text = ({ issue, shortfall: m, used, windows }: { issue: string; shortfall: RegExpExecArray | null; used: string[]; windows: number }) => {
+    if (!m) return windows > 1 ? `${issue}（${windows} 次）` : issue
+    // 每次的實際次數都相同時不重複列出（「雷遁之術 7 次都只用了 1 次」，而不是「只用了 1、1、1…次」）
+    if (used.length > 1 && new Set(used).size === 1) {
+      const [, before, verb] = /^(.*?) ?(只(?:用|打)了 )$/.exec(m[1])!
+      return `${before}${before ? ' ' : ''}${used.length} 次都${verb}${used[0]}${m[3]}（應 ${m[4]} ${m[5]}）`
+    }
+    return `${m[1]}${used.join('、')}${m[3]}（應 ${m[4]} ${m[5]}）`
+  }
   return [...groups.values()]
     .sort((a, b) => b.windows - a.windows)
     .slice(0, MAX_WINDOW_ISSUES)
