@@ -229,6 +229,10 @@ export const JOB_CATEGORIES: Record<string, GeneratedCategories> = {
       7498, // Third Eye
       36962, // Tengentsu
     ]),
+    movement: new Set([
+      7492, // Hissatsu: Gyoten
+      7493, // Hissatsu: Yaten
+    ]),
   },
   Reaper: {
     mitigation: new Set([

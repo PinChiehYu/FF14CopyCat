@@ -99,6 +99,7 @@ const CATEGORIES = {
   },
   Samurai: {
     mitigation: ['Third Eye', 'Tengentsu'],
+    movement: ['Hissatsu: Gyoten', 'Hissatsu: Yaten'],
   },
   Reaper: {
     mitigation: ['Arcane Crest'],
