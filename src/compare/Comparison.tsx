@@ -879,7 +879,8 @@ function Loaded({
                   <Weaving weaving={weaving} abilities={abilities} abilityName={abilityName} mineToRef={alignment.mineToRef} onJump={jumpTo} />
                 </div>
               )}
-              {fillers && fillerId !== undefined && (
+              {/* 兩邊都沒用止損技時不顯示（與穿插過多相同） */}
+              {fillers && fillerId !== undefined && (fillers.mine.length > 0 || (fillers.ref?.length ?? 0) > 0) && (
                 <div className="metric-block">
                   <Fillers
                     fillerId={fillerId}
