@@ -169,7 +169,7 @@
   - 資料來源為官方 XIVAPI `https://v2.xivapi.com/api/sheet/Action`（`language=en`）；2026-10-04 起 Boilmaster 鏡像 `xivapi-v2.xivcdn.com` 對 `language=en` 回 400「unsupported language」（只剩 tc／chs），改用官方。
   - 分頁讀取整張 Action 表（`limit=500`、`after`，約 51,500 列）。
   - **GCD**：`CooldownGroup` 或 `AdditionalCooldownGroup` 為 58 的非 PvP 玩家技能（`IsPlayerAction` 或 `ClassJobLevel > 0`），共 735 個 ID，全職業共用。
-  - **職業專屬分類**：腳本中以 7.x 英文名稱列出各職業的 ignored／mitigation／movement／utility／heal，依名稱在該職業與基本職業（例如 PLD 與 GLA）的技能中查 ID，找不到再找沒有 ClassJob 的變形技能；**名稱找不到就報錯**。
+  - **職業專屬分類**：腳本中以 7.x 英文名稱列出各職業的 ignored／mitigation／movement／utility／heal，依名稱在該職業與基本職業（例如 PLD 與 GLA）的技能中查 ID，找不到再找沒有 ClassJob 的變形技能；**名稱找不到就報錯**。名稱要與遊戲資料完全相同：占星的卡牌（the Bole、the Spire、the Ewer、the Arrow，日誌用的是 37024～37028）在 Action 表中是小寫開頭、沒有 ClassJob。
 - `jobs/index.ts`：依 generated.ts 建立 21 個職業的 `JobModule`（`isGcd` 共用 `GCD_IDS`）。之後的詳細分析可在 `jobs/` 另建檔案擴充。
 - `jobs/roleActions.ts`：職能技能分類（ignored：Provoke、Shirk、各坦姿與解除；mitigation：Rampart、Reprisal、Feint、Addle；movement：Sprint、Peloton；utility：其餘；heal：補師的 Swiftcast）與 `abilityCategory(id, job)`。heal 分類只放日誌判斷不出來的治療能力技（白魔的 Plenary Indulgence：治療記在名稱不同的 Confession 效果上；補師的即刻詠唱多用在復活與移動）；其餘治療能力技由 `compare/load.ts` 的 `healOnlyAbilities()` 依日誌判斷（施放名稱在自己的 heal 事件中出現、不在 damage 事件中出現，以名稱比對才能涵蓋治療記在同名效果上的技能，例如深謀遠慮之策）。
 - `jobs/names.ts`：`jobName(subType)`，官方繁中職業名稱（ClassJob 表 `language=tc`）。

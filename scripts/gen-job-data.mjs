@@ -74,9 +74,10 @@ const CATEGORIES = {
     heal: ['Recitation', 'Emergency Tactics', 'Fey Blessing', 'Whispering Dawn', 'Aetherpact', 'Consolation'],
   },
   Astrologian: {
-    partyMitigation: ['Collective Unconscious', 'Neutral Sect', 'Exaltation', 'Sun Sign'],
-    // 治療記在其他名稱上（星體爆發、同調的治療）
-    heal: ['Synastry', 'Earthly Star'],
+    // 世界樹之幹：給隊友的減傷卡（遊戲資料的卡牌名稱為小寫開頭、沒有職業）
+    partyMitigation: ['Collective Unconscious', 'Neutral Sect', 'Exaltation', 'Sun Sign', 'the Bole'],
+    // 治療記在其他名稱上（星體爆發、同調的治療）；建築神之塔（護盾）、河流神之瓶、放浪神之箭是給隊友的治療卡
+    heal: ['Synastry', 'Earthly Star', 'the Spire', 'the Ewer', 'the Arrow'],
   },
   Sage: {
     partyMitigation: ['Kerachole', 'Holos', 'Panhaima', 'Haima', 'Taurochole'],
