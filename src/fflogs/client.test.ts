@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, DB_UNAVAILABLE_MESSAGE, FFLOGS_DOWN_MESSAGE, dbStatus, defaultAverageTier, retryRateLimited, fetchReport, fetchTcRankings, fightNameParts, translateFightName } from './client'
+import { ApiError, DB_UNAVAILABLE_MESSAGE, FFLOGS_DOWN_MESSAGE, dbStatus, defaultAverageTier, retryRateLimited, fetchReport, fetchNpcNames, fetchTcRankings, fightNameParts, NPC_BATCH, translateFightName } from './client'
 
 describe('report errors', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -55,6 +55,24 @@ describe('translateFightName', () => {
   it('translates each part of a multi-NPC fight name and keeps unknown parts', () => {
     expect(fightNameParts('living liquid / liquid hand / ... ')).toEqual(['living liquid', 'liquid hand', '...'])
     expect(translateFightName('living liquid / liquid hand / Cruise Chaser', names)).toBe('有生命活水 / 活水之手 / Cruise Chaser')
+  })
+})
+
+describe('fetchNpcNames', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('queries at most NPC_BATCH names per request so the Worker stays under its subrequest limit', async () => {
+    const sizes: number[] = []
+    vi.stubGlobal('fetch', async (url: string) => {
+      const names = new URL(url, 'http://x').searchParams.getAll('name')
+      sizes.push(names.length)
+      return Response.json(Object.fromEntries(names.map((n) => [n, { name: `中${n}` }])))
+    })
+    const names = Array.from({ length: 29 }, (_, i) => `Boss ${i}`)
+    const result = await fetchNpcNames(names)
+    expect(sizes).toEqual([NPC_BATCH, NPC_BATCH, 29 - 2 * NPC_BATCH])
+    expect(NPC_BATCH * 4).toBeLessThanOrEqual(50)
+    expect(result.get('Boss 28')).toBe('中Boss 28')
   })
 })
 

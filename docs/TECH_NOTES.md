@@ -186,7 +186,7 @@
 
 - FFLogs 的 `fight.name` 與 NPC 角色名稱都是英文；NPC 的 `gameID`（例如 Howling Blade 為 18215）是 BNpcBase，**不是** BNpcName 表的列（查 BNpcName/18215 得 404）。
 - 因此以英文名稱搜尋：`/api/search?sheets=BNpcName&query=Singular="<name>"&language=en&limit=1`，取第一列再以 `/api/sheet/BNpcName/<row>?fields=Singular&language=tc` 取繁中；沒有時查 `chs` 以 opencc 轉繁。搜尋區分大小寫，找不到時再以全小寫重查（遊戲中部分 NPC 名稱為小寫，例如 living liquid）。
-- Worker `GET /npc-names`：`name` 參數最多 20 個，只允許 `[A-Za-z0-9 '\-.,:!&]`（避免注入搜尋語法），否則 400。回傳 `{ 英文: { name, source } }`，查不到的不回傳。
+- Worker `GET /npc-names`：`name` 參數最多 20 個（前端每批只送 12 個：每個名稱最多 4 個子請求，免費方案每個請求上限 50 個），只允許 `[A-Za-z0-9 '\-.,:!&]`（避免注入搜尋語法），否則 400。回傳 `{ 英文: { name, source } }`，查不到的不回傳。
 - 每個名稱的 xivapi 請求逾時 8 秒；有名稱逾時或失敗時仍回 200（該名稱不回傳），但回應只快取 60 秒，之後可重查。
 - 前端（`App.tsx` 的 `useReport()`）：報告載入後**先以英文顯示並可立即選擇**，另以 `fetchFightNames()` 查詢，查到後以 `translateReport()` 把 `Fight.name` 換成繁中、英文放在 `Fight.englishName`。戰鬥名稱以 `/` 拆段逐段翻譯（FFLogs 對多 NPC 的戰鬥用 `a / b / ...` 命名），不合規則的段落（如 `...`）不送出。查詢失敗時沿用英文。
 - 名稱晚到會換掉 `Selection` 物件，`Comparison.tsx` 的 `useSide()` 只依選擇的鍵（報告／戰鬥／角色 ID）重新載入，避免重抓事件。
@@ -584,6 +584,10 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-10-25 Boss 名稱查詢改為每批 12 個
+- 原因：隨機測試（ZCPgb32AWN6LKRrQ #7，報告有 57 場戰鬥、29 個名稱，含新月島的大量 NPC）的 Boss 名稱顯示英文 Howling Blade。`/npc-names` 每個名稱用 2～4 個子請求（英文搜尋、找不到時小寫重搜、繁中、沒有繁中時簡中），20 個一批時超過 Workers 免費方案每個請求 50 個子請求的上限，超過的名稱查詢丟出錯誤、不回傳（同一批重查兩次，漏掉的名稱不同：Marble Dragon、Guardian Wraith 等）；前端查不到就沿用英文。
+- 變更：前端 `NPC_BATCH` 由 20 改為 12（12 × 4 = 48 個子請求以內）。改後未快取的三批查到 27 個名稱，只有本來就查不到的 Tower Progenitor 沒有。Worker 的上限（`MAX_NPC_NAMES` 20）不變，不需部署。
 
 ### 2026-10-24 復唱很短的能力技不提少用
 - `gen-job-data.mjs` 產生 `SHORT_RECAST_ABILITY_IDS`（見「職業資料」），`usageAdvice()` 略過；名單人工檢查過，沒有真正有冷卻的輸出技能（另含各職業的追擊、卡牌、姿態切換等，後者本來就不在輸出技能的少用建議中）。

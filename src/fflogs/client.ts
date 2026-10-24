@@ -272,8 +272,9 @@ export async function fetchDamageSummary(code: string, fightId: number, actorId:
   }
 }
 
-// Worker 單次最多查詢的 NPC 名稱數
-const NPC_BATCH = 20
+// 單次查詢的 NPC 名稱數。Worker 每個名稱最多用 4 個子請求（英文搜尋、小寫重搜、繁中、簡中），
+// 免費方案每個請求上限 50 個子請求，20 個名稱一批時超過上限的名稱會查不到（Boss 名稱顯示英文）
+export const NPC_BATCH = 12
 
 // 與 Worker 的驗證一致：只查一般的英文名稱
 const NPC_NAME = /^[A-Za-z0-9 '\-.,:!&]{1,80}$/
