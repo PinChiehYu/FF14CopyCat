@@ -169,6 +169,20 @@ const gcdTiming = Object.fromEntries(
 
 // 極限技（非 PvP）：技能使用次數不計入
 const categoryOf = (f) => f.ActionCategory?.value ?? f.ActionCategory?.row_id
+// 復唱很短（10 秒以內）的能力技：限制次數的是量譜、資源或前一招，不是冷卻（例如壞死爆發、夜遊魂切割、天龍點睛、各職業的追擊）。
+// 「少用」建議不以冷卻判斷這些技能（見 analysis/advice.ts）；最短的真正冷卻技約 15 秒（例如失血箭）
+const ABILITY_CATEGORY = 4
+const SHORT_RECAST_MAX_100MS = 100
+const shortRecast = rows
+  .filter(
+    (r) =>
+      isPlayerSkill(r.fields) &&
+      categoryOf(r.fields) === ABILITY_CATEGORY &&
+      r.fields.CooldownGroup !== GCD_GROUP &&
+      r.fields.Recast100ms > 0 &&
+      r.fields.Recast100ms <= SHORT_RECAST_MAX_100MS,
+  )
+  .map((r) => r.row_id)
 const limitBreaks = rows.filter((r) => !r.fields.IsPvP && LIMIT_BREAK_CATEGORIES.includes(categoryOf(r.fields))).map((r) => r.row_id)
 if (limitBreaks.length === 0) {
   console.error('找不到極限技（ActionCategory 欄位格式可能改變）')
@@ -211,6 +225,11 @@ export const GCD_IDS: ReadonlySet<number> = new Set(${JSON.stringify(gcd)})
  * 穿插能力技的判斷用（見 analysis/weaving.ts）。
  */
 export const GCD_TIMING: Readonly<Record<number, readonly [number, number]>> = ${JSON.stringify(gcdTiming)}
+
+/**
+ * 復唱 ${SHORT_RECAST_MAX_100MS / 10} 秒以內的能力技（非 PvP），共 ${shortRecast.length} 個：次數取決於量譜、資源或前一招，不是冷卻。
+ */
+export const SHORT_RECAST_ABILITY_IDS: ReadonlySet<number> = new Set(${JSON.stringify(shortRecast)})
 
 /** 極限技（ActionCategory 為 Limit Break、非 PvP），共 ${limitBreaks.length} 個。 */
 export const LIMIT_BREAK_IDS: ReadonlySet<number> = new Set(${JSON.stringify(limitBreaks)})

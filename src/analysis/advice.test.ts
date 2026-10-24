@@ -64,6 +64,11 @@ describe('heal abilities', () => {
     expect(generateAdvice(input({ usage: [usage(7, 0, 17), usage(8, 0, 5)] })).some((a) => a.title.includes('少用'))).toBe(false)
   })
 
+  it('does not advise on fewer uses of resource spenders', () => {
+    // 實例（M5S 召喚 KBNwtyZbLrq38pX6 #19）：壞死爆發（36990，復唱 1 秒、消耗以太超流）原本列為「少用 4 次（冷卻好就用）」
+    expect(generateAdvice(input({ usage: [usage(36990, 16, 20)] })).some((a) => a.title.includes('少用'))).toBe(false)
+  })
+
   it('lists missed follow-ups instead of fewer follow-up uses', () => {
     // 實例（M5S 蝰蛇 RAF1TJmjd9QKbnxz #12）：飛蛇連尾擊（34644）原本列為「少用 3 次（冷卻好就用）」
     const advice = generateAdvice(

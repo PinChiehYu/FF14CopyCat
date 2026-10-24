@@ -169,6 +169,7 @@
   - 資料來源為官方 XIVAPI `https://v2.xivapi.com/api/sheet/Action`（`language=en`）；2026-10-04 起 Boilmaster 鏡像 `xivapi-v2.xivcdn.com` 對 `language=en` 回 400「unsupported language」（只剩 tc／chs），改用官方。
   - 分頁讀取整張 Action 表（`limit=500`、`after`，約 51,500 列）。
   - **GCD**：`CooldownGroup` 或 `AdditionalCooldownGroup` 為 58 的非 PvP 玩家技能（`IsPlayerAction` 或 `ClassJobLevel > 0`），共 735 個 ID，全職業共用。
+  - **復唱很短的能力技**（`SHORT_RECAST_ABILITY_IDS`）：ActionCategory 為 Ability、不在公共冷卻群組、`Recast100ms` 在 1～100（10 秒以內）的非 PvP 玩家技能，194 個；多為消耗量譜或資源的技能與追擊（最短的真正冷卻技約 15 秒，例如失血箭）。`advice.ts` 的 `usageAdvice()` 不對這些技能提少用或較晚使用。
   - **職業專屬分類**：腳本中以 7.x 英文名稱列出各職業的 ignored／mitigation／movement／utility／heal，依名稱在該職業與基本職業（例如 PLD 與 GLA）的技能中查 ID，找不到再找沒有 ClassJob 的變形技能；**名稱找不到就報錯**。名稱要與遊戲資料完全相同：占星的卡牌（the Bole、the Spire、the Ewer、the Arrow，日誌用的是 37024～37028）在 Action 表中是小寫開頭、沒有 ClassJob。
 - `jobs/index.ts`：依 generated.ts 建立 21 個職業的 `JobModule`（`isGcd` 共用 `GCD_IDS`）。之後的詳細分析可在 `jobs/` 另建檔案擴充。
 - `jobs/roleActions.ts`：職能技能分類（ignored：Provoke、Shirk、各坦姿與解除；mitigation：Rampart、Reprisal、Feint、Addle；movement：Sprint、Peloton；utility：其餘；heal：補師的 Swiftcast）與 `abilityCategory(id, job)`。heal 分類只放日誌判斷不出來的治療能力技（白魔的 Plenary Indulgence：治療記在名稱不同的 Confession 效果上；補師的即刻詠唱多用在復活與移動）；其餘治療能力技由 `compare/load.ts` 的 `healOnlyAbilities()` 依日誌判斷（施放名稱在自己的 heal 事件中出現、不在 damage 事件中出現，以名稱比對才能涵蓋治療記在同名效果上的技能，例如深謀遠慮之策）。
@@ -583,6 +584,9 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-10-24 復唱很短的能力技不提少用
+- `gen-job-data.mjs` 產生 `SHORT_RECAST_ABILITY_IDS`（見「職業資料」），`usageAdvice()` 略過；名單人工檢查過，沒有真正有冷卻的輸出技能（另含各職業的追擊、卡牌、姿態切換等，後者本來就不在輸出技能的少用建議中）。
 
 ### 2026-10-24 追擊漏接（`jobs/followUpRules.ts`、`analysis/followUps.ts`）
 - `FOLLOW_UP_RULES`：各職業「前一招 → 追擊」的對照（蝰蛇 12 條、絕槍 5 條），技能 ID 以官方 XIVAPI 依英文名稱查證（追擊沒有 ClassJob，例如 Uncoiled Twinfang 34644）。`followUpResults()` 對每次前一招，在下一次前一招之前、`FOLLOW_UP_WITHIN_MS`（10 秒）內找追擊，沒有就記為漏接；一次追擊不會同時算給兩次前一招。`advice.ts` 的 `followUpAdvice()` 只看自己的日誌，`usageAdvice()` 不再對 `FOLLOW_UP_IDS` 提「少用」。

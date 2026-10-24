@@ -24,6 +24,7 @@ import type { DeathRecap } from './damageTaken'
 import type { BurstAlignment } from './raidBuffs'
 import type { FollowUpResult } from './followUps'
 import { FOLLOW_UP_IDS } from '../jobs/followUpRules'
+import { SHORT_RECAST_ABILITY_IDS } from '../jobs/generated'
 
 export type Severity = 'high' | 'medium' | 'low'
 
@@ -389,6 +390,8 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, isHeal, category,
 
     // 止損技另由 fillerAdvice 依時間與參考比較；追擊由 followUpAdvice 與自己的前一招比較（次數跟著前一招，不是冷卻）
     if (isRangedFiller(u.abilityId) || FOLLOW_UP_IDS.has(u.abilityId)) continue
+    // 復唱很短的能力技（消耗量譜或資源，例如壞死爆發、夜遊魂切割、天龍點睛）：次數取決於資源，「冷卻好就用」不適用，不比次數與時機
+    if (SHORT_RECAST_ABILITY_IDS.has(u.abilityId)) continue
 
     if (gcd && u.ref === 0 && u.mine >= 3) {
       const first = firstUse(u.abilityId)
