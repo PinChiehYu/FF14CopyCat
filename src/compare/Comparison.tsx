@@ -46,6 +46,8 @@ import { Mechanics, MechanicsHeading } from './Mechanics'
 import { focusChecker, useIgnoredOccurrences } from './focusedMechanics'
 import { Dots, DotsHeading } from './Dots'
 import { Fillers } from './Fillers'
+import { FOLLOW_UP_RULES } from '../jobs/followUpRules'
+import { followUpResults } from '../analysis/followUps'
 import { Weaving } from './Weaving'
 import { lossFillerTimes, RANGED_FILLERS } from '../jobs/rangedFillers'
 import { DOT_RULES, fflogsStatusId } from '../jobs/dotRules'
@@ -687,6 +689,11 @@ function Loaded({
       deathRecap(d, mineInRange.damageTaken, refHits && { hits: refHits, deaths: refInRange.deaths }, alignment.mineToRef),
     )
   }, [mineInRange, refInRange, partial, alignment])
+  // 追擊漏接：只看我的日誌（與自己的前一招比）
+  const followUps = useMemo(
+    () => followUpResults(FOLLOW_UP_RULES[mine.selection.player.subType] ?? [], mineInRange.playerCasts),
+    [mine, mineInRange],
+  )
   const advice = useMemo(() => {
     const soloInput: Parameters<typeof generateSoloAdvice>[0] = {
         abilityName,
@@ -706,6 +713,7 @@ function Loaded({
         fillerId,
         deathRecaps,
         bursts: bursts ?? undefined,
+        followUps,
     }
     if (solo) return generateSoloAdvice(soloInput)
     const compareInput: Parameters<typeof generateAdvice>[0] = {
@@ -735,10 +743,11 @@ function Loaded({
       fillerId,
       deathRecaps,
       bursts: bursts ?? undefined,
+      followUps,
       penalties: { mine: mergeOverlapping(mineInRange.bossDebuffs.filter((b) => englishName(b.statusId) === 'Damage Down')) },
     }
     return average ? generateAverageAdvice(soloInput, compareInput) : generateAdvice(compareInput)
-  }, [average, bursts, deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving])
+  }, [average, bursts, deathRecaps, solo, compareEnd, gcd, lost, usage, positions, englishName, abilityName, job, category, alignment, mineInRange, mechanics, windows, mine, reference, cooldowns, dots, fillers, fillerId, weaving, followUps])
 
   // 目前檢視的參考時間（站位圖、當下狀態、時間軸游標）
   const [cursor, setCursor] = useState(0)

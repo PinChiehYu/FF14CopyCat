@@ -64,6 +64,19 @@ describe('heal abilities', () => {
     expect(generateAdvice(input({ usage: [usage(7, 0, 17), usage(8, 0, 5)] })).some((a) => a.title.includes('少用'))).toBe(false)
   })
 
+  it('lists missed follow-ups instead of fewer follow-up uses', () => {
+    // 實例（M5S 蝰蛇 RAF1TJmjd9QKbnxz #12）：飛蛇連尾擊（34644）原本列為「少用 3 次（冷卻好就用）」
+    const advice = generateAdvice(
+      input({
+        usage: [usage(34644, 17, 20)],
+        followUps: [{ rule: { key: 'uncoiled-twinfang', parents: [34633], followUp: [34644] }, parents: 19, missed: [372_000, 580_000] }],
+      }),
+    )
+    expect(advice.map((a) => [a.kind, a.severity, a.title, a.detail])).toEqual([
+      ['followUp', 'high', '#34644 漏接 2 次（#34633 用了 19 次）', '6:12.0、9:40.0：用了#34633之後沒有接#34644。追擊沒有冷卻，前一招之後就要用，漏接等於少一次傷害。'],
+    ])
+  })
+
   it('treats abilities the job data marks as heals the same way', () => {
     // 補師的即刻詠唱（7561）：日誌判斷不出來，由職業資料分類
     const ast = getJob('Astrologian')!

@@ -22,6 +22,8 @@ import { compareFillers, isRangedFiller } from '../jobs/rangedFillers'
 import { weavingSeverity, type BadWeave } from './weaving'
 import type { DeathRecap } from './damageTaken'
 import type { BurstAlignment } from './raidBuffs'
+import type { FollowUpResult } from './followUps'
+import { FOLLOW_UP_IDS } from '../jobs/followUpRules'
 
 export type Severity = 'high' | 'medium' | 'low'
 
@@ -42,6 +44,7 @@ export type AdviceKind =
   | 'movement'
   | 'weave'
   | 'filler'
+  | 'followUp'
   | 'position'
   | 'penalty'
 
@@ -77,7 +80,7 @@ export const ADVICE_GROUPS: { key: string; label: string; kinds: AdviceKind[] }[
   // 爆發沒對上團隊 Buff：與技能窗口同屬「爆發期打得好不好」
   { key: 'window', label: '技能窗口與團隊 Buff', kinds: ['window', 'burst'] },
   // 止損技（威力低的遠程 GCD）直接少了輸出，與技能使用放在同一組
-  { key: 'usage', label: '技能與強化藥', kinds: ['potion', 'cooldown', 'filler', 'usage'] },
+  { key: 'usage', label: '技能與強化藥', kinds: ['potion', 'cooldown', 'followUp', 'filler', 'usage'] },
   { key: 'dot', label: 'DoT', kinds: ['dot'] },
   { key: 'mitigation', label: '減傷、治療與移動', kinds: ['partyMitigation', 'mitigation', 'heal', 'movement'] },
   { key: 'prepull', label: '開打前', kinds: ['prepull'] },
@@ -170,6 +173,8 @@ export interface AdviceInput {
   penalties?: { mine: { start: number; end: number }[] }
   /** 我的爆發與團隊 Buff 的對齊（只看我的日誌；我的時間） */
   bursts?: BurstAlignment[]
+  /** 我的追擊漏接（見 analysis/followUps.ts；我的時間） */
+  followUps?: FollowUpResult[]
 }
 
 /** 同一條 DoT 規則兩邊的結果；沒有參考時 ref 為 null */
@@ -382,8 +387,8 @@ function usageAdvice({ usage, abilityName, englishName, isGcd, isHeal, category,
       continue
     }
 
-    // 止損技另由 fillerAdvice 依時間與參考比較
-    if (isRangedFiller(u.abilityId)) continue
+    // 止損技另由 fillerAdvice 依時間與參考比較；追擊由 followUpAdvice 與自己的前一招比較（次數跟著前一招，不是冷卻）
+    if (isRangedFiller(u.abilityId) || FOLLOW_UP_IDS.has(u.abilityId)) continue
 
     if (gcd && u.ref === 0 && u.mine >= 3) {
       const first = firstUse(u.abilityId)
@@ -824,6 +829,8 @@ export interface SoloAdviceInput {
   deathRecaps?: DeathRecap[]
   /** 我的爆發與團隊 Buff 的對齊（我的時間） */
   bursts?: BurstAlignment[]
+  /** 我的追擊漏接（我的時間） */
+  followUps?: FollowUpResult[]
 }
 
 /**
@@ -946,6 +953,7 @@ export function generateSoloAdvice(input: SoloAdviceInput): Advice[] {
   }
 
   items.push(...burstAdvice(input.bursts, abilityName, (t) => t))
+  items.push(...followUpAdvice(input.followUps, abilityName, (t) => t))
 
   if (input.potionUses === 0) {
     items.push({
@@ -978,6 +986,28 @@ export function generateAverageAdvice(solo: SoloAdviceInput, compare: AdviceInpu
   ])
 }
 
+/**
+ * 追擊漏接：前一招之後一定要接的追擊（例如飛蛇之牙 → 飛蛇連尾擊）沒有接上，只看自己的日誌（與自己的前一招比）。
+ * 漏接 2 次以上為優先。
+ */
+function followUpAdvice(results: FollowUpResult[] | undefined, abilityName: (id: number) => string, mineToRef: (t: number) => number): Advice[] {
+  return (results ?? [])
+    .filter((r) => r.missed.length > 0)
+    .map((r) => {
+      const follow = abilityName(r.rule.followUp[0])
+      const parents = [...new Set(r.rule.parents.map(abilityName))].join('／')
+      const listed = r.missed.slice(0, MAX_LISTED_TIMES).map(formatFightTime).join('、')
+      const more = r.missed.length > MAX_LISTED_TIMES ? ` 等 ${r.missed.length} 次` : ''
+      return {
+        kind: 'followUp' as const,
+        severity: r.missed.length >= 2 ? ('high' as const) : ('medium' as const),
+        title: `${follow} 漏接 ${r.missed.length} 次（${parents} 用了 ${r.parents} 次）`,
+        detail: `${listed}${more}：用了${parents}之後沒有接${follow}。追擊沒有冷卻，前一招之後就要用，漏接等於少一次傷害。`,
+        at: mineToRef(r.missed[0]),
+      }
+    })
+}
+
 /** 依各階段的分析結果產生規則式建議，依重要性排序。 */
 export function generateAdvice(input: AdviceInput): Advice[] {
   const items = [
@@ -993,6 +1023,7 @@ export function generateAdvice(input: AdviceInput): Advice[] {
     ...tag('penalty', penaltyAdvice(input)),
     ...tag('weave', weavingAdvice(input)),
     ...tag('filler', fillerAdvice(input)),
+    ...followUpAdvice(input.followUps, input.abilityName, input.mineToRef),
     ...tag('position', positionAdvice(input)),
   ]
   // 穩定排序：同等級維持產生順序（死亡 → 停手 → GCD 速度 → 冷卻技 → DoT → 技能窗口 → 開打前 → 技能 → 站位）
