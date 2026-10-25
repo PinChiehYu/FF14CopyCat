@@ -192,11 +192,10 @@ export function defaultAverageTier(pr: number | null): AverageTier {
 
 /** 各 PR 區間可用的樣本數（區間按鈕上顯示） */
 export function fetchAverageTierCounts(
-  query: { encounter: number; difficulty: number; job: string; slot?: 'MT' | 'ST' },
+  query: { encounter: number; difficulty: number; job: string },
   signal?: AbortSignal,
 ): Promise<Record<AverageTier, number>> {
   const params = new URLSearchParams({ encounter: String(query.encounter), difficulty: String(query.difficulty), job: query.job })
-  if (query.slot) params.set('slot', query.slot)
   return get(`/average-tiers?${params}`, signal)
 }
 
@@ -219,14 +218,13 @@ export interface AverageSampleData {
 }
 
 /**
- * 一個 Boss×職業（坦克再分 MT／ST）×PR 區間的前輩平均樣本：count 為區間內的擊殺數，updatedAt 為最近一次選樣本的時間。
+ * 一個 Boss×職業（坦克不分 MT／ST）×PR 區間的前輩平均樣本：count 為區間內的擊殺數，updatedAt 為最近一次選樣本的時間。
  */
 export function fetchAverageSamples(
-  query: { encounter: number; difficulty: number; job: string; tier: AverageTier; slot?: 'MT' | 'ST' },
+  query: { encounter: number; difficulty: number; job: string; tier: AverageTier },
   signal?: AbortSignal,
 ): Promise<{ count: number; updatedAt: number | null; samples: AverageSampleData[] }> {
   const params = new URLSearchParams({ encounter: String(query.encounter), difficulty: String(query.difficulty), job: query.job, tier: query.tier })
-  if (query.slot) params.set('slot', query.slot)
   return get(`/average-samples?${params}`, signal)
 }
 

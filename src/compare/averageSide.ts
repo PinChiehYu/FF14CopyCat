@@ -5,9 +5,8 @@ import { averageCasts } from '../analysis/averageLog'
 import { decodeCasts } from '../analysis/castCodec'
 import { mainMechanicGroups } from '../analysis/mainMechanics'
 import { gcdStats, type GcdStats } from '../analysis/metrics'
-import { fetchAutoAttacksTaken, fetchAverageSamples, fetchAverageTierCounts, AVERAGE_TIERS, type AverageSampleData, type AverageTier } from '../fflogs/client'
+import { fetchAverageSamples, fetchAverageTierCounts, AVERAGE_TIERS, type AverageSampleData, type AverageTier } from '../fflogs/client'
 import { getJob } from '../jobs'
-import { jobRole } from '../jobs/names'
 import type { Selection, SideData } from './load'
 
 /**
@@ -31,8 +30,6 @@ export interface AverageInfo {
   rdps: number | null
   /** 樣本中最常見的版本 */
   patch: string | null
-  /** 坦克的 MT／ST（依我這場判斷） */
-  slot: 'MT' | 'ST' | null
   /** GCD 數、間隔與空檔：每位樣本在比較範圍內各自計算後取中位數（合成的 GCD 位置取中位數時間，間隔會有誤差）；沒有職業模組時為 null */
   gcd: GcdStats | null
 }
@@ -53,14 +50,7 @@ function mostCommon(values: string[]): string | null {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 }
 
-/** 我這場坦克的 MT／ST：承受的 Boss 普通攻擊傷害在全隊最多者為 MT（與 Worker 的 tankSlot 相同） */
-async function tankSlot(mine: Selection, signal: AbortSignal): Promise<'MT' | 'ST'> {
-  const taken = await fetchAutoAttacksTaken(mine.report.code, mine.fight.id, signal)
-  const own = taken.get(mine.player.id) ?? 0
-  return own > 0 && [...taken.values()].every((v) => v <= own) ? 'MT' : 'ST'
-}
-
-/** 我這場的 Boss×職業（坦克再分 MT／ST）各 PR 區間可用的樣本數；查詢中或失敗時為 null（按鈕不顯示數字） */
+/** 我這場的 Boss×職業（坦克不分 MT／ST）各 PR 區間可用的樣本數；查詢中或失敗時為 null（按鈕不顯示數字） */
 export function useAverageTierCounts(mine: Selection | null): Record<AverageTier, number> | null {
   const [state, setState] = useState<{ key: string; counts: Record<AverageTier, number> } | null>(null)
   const key = mine ? `${mine.report.code}/${mine.fight.id}/${mine.player.id}` : null
@@ -74,11 +64,7 @@ export function useAverageTierCounts(mine: Selection | null): Record<AverageTier
     const controller = new AbortController()
     ;(async () => {
       const { fight, player } = mine
-      const slot = jobRole(player.subType) === 'tank' ? await tankSlot(mine, controller.signal) : undefined
-      const counts = await fetchAverageTierCounts(
-        { encounter: fight.encounterID, difficulty: fight.difficulty ?? 0, job: player.subType, slot },
-        controller.signal,
-      )
+      const counts = await fetchAverageTierCounts({ encounter: fight.encounterID, difficulty: fight.difficulty ?? 0, job: player.subType }, controller.signal)
       if (!controller.signal.aborted) setState({ key, counts })
     })().catch(() => {}) // 查不到就不顯示數字
     return () => controller.abort()
@@ -152,11 +138,7 @@ export function useAverageReference(mine: SideData | undefined, tier: AverageTie
     set({ status: 'loading' })
     ;(async () => {
       const { fight, player } = mine.selection
-      const slot = jobRole(player.subType) === 'tank' ? await tankSlot(mine.selection, controller.signal) : null
-      const data = await fetchAverageSamples(
-        { encounter: fight.encounterID, difficulty: fight.difficulty ?? 0, job: player.subType, tier, slot: slot ?? undefined },
-        controller.signal,
-      )
+      const data = await fetchAverageSamples({ encounter: fight.encounterID, difficulty: fight.difficulty ?? 0, job: player.subType, tier }, controller.signal)
       const { side, used, gcd } = data.samples.length > 0 ? averageSide(mine, data.samples) : { side: null, used: 0, gcd: null }
       set({
         status: 'ready',
@@ -169,7 +151,6 @@ export function useAverageReference(mine: SideData | undefined, tier: AverageTie
           used,
           rdps: median(data.samples.map((s) => s.rdps)),
           patch: mostCommon(data.samples.map((s) => s.patch)),
-          slot,
           gcd,
         },
       })

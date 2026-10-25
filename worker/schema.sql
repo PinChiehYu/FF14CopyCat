@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS pull_queue (
 );
 CREATE INDEX IF NOT EXISTS pull_queue_order ON pull_queue (priority DESC, report_start DESC);
 
--- 預處理：已收錄坦克在該場的 MT／ST（承受 Boss 普通攻擊較多者為 MT），前輩平均依此分開選樣本
+-- 已收錄坦克在該場的 MT／ST（承受 Boss 普通攻擊較多者為 MT）。2026-10-25 起前輩平均不分 MT／ST，不再寫入（舊資料隨報告移除時刪除）
 CREATE TABLE IF NOT EXISTS tank_slots (
   report TEXT NOT NULL,
   fight INTEGER NOT NULL,
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS tank_slots (
   PRIMARY KEY (report, fight, actor)
 );
 
--- 前輩平均的樣本：每個 Boss×職業（坦克再分 MT／ST）×PR 區間（top 95+／upper 75–94／mid 50–74）最多 30 筆，
+-- 前輩平均的樣本（slot 一律為空字串：坦克不分 MT／ST；2026-10-25 以前的 MT／ST 舊列在輪替重新選樣本時換掉）：每個 Boss×職業×PR 區間（top 95+／upper 75–94／mid 50–74）最多 30 筆，
 -- 由 timelines.ts 的 refreshSamples() 定時選取（穩定選取：仍在區間 ±3 內的保留）
 CREATE TABLE IF NOT EXISTS average_samples (
   encounter INTEGER NOT NULL,

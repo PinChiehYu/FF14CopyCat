@@ -3,7 +3,7 @@ import { memoryDb } from './testDb.node.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decodeCasts, decodeWindows } from '../../src/analysis/castCodec.ts'
 import type { DbLike, Graphql } from './crawler.ts'
-import { AUTO_ATTACKS_TAKEN_QUERY, CRON_EVENTS_QUERY } from './queries.ts'
+import { CRON_EVENTS_QUERY } from './queries.ts'
 import {
   averageSamples,
   averageTierCounts,
@@ -14,7 +14,6 @@ import {
   timelineWork,
   selectTier,
   storedTimelines,
-  tankSlot,
   type Candidate,
 } from './timelines.ts'
 
@@ -67,17 +66,6 @@ describe('timeline extraction', () => {
       { t: 4000, abilityId: 1_049_234 },
     ])
   })
-
-  it('marks the tank that took the most auto-attacks as MT', () => {
-    const taken = [
-      { id: 1, total: 900 },
-      { id: 2, total: 300 },
-      { id: 3, total: 20 },
-    ]
-    expect(tankSlot(1, taken)).toBe('MT')
-    expect(tankSlot(2, taken)).toBe('ST')
-    expect(tankSlot(9, [])).toBe('ST')
-  })
 })
 
 describe('selectTier', () => {
@@ -125,21 +113,20 @@ describe('selectTier', () => {
 })
 
 describe('refreshSamples', () => {
-  it('selects samples per tier, splits tanks by MT/ST and skips excluded kills', async () => {
+  it('selects samples per tier, tanks without splitting MT/ST, and skips excluded kills', async () => {
     const db = memoryDb()
     await addParse(db, 'AAA', 1, 1, 'Samurai', 30000)
     await addParse(db, 'BBB', 1, 2, 'Samurai', 20000)
     await addParse(db, 'CCC', 1, 3, 'Samurai', 10000)
     await addParse(db, 'AAA', 1, 4, 'Paladin', 30000)
     await addParse(db, 'BBB', 1, 5, 'Paladin', 20000)
-    // 死亡的樣本排除；坦克只有判斷過 MT／ST 的才選
+    // 死亡的樣本排除；坦克不分 MT／ST（沒有 tank_slots 也選）
     await db.prepare("INSERT INTO sample_data VALUES ('CCC', 1, 3, '', '', '', 1, 1)").run()
-    await db.prepare("INSERT INTO tank_slots VALUES ('AAA', 1, 4, 'MT')").run()
     expect(await refreshSamples(db, NOW, 4)).toBe(2)
     const rows = (await db.prepare('SELECT job, slot, tier, actor FROM average_samples ORDER BY job, actor').all<{ job: string; slot: string; tier: string; actor: number }>()).results
     // 武士：3 人 PR 100／50／0 → 100 在 top、50 在 mid（0 分以下不選），死亡的 CCC 排除
     expect(rows).toEqual([
-      { job: 'Paladin', slot: 'MT', tier: 'top', actor: 4 },
+      { job: 'Paladin', slot: '', tier: 'top', actor: 4 },
       { job: 'Samurai', slot: '', tier: 'top', actor: 1 },
       { job: 'Samurai', slot: '', tier: 'mid', actor: 2 },
     ])
@@ -149,6 +136,33 @@ describe('refreshSamples', () => {
       { slot: '', tier: 'top', candidates: 1 },
       { slot: '', tier: 'upper', candidates: 0 },
     ])
+  })
+
+  it('replaces the old MT/ST samples of tanks with unsplit ones and keeps their stored data', async () => {
+    const db = memoryDb()
+    await addParse(db, 'AAA', 1, 1, 'Paladin', 30000)
+    await addParse(db, 'BBB', 1, 2, 'Paladin', 30000)
+    await addParse(db, 'CCC', 1, 3, 'Paladin', 10000)
+    // 2026-10-25 以前分開選的：AAA 在 MT、BBB 在 ST（都已預處理）；DROP 已不在排名中
+    await db
+      .prepare(
+        `INSERT INTO average_samples VALUES
+         (100, 101, 'Paladin', 'MT', 'top', 'AAA', 1, 1, 'p1', '泰坦', 30000, 100, '7.25', 1, 0),
+         (100, 101, 'Paladin', 'ST', 'top', 'BBB', 1, 2, 'p2', '泰坦', 30000, 100, '7.25', 1, 0),
+         (100, 101, 'Paladin', 'ST', 'top', 'DROP', 1, 9, 'p9', '泰坦', 1, 99, '7.25', 1, 0)`,
+      )
+      .run()
+    await db.prepare("INSERT INTO sample_data VALUES ('AAA', 1, 1, 'a', '', '', 0, 1), ('BBB', 1, 2, 'b', '', '', 0, 1), ('DROP', 1, 9, 'x', '', '', 0, 1)").run()
+    await db.prepare("INSERT INTO sample_tiers VALUES (100, 101, 'Paladin', 'MT', 'top', 1, 1), (100, 101, 'Paladin', 'ST', 'top', 2, 1)").run()
+    await refreshSamples(db, NOW)
+    // 兩位都留在 top（合併成一組、不必重新預處理），換掉的 DROP 連同預處理資料刪除
+    const rows = (await db.prepare('SELECT slot, tier, report, pending FROM average_samples ORDER BY report').all()).results
+    expect(rows).toEqual([
+      { slot: '', tier: 'top', report: 'AAA', pending: 0 },
+      { slot: '', tier: 'top', report: 'BBB', pending: 0 },
+    ])
+    expect((await db.prepare('SELECT report FROM sample_data ORDER BY report').all()).results).toEqual([{ report: 'AAA' }, { report: 'BBB' }])
+    expect((await db.prepare('SELECT DISTINCT slot FROM sample_tiers').all()).results).toEqual([{ slot: '' }])
   })
 
   it('drops the stored data of kills that are no longer samples but keeps the death markers', async () => {
@@ -210,18 +224,16 @@ describe('refreshSamples', () => {
 })
 
 describe('processTimelines', () => {
-  it('stores samples first, then boss casts and tank slots of new pulls (pulls with samples first)', async () => {
+  it('stores samples first, then boss casts of new pulls (pulls with samples first)', async () => {
     const db = memoryDb()
-    await addParse(db, 'NEW', 1, 1, 'Paladin', 30000, NOW - 1000)
+    // 騎士 NEW/1 的 PR 為 0（不選），OLD 有武士與騎士的樣本
+    await addParse(db, 'NEW', 1, 1, 'Paladin', 10000, NOW - 1000)
     await addParse(db, 'OLD', 3, 2, 'Samurai', 30000, NOW - 86_400_000)
+    await addParse(db, 'OLD', 3, 3, 'Paladin', 30000, NOW - 86_400_000)
     const calls: string[] = []
     const filters = new Set<string>()
     const graphql: Graphql = async <T>(query: string, variables: Record<string, unknown>) => {
       if (query.includes('rateLimitData')) return { rateLimitData: { pointsSpentThisHour: 100 } } as T
-      if (query === AUTO_ATTACKS_TAKEN_QUERY) {
-        calls.push(`auto ${variables.code}`)
-        return { reportData: { report: { table: { data: { entries: [{ id: 1, total: 500 }, { id: 9, total: 400 }] } } } } } as T
-      }
       if (query === CRON_EVENTS_QUERY) {
         calls.push(variables.sourceID ? `All ${variables.code}/${variables.sourceID}` : `${variables.hostilityType} ${variables.code}`)
         // 只取需要的事件類型（不含傷害與治療）
@@ -230,9 +242,9 @@ describe('processTimelines', () => {
           variables.hostilityType === 'Enemies'
             ? [{ timestamp: 20_000, type: 'cast', abilityGameID: 500 }]
             : [
-                { timestamp: 21_000, type: 'cast', sourceID: 2, abilityGameID: 7477 },
-                { timestamp: 22_000, type: 'applybuff', sourceID: 2, targetID: 2, abilityGameID: 1_001_233 },
-                { timestamp: 30_000, type: 'removebuff', sourceID: 2, targetID: 2, abilityGameID: 1_001_233 },
+                { timestamp: 21_000, type: 'cast', sourceID: variables.sourceID, abilityGameID: 7477 },
+                { timestamp: 22_000, type: 'applybuff', sourceID: variables.sourceID, targetID: variables.sourceID, abilityGameID: 1_001_233 },
+                { timestamp: 30_000, type: 'removebuff', sourceID: variables.sourceID, targetID: variables.sourceID, abilityGameID: 1_001_233 },
               ]
         return { reportData: { report: { events: { data, nextPageTimestamp: null } } } } as T
       }
@@ -243,26 +255,25 @@ describe('processTimelines', () => {
       "type = 'cast'",
       "type in ('cast', 'combatantinfo', 'applybuff', 'removebuff', 'applydebuff', 'removedebuff', 'refreshdebuff', 'death')",
     ])
-    // 選樣本：武士 OLD/3/2 在 top；騎士還沒判斷 MT／ST，這次不選
-    expect(result).toEqual({ selected: 2, pulls: 2, samples: 1, failed: 0, hourPoints: 100 })
+    // 選樣本：武士 OLD/3/2、騎士 OLD/3/3 在 top（坦克不分 MT／ST，不再查承受的普通攻擊）
+    expect(result).toEqual({ selected: 2, pulls: 2, samples: 2, failed: 0, hourPoints: 100 })
     // 樣本先處理；新場次中含樣本的（OLD）優先於較新的報告（NEW）
-    expect(calls).toEqual(['All OLD/2', 'Enemies OLD', 'Enemies NEW', 'auto NEW'])
-    const sample = await db.prepare('SELECT casts, buffs, deaths FROM sample_data').first<{ casts: string; buffs: string; deaths: number }>()
+    expect(calls).toEqual(['All OLD/2', 'All OLD/3', 'Enemies OLD', 'Enemies NEW'])
+    const sample = await db.prepare('SELECT casts, buffs, deaths FROM sample_data WHERE actor = 2').first<{ casts: string; buffs: string; deaths: number }>()
     expect(decodeCasts(sample!.casts)).toEqual([{ t: 11_000, abilityId: 7477 }])
     expect(decodeWindows(sample!.buffs)).toEqual([{ statusId: 1_001_233, start: 12_000, end: 20_000, prepull: false, openEnded: false }])
     expect(sample!.deaths).toBe(0)
-    const slot = await db.prepare("SELECT slot FROM tank_slots WHERE report = 'NEW'").first<{ slot: string }>()
-    expect(slot?.slot).toBe('MT')
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM tank_slots').first()).toEqual({ n: 0 })
     // 處理完的場次移出佇列、樣本不再列為待處理
     expect(await db.prepare('SELECT COUNT(*) AS n FROM pull_queue').first()).toEqual({ n: 0 })
-    expect(await db.prepare('SELECT pending FROM average_samples').first()).toEqual({ pending: 0 })
+    expect(await db.prepare('SELECT SUM(pending) AS n FROM average_samples').first()).toEqual({ n: 0 })
     // 讀取：樣本已預處理、該場有 Boss 施放
-    const read = await averageSamples(db, { encounter: 100, difficulty: 101, job: 'Samurai', slot: '', tier: 'top' })
+    const read = await averageSamples(db, { encounter: 100, difficulty: 101, job: 'Samurai', tier: 'top' })
     expect(read.count).toBe(1)
     expect(read.updatedAt).toBe(NOW)
     expect(read.samples.map((s) => [s.name, s.pr, s.duration, decodeCasts(s.boss)])).toEqual([['p2', 100, 60_000, [{ t: 10_000, abilityId: 500 }]]])
     // 各區間可用的樣本數（區間按鈕顯示）
-    expect(await averageTierCounts(db, { encounter: 100, difficulty: 101, job: 'Samurai', slot: '' })).toEqual({ top: 1, upper: 0, mid: 0 })
+    expect(await averageTierCounts(db, { encounter: 100, difficulty: 101, job: 'Samurai' })).toEqual({ top: 1, upper: 0, mid: 0 })
   })
 
   it('marks samples with deaths as excluded and keeps nothing else for them', async () => {
@@ -281,7 +292,7 @@ describe('processTimelines', () => {
     }
     await processTimelines(db, graphql, NOW)
     expect(await db.prepare('SELECT casts, buffs, deaths FROM sample_data').first()).toEqual({ casts: '', buffs: '', deaths: 1 })
-    expect((await averageSamples(db, { encounter: 100, difficulty: 101, job: 'Samurai', slot: '', tier: 'top' })).samples).toEqual([])
+    expect((await averageSamples(db, { encounter: 100, difficulty: 101, job: 'Samurai', tier: 'top' })).samples).toEqual([])
     // 下次選樣本時排除
     await refreshSamples(db, NOW + 1)
     expect(await db.prepare('SELECT COUNT(*) AS n FROM average_samples').first()).toEqual({ n: 0 })

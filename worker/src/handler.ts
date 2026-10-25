@@ -263,7 +263,8 @@ async function pullTimelinesRoute(params: URLSearchParams, env: Env): Promise<Re
 }
 
 /**
- * `GET /average-samples?encounter&difficulty&job&tier=top|upper|mid[&slot=MT|ST]`：前輩平均的樣本（timelines.ts 的 averageSamples()）。
+ * `GET /average-samples?encounter&difficulty&job&tier=top|upper|mid`：前輩平均的樣本（timelines.ts 的 averageSamples()）。
+ * 坦克不分 MT／ST；舊版前端送來的 slot 參數忽略。
  */
 async function averageSamplesRoute(params: URLSearchParams, env: Env): Promise<unknown> {
   if (!env.DB) throw new HttpError(503, 'Rankings database unavailable')
@@ -271,25 +272,20 @@ async function averageSamplesRoute(params: URLSearchParams, env: Env): Promise<u
   if (!JOB_NAME.test(job)) throw new HttpError(400, 'Invalid job')
   const tier = params.get('tier') ?? ''
   if (!(tier in TIERS)) throw new HttpError(400, 'Invalid tier')
-  const slot = params.get('slot') ?? ''
-  if (slot !== '' && slot !== 'MT' && slot !== 'ST') throw new HttpError(400, 'Invalid slot')
   return averageSamples(env.DB, {
     encounter: requiredInt(params, 'encounter'),
     difficulty: requiredInt(params, 'difficulty'),
     job,
-    slot,
     tier: tier as Tier,
   })
 }
 
-/** `GET /average-tiers?encounter&difficulty&job[&slot=MT|ST]`：各 PR 區間可用的樣本數 { top, upper, mid }（timelines.ts 的 averageTierCounts()）。 */
+/** `GET /average-tiers?encounter&difficulty&job`：各 PR 區間可用的樣本數 { top, upper, mid }（timelines.ts 的 averageTierCounts()；slot 參數同樣忽略）。 */
 async function averageTiersRoute(params: URLSearchParams, env: Env): Promise<unknown> {
   if (!env.DB) throw new HttpError(503, 'Rankings database unavailable')
   const job = params.get('job') ?? ''
   if (!JOB_NAME.test(job)) throw new HttpError(400, 'Invalid job')
-  const slot = params.get('slot') ?? ''
-  if (slot !== '' && slot !== 'MT' && slot !== 'ST') throw new HttpError(400, 'Invalid slot')
-  return averageTierCounts(env.DB, { encounter: requiredInt(params, 'encounter'), difficulty: requiredInt(params, 'difficulty'), job, slot })
+  return averageTierCounts(env.DB, { encounter: requiredInt(params, 'encounter'), difficulty: requiredInt(params, 'difficulty'), job })
 }
 
 /** D1 無法使用（例如免費方案的每日讀取額度用完）時的錯誤訊息；前端依此停用搜尋前輩日誌 */

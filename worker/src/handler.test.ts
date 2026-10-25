@@ -465,10 +465,11 @@ describe('handleRequest', () => {
       run: async () => ({}),
     }
     const withDb: Env = { ...env, DB: { prepare: () => statement, batch: async () => [] } }
+    // 坦克不分 MT／ST：舊版前端送來的 slot 忽略
     const res = await handleRequest(get('/average-tiers?encounter=100&difficulty=101&job=Paladin&slot=ST'), withDb, ctx, null)
     expect(await res.json()).toEqual({ top: 30, upper: 0, mid: 4 })
-    expect(bound[0]).toEqual([100, 101, 'Paladin', 'ST'])
-    for (const path of ['/average-tiers?encounter=100&difficulty=101', '/average-tiers?encounter=100&difficulty=101&job=Paladin&slot=OT']) {
+    expect(bound[0]).toEqual([100, 101, 'Paladin'])
+    for (const path of ['/average-tiers?encounter=100&difficulty=101', '/average-tiers?encounter=x&difficulty=101&job=Paladin']) {
       expect((await handleRequest(get(path), withDb, ctx, null)).status, path).toBe(400)
     }
   })
@@ -488,11 +489,10 @@ describe('handleRequest', () => {
     const res = await handleRequest(get('/average-samples?encounter=100&difficulty=101&job=Paladin&tier=top&slot=MT'), withDb, ctx, null)
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ count: 42, updatedAt: 123, samples: [{ name: 'p1', pr: 97 }] })
-    expect(bound[0]).toEqual([100, 101, 'Paladin', 'MT', 'top'])
+    expect(bound[0]).toEqual([100, 101, 'Paladin', 'top'])
     for (const path of [
       '/average-samples?encounter=100&difficulty=101&job=Paladin',
       '/average-samples?encounter=100&difficulty=101&job=Paladin&tier=best',
-      '/average-samples?encounter=100&difficulty=101&job=Paladin&tier=top&slot=OT',
       '/average-samples?encounter=x&difficulty=101&job=Paladin&tier=top',
       '/average-samples?encounter=100&difficulty=101&job=P%20L&tier=top',
     ]) {

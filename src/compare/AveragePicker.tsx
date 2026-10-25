@@ -80,9 +80,8 @@ export function AverageSummary({ info, job, onPick }: { info: AverageInfo; job: 
       {/* 精簡成一行（職業已在我的日誌欄位），完整說明在滑鼠提示；樣本清單按鈕靠右 */}
       <p className="hint">
         <span
-          title={`繁中服 ${jobName(job)}${info.slot ? `（${info.slot}）` : ''}：用了 ${info.used} 筆樣本，區間內共 ${info.count} 場擊殺${info.updatedAt !== null ? `，樣本更新於 ${dateTime(info.updatedAt)}` : ''}`}
+          title={`繁中服 ${jobName(job)}：用了 ${info.used} 筆樣本，區間內共 ${info.count} 場擊殺${info.updatedAt !== null ? `，樣本更新於 ${dateTime(info.updatedAt)}` : ''}`}
         >
-          {info.slot && `${info.slot}・`}
           樣本 {info.used}／{info.count} 場
           {info.updatedAt !== null && `・${dateTime(info.updatedAt)} 更新`}
         </span>

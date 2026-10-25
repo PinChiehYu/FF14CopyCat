@@ -1,18 +1,18 @@
 // 預處理已收錄的擊殺（在獨立的定時觸發中執行，index.ts）：
-// 1. 每場（報告＋戰鬥）存 Boss 施放（搜尋前輩日誌的機制比對、前輩平均的對齊用），有坦克時存 MT／ST。
-// 2. 前輩平均的樣本：每個 Boss×職業（坦克再分 MT／ST）×PR 區間選最多 30 筆（refreshSamples），
+// 1. 每場（報告＋戰鬥）存 Boss 施放（搜尋前輩日誌的機制比對、前輩平均的對齊用）。
+// 2. 前輩平均的樣本：每個 Boss×職業×PR 區間選最多 30 筆（refreshSamples；坦克不分 MT／ST），
 //    只為被選到的玩家存全部施放（含 GCD）、效果時段與死亡次數——不必每位玩家都存（見 docs/TECH_NOTES.md「前輩平均」）。
 import { encodeApplications, encodeCasts, encodeWindows, type EncodedCast } from '../../src/analysis/castCodec'
 import { enemyDebuffApplications, enemyDebuffWindows, selfBuffWindows } from '../../src/analysis/buffs'
 import { patchAt } from '../../src/jobs/patch'
 import type { FFLogsEvent, Fight } from '../../src/fflogs/types'
 import { backfillDamage, CURRENT_ENCOUNTERS, GONE_REPORT, tcRankingsAbove, type DbLike, type Graphql, type StatementLike } from './crawler'
-import { AUTO_ATTACKS_TAKEN_QUERY, CRON_EVENTS_QUERY } from './queries'
+import { CRON_EVENTS_QUERY } from './queries'
 
 // Workers 免費方案每次執行最多 50 個對外請求（含權杖與點數查詢），預留幾個
 const SUBREQUEST_BUDGET = 46
-// 每場最多用到的請求數（敵方施放最多 2 頁，加上 MT／ST）
-const REQUESTS_PER_PULL = 3
+// 每場最多用到的請求數（敵方施放最多 2 頁）
+const REQUESTS_PER_PULL = 2
 // 每位樣本最多用到的請求數（該玩家的全部事件最多 3 頁）
 const REQUESTS_PER_SAMPLE = 3
 // Workers 免費方案每次執行只有 10 ms CPU（超過即中斷、不寫入任何結果）：每次只做一小部分，改以較高頻率執行（index.ts）。
@@ -38,7 +38,6 @@ const MAX_SAMPLE_PAGES = 3
 const DEDUPE_MS = 1000
 // 普通攻擊（Attack、Shot）不是玩家操作的技能
 const AUTO_ATTACKS = new Set([7, 8])
-const TANKS = new Set(['Paladin', 'Warrior', 'DarkKnight', 'Gunbreaker'])
 
 /** 前輩平均的 PR 區間（固定三組，不開放微調） */
 export type Tier = 'top' | 'upper' | 'mid'
@@ -82,12 +81,6 @@ export function playerCasts(events: RawEvent[], fightStart: number, actor: numbe
   return events
     .filter((e) => e.type === 'cast' && e.sourceID === actor && e.abilityGameID !== undefined && !AUTO_ATTACKS.has(e.abilityGameID))
     .map((e) => ({ t: e.timestamp - fightStart, abilityId: e.abilityGameID! }))
-}
-
-/** 坦克的 MT／ST：承受的 Boss 普通攻擊傷害在全隊最多者為 MT。 */
-export function tankSlot(actor: number, autoAttacksTaken: { id: number; total: number }[]): 'MT' | 'ST' {
-  const own = autoAttacksTaken.find((e) => e.id === actor)?.total ?? 0
-  return autoAttacksTaken.every((e) => e.total <= own) && own > 0 ? 'MT' : 'ST'
 }
 
 /**
@@ -135,7 +128,7 @@ function spread<T>(list: T[], k: number): T[] {
  * - 穩定選取：之前選過、PR 仍在區間 ±PR_BUFFER 內的保留；
  * - 不足 size 筆時從區間內其他玩家補，依 rDPS 平均分布；
  * - 目前版本的擊殺 ≥ MIN_CURRENT_PATCH 筆時只用目前版本，否則舊版本一起用。
- * @param candidates 候選（已排除死亡的樣本、坦克已篩選 MT／ST）
+ * @param candidates 候選（已排除死亡的樣本）
  * @param previous 這個區間之前選的樣本
  */
 export function selectTier(candidates: Candidate[], previous: { report: string; fight: number; actor: number }[], tier: [number, number], currentPatch: string, size = SAMPLES_PER_TIER): Candidate[] {
@@ -223,17 +216,6 @@ export async function refreshSamples(db: DbLike, now: number, combosPerRun = COM
   for (const { encounter, difficulty, job } of combos) {
     const rankings = await tcRankingsAbove(db, encounter, difficulty, job, TIERS.mid[0] - PR_BUFFER)
     const scope = [encounter, difficulty, job]
-    const inCombo = 'p.encounter = ? AND p.difficulty = ? AND p.job = ?'
-    const slots = new Map(
-      TANKS.has(job)
-        ? (
-            await db
-              .prepare(`SELECT t.report, t.fight, t.actor, t.slot FROM tank_slots t JOIN parses p USING (report, fight, actor) WHERE ${inCombo}`)
-              .bind(...scope)
-              .all<{ report: string; fight: number; actor: number; slot: string }>()
-          ).results.map((r) => [sampleKey(r), r.slot])
-        : [],
-    )
     const previous = (
       await db
         .prepare('SELECT slot, tier, report, fight, actor, pr FROM average_samples WHERE encounter = ? AND difficulty = ? AND job = ?')
@@ -254,49 +236,51 @@ export async function refreshSamples(db: DbLike, now: number, combosPerRun = COM
     const sampleRow = 'encounter = ? AND difficulty = ? AND job = ? AND slot = ? AND tier = ? AND report = ? AND fight = ? AND actor = ?'
     // 這一組選完後仍是樣本的玩家（任一區間），其餘換掉的刪除預處理資料
     const stillSampled = new Set<string>()
-    // 坦克的 MT／ST 分開選（還沒判斷 MT／ST 的場次先不選）
-    for (const slot of TANKS.has(job) ? ['MT', 'ST'] : ['']) {
-      const pool = slot ? candidates.filter((c) => slots.get(sampleKey(c)) === slot) : candidates
-      for (const tier of Object.keys(TIERS) as Tier[]) {
-        const range = TIERS[tier]
-        const before = previous.filter((p) => p.slot === slot && p.tier === tier)
-        const picked = selectTier(pool, before, range, currentPatch)
-        const pickedKeys = new Set(picked.map(sampleKey))
-        const beforeByKey = new Map(before.map((p) => [sampleKey(p), p]))
-        let changed = false
-        for (const p of before) {
-          if (pickedKeys.has(sampleKey(p))) continue
-          changed = true
-          writes.push(db.prepare(`DELETE FROM average_samples WHERE ${sampleRow}`).bind(encounter, difficulty, job, slot, tier, p.report, p.fight, p.actor))
+    // 坦克不分 MT／ST（slot 一律為空字串）；2026-10-25 以前分開選的舊樣本（slot 為 MT／ST）在這裡當作之前選過的，
+    // 重新選到的改存成 slot 為空的一列（預處理資料沿用），其餘刪除
+    const slot = ''
+    if ([...previousTiers.keys()].some((k) => !k.startsWith(`${slot}|`))) {
+      writes.push(db.prepare('DELETE FROM sample_tiers WHERE encounter = ? AND difficulty = ? AND job = ? AND slot != ?').bind(...scope, slot))
+    }
+    for (const tier of Object.keys(TIERS) as Tier[]) {
+      const range = TIERS[tier]
+      const before = previous.filter((p) => p.tier === tier)
+      const picked = selectTier(candidates, before, range, currentPatch)
+      const pickedKeys = new Set(picked.map(sampleKey))
+      const beforeByKey = new Map(before.filter((p) => p.slot === slot).map((p) => [sampleKey(p), p]))
+      let changed = false
+      for (const p of before) {
+        if (p.slot === slot && pickedKeys.has(sampleKey(p))) continue
+        changed = true
+        writes.push(db.prepare(`DELETE FROM average_samples WHERE ${sampleRow}`).bind(encounter, difficulty, job, p.slot, tier, p.report, p.fight, p.actor))
+      }
+      for (const c of picked) {
+        stillSampled.add(sampleKey(c))
+        const old = beforeByKey.get(sampleKey(c))
+        if (old) {
+          if (old.pr !== c.pr) writes.push(db.prepare(`UPDATE average_samples SET pr = ? WHERE ${sampleRow}`).bind(c.pr, encounter, difficulty, job, slot, tier, c.report, c.fight, c.actor))
+          continue
         }
-        for (const c of picked) {
-          stillSampled.add(sampleKey(c))
-          const old = beforeByKey.get(sampleKey(c))
-          if (old) {
-            if (old.pr !== c.pr) writes.push(db.prepare(`UPDATE average_samples SET pr = ? WHERE ${sampleRow}`).bind(c.pr, encounter, difficulty, job, slot, tier, c.report, c.fight, c.actor))
-            continue
-          }
-          changed = true
-          writes.push(
-            db
-              .prepare(
-                `INSERT INTO average_samples (encounter, difficulty, job, slot, tier, report, fight, actor, name, server, rdps, pr, patch, selected_at, pending)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOT EXISTS (SELECT 1 FROM sample_data d WHERE d.report = ? AND d.fight = ? AND d.actor = ?))`,
-              )
-              .bind(encounter, difficulty, job, slot, tier, c.report, c.fight, c.actor, c.name, c.server, c.rdps, c.pr, c.patch, now, c.report, c.fight, c.actor),
-          )
-          // 樣本要有 Boss 施放才能用：該場還沒預處理時排到最前面
-          writes.push(db.prepare('UPDATE pull_queue SET priority = 1 WHERE report = ? AND fight = ?').bind(c.report, c.fight))
-        }
-        // 候選人數或樣本有變才更新（updated_at 為樣本最近一次變動的時間）
-        const inTier = pool.filter((c) => c.pr >= range[0] && c.pr <= range[1]).length
-        if (changed || previousTiers.get(`${slot}|${tier}`) !== inTier) {
-          writes.push(
-            db
-              .prepare('INSERT OR REPLACE INTO sample_tiers (encounter, difficulty, job, slot, tier, candidates, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-              .bind(encounter, difficulty, job, slot, tier, inTier, now),
-          )
-        }
+        changed = true
+        writes.push(
+          db
+            .prepare(
+              `INSERT INTO average_samples (encounter, difficulty, job, slot, tier, report, fight, actor, name, server, rdps, pr, patch, selected_at, pending)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOT EXISTS (SELECT 1 FROM sample_data d WHERE d.report = ? AND d.fight = ? AND d.actor = ?))`,
+            )
+            .bind(encounter, difficulty, job, slot, tier, c.report, c.fight, c.actor, c.name, c.server, c.rdps, c.pr, c.patch, now, c.report, c.fight, c.actor),
+        )
+        // 樣本要有 Boss 施放才能用：該場還沒預處理時排到最前面
+        writes.push(db.prepare('UPDATE pull_queue SET priority = 1 WHERE report = ? AND fight = ?').bind(c.report, c.fight))
+      }
+      // 候選人數或樣本有變才更新（updated_at 為樣本最近一次變動的時間）
+      const inTier = candidates.filter((c) => c.pr >= range[0] && c.pr <= range[1]).length
+      if (changed || previousTiers.get(`${slot}|${tier}`) !== inTier) {
+        writes.push(
+          db
+            .prepare('INSERT OR REPLACE INTO sample_tiers (encounter, difficulty, job, slot, tier, candidates, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            .bind(encounter, difficulty, job, slot, tier, inTier, now),
+        )
       }
     }
     // 不再是樣本的預處理資料刪掉（有死亡的保留當作記號，內容已清空）
@@ -321,7 +305,7 @@ export interface TimelineResult {
   skipped?: string
   /** 這次重新選樣本的 Boss×職業組數 */
   selected: number
-  /** 處理的場次（Boss 施放、MT／ST） */
+  /** 處理的場次（Boss 施放） */
   pulls: number
   /** 處理的樣本（全部施放、效果與死亡） */
   samples: number
@@ -335,20 +319,18 @@ export interface TimelineResult {
 interface PullRow {
   report: string
   fight: number
-  actor: number
-  job: string
   fight_start: number
   fight_end: number
 }
 
-type Pull = { report: string; fight: number; start: number; end: number; tanks: number[] }
+type Pull = { report: string; fight: number; start: number; end: number }
 
-/** 尚未預處理的場次（pull_queue：含樣本的優先，其次最近的報告）與其中已收錄的坦克；依索引只讀要處理的幾場。 */
+/** 尚未預處理的場次（pull_queue：含樣本的優先，其次最近的報告）；依索引只讀要處理的幾場。 */
 async function pendingPulls(db: DbLike, limit: number): Promise<Pull[]> {
   if (limit <= 0) return []
   const { results } = await db
     .prepare(
-      `SELECT q.report, q.fight, p.actor, p.job, p.fight_start, p.fight_end
+      `SELECT q.report, q.fight, p.fight_start, p.fight_end
        FROM (SELECT report, fight, priority, report_start FROM pull_queue ORDER BY priority DESC, report_start DESC LIMIT ?) q
        JOIN parses p ON p.report = q.report AND p.fight = q.fight
        ORDER BY q.priority DESC, q.report_start DESC, q.report, q.fight`,
@@ -358,9 +340,7 @@ async function pendingPulls(db: DbLike, limit: number): Promise<Pull[]> {
   const pulls = new Map<string, Pull>()
   for (const row of results) {
     const key = `${row.report}/${row.fight}`
-    const pull = pulls.get(key) ?? { report: row.report, fight: row.fight, start: row.fight_start, end: row.fight_end, tanks: [] }
-    if (TANKS.has(row.job)) pull.tanks.push(row.actor)
-    pulls.set(key, pull)
+    if (!pulls.has(key)) pulls.set(key, { report: row.report, fight: row.fight, start: row.fight_start, end: row.fight_end })
   }
   return [...pulls.values()]
 }
@@ -502,7 +482,7 @@ export async function processTimelines(
     }
   }
 
-  // 新場次：Boss 施放，有坦克時判斷 MT／ST
+  // 新場次：Boss 施放
   for (const pull of pulls) {
     if (requests + REQUESTS_PER_PULL > SUBREQUEST_BUDGET) {
       result.skipped = 'subrequests'
@@ -510,20 +490,6 @@ export async function processTimelines(
     }
     try {
       const enemies = await fetchEvents(graphql, pull, { hostilityType: 'Enemies', dataType: 'Casts', filterExpression: BOSS_EVENTS_FILTER })
-      if (pull.tanks.length > 0) {
-        const data = await graphql<{ reportData?: { report?: { table?: { data?: { entries?: { id: number; total: number }[] } } } } }>(
-          AUTO_ATTACKS_TAKEN_QUERY,
-          { code: pull.report, fightIDs: [pull.fight] },
-        )
-        const autoAttacks = data?.reportData?.report?.table?.data?.entries ?? []
-        for (const actor of pull.tanks) {
-          writes.push(
-            db
-              .prepare('INSERT OR REPLACE INTO tank_slots (report, fight, actor, slot) VALUES (?, ?, ?, ?)')
-              .bind(pull.report, pull.fight, actor, tankSlot(actor, autoAttacks)),
-          )
-        }
-      }
       writes.push(...bossRows(db, pull.report, pull.fight, encodeCasts(bossTimeline(enemies, pull.start)), now))
       result.pulls++
     } catch (err) {
@@ -568,10 +534,12 @@ export interface AverageSample {
  * 一個區間的前輩平均樣本（已預處理、沒有死亡、該場有 Boss 施放的），依 rDPS 由高到低；
  * count 為區間內的擊殺數，updatedAt 為最近一次選樣本的時間（還沒選過時為 null）。
  */
+// 坦克不分 MT／ST：讀取時不篩 slot。2026-10-25 以前分開選的舊樣本（slot 為 MT／ST）在輪替重新選到之前一起用
+
 /** 各 PR 區間可用的樣本數（與 averageSamples 相同的條件：已預處理、沒有死亡、有 Boss 施放）；前端在區間按鈕上顯示 */
 export async function averageTierCounts(
   db: DbLike,
-  scope: { encounter: number; difficulty: number; job: string; slot: string },
+  scope: { encounter: number; difficulty: number; job: string },
 ): Promise<Record<Tier, number>> {
   const { results } = await db
     .prepare(
@@ -579,10 +547,10 @@ export async function averageTierCounts(
        FROM average_samples s
        JOIN sample_data d USING (report, fight, actor)
        JOIN pull_timelines t ON t.report = s.report AND t.fight = s.fight
-       WHERE s.encounter = ? AND s.difficulty = ? AND s.job = ? AND s.slot = ? AND d.deaths = 0 AND t.boss != ''
+       WHERE s.encounter = ? AND s.difficulty = ? AND s.job = ? AND d.deaths = 0 AND t.boss != ''
        GROUP BY s.tier`,
     )
-    .bind(scope.encounter, scope.difficulty, scope.job, scope.slot)
+    .bind(scope.encounter, scope.difficulty, scope.job)
     .all<{ tier: Tier; n: number }>()
   const counts: Record<Tier, number> = { top: 0, upper: 0, mid: 0 }
   for (const r of results) if (r.tier in counts) counts[r.tier] = r.n
@@ -591,11 +559,13 @@ export async function averageTierCounts(
 
 export async function averageSamples(
   db: DbLike,
-  scope: { encounter: number; difficulty: number; job: string; slot: string; tier: Tier },
+  scope: { encounter: number; difficulty: number; job: string; tier: Tier },
 ): Promise<{ count: number; updatedAt: number | null; samples: AverageSample[] }> {
-  const bind = [scope.encounter, scope.difficulty, scope.job, scope.slot, scope.tier]
+  const bind = [scope.encounter, scope.difficulty, scope.job, scope.tier]
   const meta = await db
-    .prepare('SELECT candidates, updated_at FROM sample_tiers WHERE encounter = ? AND difficulty = ? AND job = ? AND slot = ? AND tier = ?')
+    .prepare(
+      'SELECT SUM(candidates) AS candidates, MAX(updated_at) AS updated_at FROM sample_tiers WHERE encounter = ? AND difficulty = ? AND job = ? AND tier = ?',
+    )
     .bind(...bind)
     .first<{ candidates: number; updated_at: number }>()
   const { results } = await db
@@ -606,7 +576,7 @@ export async function averageSamples(
        JOIN parses p USING (report, fight, actor)
        JOIN sample_data d USING (report, fight, actor)
        JOIN pull_timelines t ON t.report = s.report AND t.fight = s.fight
-       WHERE s.encounter = ? AND s.difficulty = ? AND s.job = ? AND s.slot = ? AND s.tier = ? AND d.deaths = 0 AND t.boss != ''
+       WHERE s.encounter = ? AND s.difficulty = ? AND s.job = ? AND s.tier = ? AND d.deaths = 0 AND t.boss != ''
        ORDER BY s.rdps DESC`,
     )
     .bind(...bind)

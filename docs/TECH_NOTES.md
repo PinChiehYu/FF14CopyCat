@@ -238,7 +238,7 @@
 - 定時觸發 `* * * * *`（每分鐘；`index.ts` 的 `TIMELINE_CRON`，2026-10-03 起，原為每 10 分鐘做較多工作，見下方「Workers 免費方案的 CPU 上限」）。`timelineWork()` 依分鐘分工：
   1. 整 10 分鐘的那次：`refreshSamples()` 輪替重新選 1 組 Boss×職業的樣本（只讀 D1，不查 FFLogs）。
   2. 其餘每次：先以 `rateLimitData` 查這小時的點數（超過 2,000 點跳過）；樣本每次最多 1 位，`sourceID=樣本&dataType=All`（最多 3 頁）一次取得施放、自身效果、對敵人施加的效果與死亡（`CRON_EVENTS_QUERY`：不含位置資料，`filterExpression` 只取用得到的事件類型，見下方「Workers 免費方案的 CPU 上限」）。
-  3. 新場次：每次最多 2 場，處理 `pull_queue` 中的場次（排名掃描收錄擊殺時加入；**含樣本的場次優先**，其次最近的報告；處理後移出），每場 `hostility=Enemies&dataType=Casts`（最多 2 頁），有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST（承受普通攻擊全隊最多者為 MT）→ `tank_slots`。
+  3. 新場次：每次最多 2 場，處理 `pull_queue` 中的場次（排名掃描收錄擊殺時加入；**含樣本的場次優先**，其次最近的報告；處理後移出），每場 `hostility=Enemies&dataType=Casts`（最多 2 頁）。（2026-10-25 以前有坦克時再查 `AUTO_ATTACKS_TAKEN_QUERY` 判斷 MT／ST → `tank_slots`；前輩平均不分 MT／ST 後不再查，每場最多 2 個請求。）
   每次執行的對外請求在 46 個以內，寫入用一個 `db.batch`。
 - 資料表（`schema.sql`）：`pull_timelines`（每場 Boss 施放：同一技能 1 秒內只留一次，與前端 `buildAlignment()`／`mechanicDifferences()` 的 1 秒去重相同，比對結果不變）、`tank_slots`（坦克的 MT／ST）、`average_samples`／`sample_tiers`／`sample_data`（前輩平均，見下）。編碼為 `src/analysis/castCodec.ts`：依時間排序，每筆「36 進位技能 ID.時間差」，時間以 10 毫秒為單位；效果時段另加持續時間與旗標（開打前已有／到結束未移除），施加效果另加目標 ID。
 - 失敗處理：報告已私人化或刪除（`GONE_REPORT`）時記錄 `boss = ''`（樣本記 `deaths = -1`）、不再重試；其他錯誤（額度、網路）下次再試。`pruneGoneReports()` 移除報告時一併刪除預處理與樣本的資料（下次選樣本時補上）。
@@ -250,13 +250,13 @@
 - 頻率：點數很少，由每 20 分鐘改為每 10 分鐘（每小時約 54 場、170 點；排名掃描每小時約 300 點；2,000 點的上限留給訪客），約 3 天處理完現有場次，之後每天新增的擊殺隨掃描陸續處理。
 
 ### 前輩平均的樣本（`worker/src/timelines.ts`，2026-10-01 起）
-- 區間固定三組：`top` PR 95+、`upper` 75–94、`mid` 50–74；每個 Boss×職業（坦克再分 MT／ST，還沒判斷 MT／ST 的場次不選）×區間最多 30 筆（`SAMPLES_PER_TIER`），**每位玩家最多一筆**。PR 以 `tcRankings()` 計算（與排名表相同）。
+- 區間固定三組：`top` PR 95+、`upper` 75–94、`mid` 50–74；每個 Boss×職業（坦克不分 MT／ST，`slot` 一律為空字串）×區間最多 30 筆（`SAMPLES_PER_TIER`），**每位玩家最多一筆**。PR 以 `tcRankings()` 計算（與排名表相同）。
 - `selectTier()`：之前選過、PR 仍在區間 ±3 內的保留（避免邊界的擊殺每次進出，減少重抓）；不足的從區間內其他玩家補，依 rDPS **平均分布**（涵蓋整個區間）。目前版本（`patchAt(now)`）的擊殺 ≥ 10 位時只用目前版本，否則舊版本一起用。
 - `refreshSamples()`：依 `crawl_state.samples_cursor`（上次處理的 `[encounter, difficulty, job]`）以 `parses_rdps` 索引找下一組輪替（**只輪本季的 Boss** `CURRENT_ENCOUNTERS`：掃到的報告也有舊副本的擊殺，編號較小、排在前面，2026-10-01 上線後的前 110 組全是舊副本 76～81，候選每區間不到 10 人；逐個 Boss 以 `encounter = ? AND (difficulty, job) > (?, ?)` 查，IN 搭配列值比較不會用索引定位），每次 4 組（D1 讀取：每組約數百列的 `parses`；全部約 100 組，約 4 小時輪完一次）。**只寫有變動的列**：換掉的樣本刪除、新選的插入（`pending` 依 `sample_data` 是否已有，該場在 `pull_queue` 的 `priority` 設為 1）、PR 變了的更新；`sample_tiers`（區間內擊殺數、`updated_at`＝樣本最近一次變動的時間）只在候選人數或樣本有變時寫。換掉的樣本刪除其 `sample_data`（`deaths = 0` 者；有死亡的保留當作記號）。
 - `sample_data`：施放（含 GCD，不含普通攻擊，`cast` 事件）、效果時段（`selfBuffWindows()`＋`enemyDebuffWindows()`，與前端 `SideData.buffs` 相同）、施加效果（`enemyDebuffApplications()`，DoT 提早續上用）、死亡次數。**有死亡的樣本排除**（只存死亡次數，內容清空），下次選樣本時跳過、以其他擊殺補上。
-- `GET /average-samples?encounter&difficulty&job&tier=top|upper|mid[&slot=MT|ST]`（`averageSamples()`）：已預處理、沒有死亡、該場有 Boss 施放的樣本（依 rDPS），附名字、伺服器、報告與角色（樣本清單用）、PR、rDPS、版本、戰鬥長度與四種編碼資料；`count` 為區間內擊殺數、`updatedAt` 為最近一次選樣本的時間。快取 10 分鐘。
+- `GET /average-samples?encounter&difficulty&job&tier=top|upper|mid`（`averageSamples()`；舊版前端的 `slot` 參數忽略，查詢不篩 `slot`）：已預處理、沒有死亡、該場有 Boss 施放的樣本（依 rDPS），附名字、伺服器、報告與角色（樣本清單用）、PR、rDPS、版本、戰鬥長度與四種編碼資料；`count` 為區間內擊殺數、`updatedAt` 為最近一次選樣本的時間。快取 10 分鐘。
 - 前端（第二階段，2026-10-03 起只在本機；2026-10-10 起正式站開放，`AVERAGE_ENABLED`＝`true`）：
-  - `src/compare/averageSide.ts` 的 `useAverageReference()`：坦克先以 `/reports/:code/auto-attacks-taken` 判斷我的 MT／ST（規則同 Worker 的 `tankSlot()`），再取 `/average-samples`，以 `averageSide()` 合成參考 `SideData`：`playerCasts` 為合成的施放（附 `consistency`），Boss 施放與無法選中沿用我的，`duration`＝比較範圍結束，其餘逐場資料為空。GCD 統計（數量、間隔、空檔）為每位樣本對齊後在比較範圍內各自 `gcdStats()` 再取中位數（`AverageInfo.gcd`）。
+  - `src/compare/averageSide.ts` 的 `useAverageReference()`：取 `/average-samples`（坦克不分 MT／ST），以 `averageSide()` 合成參考 `SideData`：`playerCasts` 為合成的施放（附 `consistency`），Boss 施放與無法選中沿用我的，`duration`＝比較範圍結束，其餘逐場資料為空。GCD 統計（數量、間隔、空檔）為每位樣本對齊後在比較範圍內各自 `gcdStats()` 再取中位數（`AverageInfo.gcd`）。
   - `src/analysis/averageLog.ts` 的 `averageCasts()`（純函式）：每位樣本 `buildAlignment(我的 Boss, 樣本 Boss, { knownGroups })`、錨點 < 5 不用，以 `refToMine` 換成我的時間；比較範圍＝min(我的長度, 樣本擊殺時間（我的時間）的中位數)；「仍在戰鬥中」的樣本數以各樣本擊殺時間計。GCD：所有樣本的 GCD 依時間分群（與前一個相差 > 1 秒或與群首相差 > 1.5 秒開新群），每位樣本一個位置只算一次，樣本數 ≥ 仍在戰鬥的一半才成立，取最常見的技能放在其中位數時間，相鄰 < 1.5 秒的位置只留樣本多的。能力技：同一技能依「每位樣本相鄰使用的最短間隔的中位數的一半（至少 5 秒；只用一次的技能 30 秒）」分群，使用的樣本比例 ≥ 一半才放；同一群中樣本多用幾次（充能）取次數的中位數，依序放在第 i 次的中位數時間。
   - `Comparison.tsx` 的 `Loaded` 以 `average` 區分：對齊為恆等（已在我的時間）、不做 `withSharedCasters`；`partial`（solo 或 average）的區塊（機制、站位、技能窗口、DoT、冷卻技、穿插、止損技、死亡回顧）比照只有我的日誌；建議用 `generateAverageAdvice()`（只有我的日誌的建議＋停手少打 GCD、GCD 速度、技能使用次數，文字的「參考」改為「前輩平均」）。畫面上的「參考」以 `RefLabelContext`（`compare/refLabel.ts`）改稱；時間軸列名欄窄，簡稱「平均」。
   - 本機驗證（M5S，可用樣本目前只有 M5S）：吟遊詩人（PR 85，75–94 區間 21 筆）合成 GCD 223 個、我 225 個，GCD 間隔 2.492 秒（中位數）對我的 2.496 秒；合成位置直接算間隔時有 75 個 1.5～2.2 秒的間隔（中位數時間的誤差），所以 GCD 統計改取各樣本的中位數。騎士（PR 80，95+ 區間）判斷為 ST、13 筆，GCD 202 對 204。桌面 1280 與手機 375 的 ui-audit 沒有裁切、溢出與錯誤。
@@ -584,6 +584,13 @@
 - 奪魂者尚未以實際日誌驗證 GCD 分類。
 
 ## 技術變更紀錄
+
+### 2026-10-25 前輩平均的坦克不分 MT／ST
+- Worker `refreshSamples()`：不再讀 `tank_slots`、不再分 MT／ST，所有職業 `slot` 為空字串。**舊資料的轉換**：之前的 MT／ST 樣本也當作這一組「之前選過的」交給 `selectTier()`（PR 仍在區間 ±3 內的優先保留），保留的刪掉舊列、插入 `slot` 為空的新列（`sample_data` 已有 → `pending` 為 0，不必重新預處理）；沒選到的照常刪除（連同 `sample_data`）；該組 `slot` 不為空的 `sample_tiers` 一次刪除。輪替每 10 分鐘一組，所有組合約 14 小時換完。
+- `averageSamples()`／`averageTierCounts()` 不篩 `slot`（區間擊殺數取 `SUM(candidates)`、更新時間取 `MAX(updated_at)`）：輪替換完之前，同一區間的 MT 與 ST 舊樣本合在一起用，不會出現坦克沒有樣本的空窗（換完前同一區間可能超過 30 筆、同一位玩家可能出現兩次）。端點收到 `slot` 參數時忽略（舊版前端仍可用）。
+- 新場次的預處理不再查 `AUTO_ATTACKS_TAKEN_QUERY`、不再寫 `tank_slots`（`REQUESTS_PER_PULL` 3 → 2，也省下 FFLogs 點數）；`tank_slots` 舊資料保留到報告移除時一併刪除。`/reports/:code/auto-attacks-taken` 仍提供前端角色選單的 MT／ST 標示。
+- 前端 `averageSide.ts` 不再查我這場的 MT／ST、不帶 `slot`；`AverageInfo.slot` 移除。**部署順序**：先部署 Worker 再推送前端——新前端不帶 `slot`，舊 Worker 會查 `slot = ''`，坦克查不到樣本。
+- 以正式資料庫只讀驗證新查詢：M8S 騎士可用樣本 PR 95+ 14 筆（原本 MT 1 筆）、75–94 37 筆、50–74 42 筆（MT＋ST 舊樣本合計，重新選樣本後上限 30）。
 
 ### 2026-10-25 Boss 名稱查詢改為每批 12 個
 - 原因：隨機測試（ZCPgb32AWN6LKRrQ #7，報告有 57 場戰鬥、29 個名稱，含新月島的大量 NPC）的 Boss 名稱顯示英文 Howling Blade。`/npc-names` 每個名稱用 2～4 個子請求（英文搜尋、找不到時小寫重搜、繁中、沒有繁中時簡中），20 個一批時超過 Workers 免費方案每個請求 50 個子請求的上限，超過的名稱查詢丟出錯誤、不回傳（同一批重查兩次，漏掉的名稱不同：Marble Dragon、Guardian Wraith 等）；前端查不到就沿用英文。
