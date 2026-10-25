@@ -1,3 +1,4 @@
+import { isSupportedFight } from '../fflogs/encounters'
 import { playersInFight } from '../fflogs/report'
 import { jobName } from '../jobs/names'
 import type { Actor, Fight, Report } from '../fflogs/types'
@@ -58,17 +59,25 @@ export function resolveSelection(
   overrides: Overrides,
   preferred?: Preference,
 ): Resolved {
-  const fights = preferred ? report.fights.filter((f) => f.encounterID === preferred.encounterID) : report.fights
+  // 只列零式與絕境戰（isSupportedFight）；參考日誌再限同一個 Boss
+  const supported = report.fights.filter(isSupportedFight)
+  const fights = preferred ? supported.filter((f) => f.encounterID === preferred.encounterID) : supported
   // 連結指定的戰鬥編號不在報告中：自動改選別場會讓分享連結開出與連結不同的戰鬥，改為說明並等使用者選
-  const missingFight =
-    overrides.fightId === null && typeof urlRef.fight === 'number' && !report.fights.some((f) => f.id === urlRef.fight) ? urlRef.fight : null
+  const linked = overrides.fightId === null && typeof urlRef.fight === 'number' ? urlRef.fight : null
+  const missingFight = linked !== null && !report.fights.some((f) => f.id === linked) ? linked : null
+  // 我的日誌：連結指定的戰鬥不是零式或絕境戰（不在選單中），同樣說明並等使用者選
+  const unsupportedFight = !preferred && linked !== null && missingFight === null && !fights.some((f) => f.id === linked) ? linked : null
   const fightNote =
     preferred && fights.length === 0
       ? `這份報告沒有${preferred.bossName}`
-      : missingFight !== null
-        ? `連結指定的戰鬥 #${missingFight} 不在這份報告中，請選擇戰鬥`
-        : null
-  const fight = missingFight !== null ? undefined : pickFight(fights, urlRef, overrides, preferred)
+      : fights.length === 0
+        ? '這份報告沒有零式或絕境戰'
+        : missingFight !== null
+          ? `連結指定的戰鬥 #${missingFight} 不在這份報告中，請選擇戰鬥`
+          : unsupportedFight !== null
+            ? `連結指定的戰鬥 #${unsupportedFight} 不是零式或絕境戰，請選擇戰鬥`
+            : null
+  const fight = missingFight !== null || unsupportedFight !== null ? undefined : pickFight(fights, urlRef, overrides, preferred)
   const players = fight ? playersInFight(report, fight) : []
   const byId = (id: number | null | undefined) => (id == null ? undefined : players.find((p) => p.id === id))
   const base = { fights, fight, fightNote }

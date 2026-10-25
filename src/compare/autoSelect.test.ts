@@ -106,6 +106,25 @@ describe('resolveSelection', () => {
     expect(resolveSelection(report, { reportCode: 'x' }, none).fights).toHaveLength(5)
   })
 
+  it('lists only savage and ultimate fights for my log', () => {
+    const mixed: Report = {
+      ...report,
+      fights: [
+        { ...fight(1, 0, false, [1]), difficulty: null }, // 雜兵
+        { ...fight(2, 1516, true, [1]), difficulty: 100 }, // 討伐戰
+        fight(3, 98, true, [1]), // 零式
+        { ...fight(4, 1077, true, [1]), difficulty: 100 }, // 絕境戰
+      ],
+    }
+    expect(resolveSelection(mixed, { reportCode: 'x' }, none).fights.map((f) => f.id)).toEqual([3, 4])
+    // 連結指定不在選單中的戰鬥：不自動改選，說明原因
+    const linked = resolveSelection(mixed, { reportCode: 'x', fight: 2 }, none)
+    expect(linked).toMatchObject({ fight: undefined, fightNote: '連結指定的戰鬥 #2 不是零式或絕境戰，請選擇戰鬥' })
+    // 完全沒有零式或絕境戰
+    const none2 = resolveSelection({ ...report, fights: mixed.fights.slice(0, 2) }, { reportCode: 'x' }, none)
+    expect(none2).toMatchObject({ fights: [], fight: undefined, fightNote: '這份報告沒有零式或絕境戰' })
+  })
+
   it('selects nothing and explains when the report has no fight of my boss', () => {
     const r = resolveSelection(report, { reportCode: 'x', fight: 5 }, none, {
       encounterID: 999,

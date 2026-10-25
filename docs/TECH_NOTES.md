@@ -585,6 +585,12 @@
 
 ## 技術變更紀錄
 
+### 2026-10-26 戰鬥選單只列零式與絕境戰（`src/fflogs/encounters.ts`）
+- `isSupportedFight()`：`difficulty === 101`（零式）或 encounter ID 在 `ULTIMATE_ENCOUNTERS`。絕境戰的難度與一般副本同為 100，只能依 ID；7.x 的 FFLogs 把歷代絕境戰放在同一區域、ID 連號，2026-10-26 經 Worker `/reports` 以實際報告確認：UCoB 1073、UwU 1074、TEA 1075、DSR 1076、TOP 1077、FRU 1079（報告代碼見程式註解）。換資料片時 FFLogs 會給新 ID，要更新清單。
+- `resolveSelection()`：我的日誌只列 `isSupportedFight` 的戰鬥（參考日誌本來就只列同一個 Boss）；沒有時說明「這份報告沒有零式或絕境戰」；連結指定的戰鬥存在但不在選單中時說明「不是零式或絕境戰」、不自動改選。
+- `fetchFightNames()` 只查零式的名稱（取代下面「先查有 Boss 編號的戰鬥」的排序）。
+- 絕境戰的名稱：FFLogs 部分絕境戰的戰鬥名稱是副本英文名（Futures Rewritten、The Epic of Alexander），不是 NPC 名稱，BNpcName 查不到；改為 `ULTIMATE_ENCOUNTERS` 的固定名稱（遊戲資料 ContentFinderCondition 的繁中名稱：列 280／539／694／788／908／1006，例如「絕 光暗未來殲滅戰」，原文「絕」後即有空格），`translateReport()` 優先套用、不查 `/npc-names`；`App.tsx` 報告一載入就套用，不必等名稱查詢。
+
 ### 2026-10-26 Boss 名稱先查有 Boss 編號的戰鬥
 - 原因：隨機測試（cayVnHX1kQbZ4CB3 #58，報告有 66 場戰鬥、24 個名稱，多為新月島的雜兵）的 Boss 名稱先顯示英文 Sugar Riot 數秒：名稱每 12 個一批依序查詢，Boss 名稱排在第 22 個，要等第一批雜兵名稱（未快取時逐一查 xivapi）查完才換成繁中。
 - 變更：`fetchFightNames()` 先排有 `encounterID` 的戰鬥（零式等排名戰鬥），Boss 名稱一定在第一批。

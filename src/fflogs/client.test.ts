@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, DB_UNAVAILABLE_MESSAGE, FFLOGS_DOWN_MESSAGE, dbStatus, defaultAverageTier, retryRateLimited, fetchFightNames, fetchReport, fetchNpcNames, fetchTcRankings, fightNameParts, NPC_BATCH, translateFightName } from './client'
+import { ApiError, DB_UNAVAILABLE_MESSAGE, FFLOGS_DOWN_MESSAGE, dbStatus, defaultAverageTier, retryRateLimited, fetchFightNames, fetchReport, fetchNpcNames, fetchTcRankings, fightNameParts, NPC_BATCH, translateFightName, translateReport } from './client'
 import type { Report } from './types'
 
 describe('report errors', () => {
@@ -76,17 +76,30 @@ describe('fetchNpcNames', () => {
     expect(result.get('Boss 28')).toBe('中Boss 28')
   })
 
-  it('queries the names of encounter fights first so the boss name is translated early', async () => {
-    const batches: string[][] = []
+  it('only queries the boss names of savage and ultimate fights', async () => {
+    const queried: string[] = []
     vi.stubGlobal('fetch', async (url: string) => {
-      const names = new URL(url, 'http://x').searchParams.getAll('name')
-      batches.push(names)
+      queried.push(...new URL(url, 'http://x').searchParams.getAll('name'))
       return Response.json({})
     })
-    const trash = Array.from({ length: 15 }, (_, i) => ({ id: i + 1, encounterID: 0, name: `Trash ${i}` }))
-    const report = { fights: [...trash, { id: 99, encounterID: 98, name: 'Sugar Riot' }] } as unknown as Report
+    // 新月島的雜兵戰（數十個名稱）、討伐戰與木人不查
+    const trash = Array.from({ length: 15 }, (_, i) => ({ id: i + 1, encounterID: 0, difficulty: null, name: `Trash ${i}` }))
+    const report = {
+      fights: [
+        ...trash,
+        { id: 20, encounterID: 1516, difficulty: 100, name: 'Shinryu' },
+        { id: 21, encounterID: 98, difficulty: 101, name: 'Sugar Riot' },
+        { id: 22, encounterID: 1077, difficulty: 100, name: 'Omega / Omega-M' },
+      ],
+    } as unknown as Report
     await fetchFightNames(report)
-    expect(batches[0][0]).toBe('Sugar Riot')
+    // 絕境戰用固定的副本名稱，不查
+    expect(queried).toEqual(['Sugar Riot'])
+    const translated = translateReport(report, new Map([['Sugar Riot', '糖彩狂潮']]))
+    expect(translated.fights.slice(-2).map((f) => [f.name, f.englishName])).toEqual([
+      ['糖彩狂潮', 'Sugar Riot'],
+      ['絕 歐米茄驗證戰', 'Omega / Omega-M'],
+    ])
   })
 })
 

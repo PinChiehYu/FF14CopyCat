@@ -1,4 +1,5 @@
 import { API_BASE } from '../config'
+import { isSupportedFight, ULTIMATE_ENCOUNTERS } from './encounters'
 import type { EventDataType, FFLogsEvent, Fight, Report } from './types'
 
 export class ApiError extends Error {
@@ -302,23 +303,22 @@ export async function fetchNpcNames(names: string[], signal?: AbortSignal): Prom
 }
 
 /**
- * 查詢報告中所有戰鬥名稱（Boss）的繁中名稱。有 Boss 編號的戰鬥（零式等排名戰鬥）排在前面：
- * 名稱分批依序查詢，報告中雜兵戰很多時（例如新月島），Boss 名稱才會在第一批、較早換成繁中。
+ * 查詢報告中零式（戰鬥選單列出的戰鬥，isSupportedFight）的 Boss 繁中名稱；絕境戰用固定的副本名稱，不查。
+ * 雜兵戰（例如新月島，一份報告數十個名稱）不查：選單不列，查了只會拖慢 Boss 名稱。
  */
 export function fetchFightNames(report: Report, signal?: AbortSignal): Promise<Map<string, string>> {
-  const fights = [...report.fights].sort((a, b) => Number(b.encounterID > 0) - Number(a.encounterID > 0))
   return fetchNpcNames(
-    fights.flatMap((f) => fightNameParts(f.name)),
+    report.fights.filter((f) => isSupportedFight(f) && !ULTIMATE_ENCOUNTERS.has(f.encounterID)).flatMap((f) => fightNameParts(f.name)),
     signal,
   )
 }
 
-/** 把報告的戰鬥名稱換成繁中，英文保留在 englishName。 */
+/** 把報告的戰鬥名稱換成繁中（絕境戰為固定的副本名稱，其餘依 NPC 名稱），英文保留在 englishName。 */
 export function translateReport(report: Report, npcNames: Map<string, string>): Report {
   return {
     ...report,
     fights: report.fights.map((f) => {
-      const zh = translateFightName(f.name, npcNames)
+      const zh = ULTIMATE_ENCOUNTERS.get(f.encounterID) ?? translateFightName(f.name, npcNames)
       return zh === f.name ? f : { ...f, name: zh, englishName: f.name }
     }),
   }

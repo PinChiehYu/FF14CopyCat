@@ -58,8 +58,9 @@ function useReport(code: string | null): LoadState {
       .catch(() => {}) // 查不到就沿用英文
     return () => controller.abort()
   }, [loaded, code])
+  // 絕境戰的固定名稱不必等查詢，報告一載入就換
   const report = useMemo(
-    () => (loaded && npcNames?.code === code ? translateReport(loaded, npcNames.names) : loaded),
+    () => (loaded ? translateReport(loaded, npcNames?.code === code ? npcNames.names : new Map()) : loaded),
     [loaded, npcNames, code],
   )
 
