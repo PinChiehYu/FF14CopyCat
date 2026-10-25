@@ -301,10 +301,14 @@ export async function fetchNpcNames(names: string[], signal?: AbortSignal): Prom
   return result
 }
 
-/** 查詢報告中所有戰鬥名稱（Boss）的繁中名稱。 */
+/**
+ * 查詢報告中所有戰鬥名稱（Boss）的繁中名稱。有 Boss 編號的戰鬥（零式等排名戰鬥）排在前面：
+ * 名稱分批依序查詢，報告中雜兵戰很多時（例如新月島），Boss 名稱才會在第一批、較早換成繁中。
+ */
 export function fetchFightNames(report: Report, signal?: AbortSignal): Promise<Map<string, string>> {
+  const fights = [...report.fights].sort((a, b) => Number(b.encounterID > 0) - Number(a.encounterID > 0))
   return fetchNpcNames(
-    report.fights.flatMap((f) => fightNameParts(f.name)),
+    fights.flatMap((f) => fightNameParts(f.name)),
     signal,
   )
 }

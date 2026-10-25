@@ -585,6 +585,11 @@
 
 ## 技術變更紀錄
 
+### 2026-10-26 Boss 名稱先查有 Boss 編號的戰鬥
+- 原因：隨機測試（cayVnHX1kQbZ4CB3 #58，報告有 66 場戰鬥、24 個名稱，多為新月島的雜兵）的 Boss 名稱先顯示英文 Sugar Riot 數秒：名稱每 12 個一批依序查詢，Boss 名稱排在第 22 個，要等第一批雜兵名稱（未快取時逐一查 xivapi）查完才換成繁中。
+- 變更：`fetchFightNames()` 先排有 `encounterID` 的戰鬥（零式等排名戰鬥），Boss 名稱一定在第一批。
+- 同一次測試中，手機版「開打前」在技能名稱還沒換成繁中時，英文的「Eukrasian Diagnosis、Medicated」超出儲存格（名稱不換行）；繁中名稱到了之後沒有超出，屬於載入中的短暫狀態，不處理。
+
 ### 2026-10-25 前輩平均的坦克不分 MT／ST
 - Worker `refreshSamples()`：不再讀 `tank_slots`、不再分 MT／ST，所有職業 `slot` 為空字串。**舊資料的轉換**：之前的 MT／ST 樣本也當作這一組「之前選過的」交給 `selectTier()`（PR 仍在區間 ±3 內的優先保留），保留的刪掉舊列、插入 `slot` 為空的新列（`sample_data` 已有 → `pending` 為 0，不必重新預處理）；沒選到的照常刪除（連同 `sample_data`）；該組 `slot` 不為空的 `sample_tiers` 一次刪除。輪替每 10 分鐘一組，所有組合約 14 小時換完。
 - `averageSamples()`／`averageTierCounts()` 不篩 `slot`（區間擊殺數取 `SUM(candidates)`、更新時間取 `MAX(updated_at)`）：輪替換完之前，同一區間的 MT 與 ST 舊樣本合在一起用，不會出現坦克沒有樣本的空窗（換完前同一區間可能超過 30 筆、同一位玩家可能出現兩次）。端點收到 `slot` 參數時忽略（舊版前端仍可用）。
